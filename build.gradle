@@ -3,7 +3,16 @@ plugins {
 }
 
 repositories {
-	mavenLocal()
+	// Local Maven is only used for RuneLite artifacts (locally built client/API).
+	// Scoping it prevents LWJGL from being resolved here: the local cache only
+	// has Windows native JARs, so Gradle would fail on other platform classifiers
+	// declared in the RuneLite client POM. Maven Central has all LWJGL natives.
+	maven {
+		url = uri("${System.getProperty('user.home')}/.m2/repository")
+		content {
+			includeGroupByRegex("net\\.runelite.*")
+		}
+	}
 	maven {
 		url = 'https://repo.runelite.net'
 		content {
