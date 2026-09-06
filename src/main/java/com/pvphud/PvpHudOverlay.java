@@ -322,22 +322,28 @@ public class PvpHudOverlay extends Overlay
 		FontMetrics fm = g.getFontMetrics();
 		int baseline = p.y + (p.height + fm.getAscent() - fm.getDescent()) / 2;
 
-		String[] labels = {"ATK 2t", "EAT RDY", "POT RDY", "SPEC 50%", "5tx7", "T1 4:31", "SINGLE"};
-		Color[]  colors = {YELLOW,   GREEN,      GREEN,      WHITE,      GRAY,   WHITE,      GRAY};
+		String[] labels = {"ATK 2t", "EAT", "POT", "SPEC 50", "5tx7", "T1 4:31", "SGL"};
+		Color[]  colors = {YELLOW,   GREEN, GREEN, WHITE,     GRAY,   WHITE,     GRAY};
 
-		int x = p.x + PAD;
+		int maxX = p.x + p.width - PAD;
+		int x    = p.x + PAD;
 		for (int i = 0; i < labels.length; i++)
 		{
+			int itemW = fm.stringWidth(labels[i]);
+			// Stop drawing if this item would overflow the strip
+			if (x + itemW > maxX)
+			{
+				break;
+			}
 			if (i > 0)
 			{
 				g.setColor(DIVIDER);
-				int sx = x - 4;
+				int sx = x - 3;
 				g.drawLine(sx, p.y + 4, sx, p.y + p.height - 4);
-				x += 3;
 			}
 			g.setColor(colors[i]);
 			g.drawString(labels[i], x, baseline);
-			x += fm.stringWidth(labels[i]) + 8;
+			x += itemW + 7;
 		}
 	}
 
