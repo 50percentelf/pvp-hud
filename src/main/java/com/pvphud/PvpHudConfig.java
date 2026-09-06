@@ -16,4 +16,14 @@ public interface PvpHudConfig extends Config
 	{
 		return HudMode.MANUAL;
 	}
+
+	@ConfigItem(
+		keyName = "hudVisible",
+		name = "Show HUD (testing)",
+		description = "Temporarily force the HUD visible for visual testing. Will be replaced by the hotkey toggle."
+	)
+	default boolean hudVisible()
+	{
+		return false;
+	}
 }
