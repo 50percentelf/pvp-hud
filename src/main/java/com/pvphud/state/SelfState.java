@@ -24,6 +24,10 @@ public class SelfState
 	@Getter @Setter
 	private boolean venomed;
 
+	/** SpriteID of the ice spell that froze the player (0 when not frozen). */
+	@Getter @Setter
+	private int freezeSpriteId;
+
 	public void reset()
 	{
 		vengActive = false;
@@ -31,5 +35,6 @@ public class SelfState
 		teleBlockTicksRemaining = 0;
 		poisoned = false;
 		venomed = false;
+		freezeSpriteId = 0;
 	}
 }

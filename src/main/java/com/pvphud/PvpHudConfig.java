@@ -36,4 +36,14 @@ public interface PvpHudConfig extends Config
 	{
 		return HudLayout.CHAT_LOCKED;
 	}
+
+	@ConfigItem(
+		keyName = "buffStyle",
+		name = "Buff Display Style",
+		description = "Text: labels only. Vertical Bar: icon + timer per row. Icon Tray: all icons in a horizontal strip."
+	)
+	default BuffStyle buffStyle()
+	{
+		return BuffStyle.VERTICAL_BAR;
+	}
 }

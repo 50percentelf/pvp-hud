@@ -12,6 +12,7 @@ import net.runelite.api.Client;
 import net.runelite.api.GameState;
 import net.runelite.api.GraphicID;
 import net.runelite.api.Skill;
+import net.runelite.api.SpriteID;
 import net.runelite.api.VarPlayer;
 import net.runelite.api.Varbits;
 import net.runelite.api.events.GameStateChanged;
@@ -58,6 +59,7 @@ public class PvpHudPlugin extends Plugin
 		hudState.getContext().setPvpActive(config.hudVisible());
 		initSelfState();
 		applyOverlayPosition();
+		overlay.loadIcons();
 		overlayManager.add(overlay);
 		log.info("PvP HUD started");
 	}
@@ -240,6 +242,7 @@ public class PvpHudPlugin extends Plugin
 			if (ticks > 0)
 			{
 				hudState.getSelf().setFreezeTicksRemaining(ticks);
+				hudState.getSelf().setFreezeSpriteId(freezeSpriteIdForGraphic(sa.getId()));
 				return;
 			}
 		}
@@ -252,6 +255,10 @@ public class PvpHudPlugin extends Plugin
 		if (self.getFreezeTicksRemaining() > 0)
 		{
 			self.setFreezeTicksRemaining(self.getFreezeTicksRemaining() - 1);
+			if (self.getFreezeTicksRemaining() == 0)
+			{
+				self.setFreezeSpriteId(0);
+			}
 		}
 	}
 
@@ -264,6 +271,18 @@ public class PvpHudPlugin extends Plugin
 			case GraphicID.ICE_BLITZ:   return 24;
 			case GraphicID.ICE_BARRAGE: return 32;
 			default:                    return 0;
+		}
+	}
+
+	private static int freezeSpriteIdForGraphic(int graphicId)
+	{
+		switch (graphicId)
+		{
+			case GraphicID.ICE_RUSH:    return SpriteID.SPELL_ICE_RUSH;
+			case GraphicID.ICE_BURST:   return SpriteID.SPELL_ICE_BURST;
+			case GraphicID.ICE_BLITZ:   return SpriteID.SPELL_ICE_BLITZ;
+			case GraphicID.ICE_BARRAGE: return SpriteID.SPELL_ICE_BARRAGE;
+			default:                    return SpriteID.SPELL_ICE_BARRAGE;
 		}
 	}
 
