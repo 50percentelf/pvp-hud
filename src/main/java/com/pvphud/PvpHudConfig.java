@@ -59,4 +59,24 @@ public interface PvpHudConfig extends Config
 	{
 		return new Color(20, 20, 20, 220);
 	}
+
+	@ConfigItem(
+		keyName = "selfBarStyle",
+		name = "HP / Prayer Display",
+		description = "How HP and Prayer are shown in the YOU panel."
+	)
+	default SelfBarStyle selfBarStyle()
+	{
+		return SelfBarStyle.BARS_AND_NUMBERS;
+	}
+
+	@ConfigItem(
+		keyName = "boostXOverX",
+		name = "Show Boosts as X/X",
+		description = "Boost row shows boosted/base (e.g. 115/99) instead of delta (+16)."
+	)
+	default boolean boostXOverX()
+	{
+		return false;
+	}
 }

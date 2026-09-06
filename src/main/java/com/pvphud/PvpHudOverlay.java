@@ -427,6 +427,12 @@ public class PvpHudOverlay extends Overlay
 	private int drawHpPrayerBars(Graphics2D g, FontMetrics fm, SelfState self,
 		int rx, int cy, int panelWidth)
 	{
+		SelfBarStyle style = config.selfBarStyle();
+		if (style == SelfBarStyle.HIDDEN) return cy;
+
+		boolean showBar = style == SelfBarStyle.BARS_AND_NUMBERS || style == SelfBarStyle.BARS_ONLY;
+		boolean showNum = style == SelfBarStyle.BARS_AND_NUMBERS || style == SelfBarStyle.NUMBERS_ONLY;
+
 		int barW = Math.min(panelWidth - PAD * 2, 90);
 		int barX = rx - barW;
 
@@ -434,30 +440,42 @@ public class PvpHudOverlay extends Overlay
 		{
 			float pct = (float) self.getCurrentHp() / self.getMaxHp();
 			Color fg   = pct > 0.5f ? HP_FG : pct > 0.25f ? YELLOW : RED;
-			g.setColor(HP_BG);
-			g.fillRect(barX, cy, barW, BAR_H);
-			g.setColor(fg);
-			g.fillRect(barX, cy, Math.max(1, (int) (barW * pct)), BAR_H);
-			cy += BAR_H + 1;
-			g.setColor(fg);
-			drawRightAligned(g, fm, "HP " + self.getCurrentHp() + "/" + self.getMaxHp(),
-				rx, cy + fm.getAscent());
-			cy += fm.getHeight() + 2;
+			if (showBar)
+			{
+				g.setColor(HP_BG);
+				g.fillRect(barX, cy, barW, BAR_H);
+				g.setColor(fg);
+				g.fillRect(barX, cy, Math.max(1, (int) (barW * pct)), BAR_H);
+				cy += BAR_H + 1;
+			}
+			if (showNum)
+			{
+				g.setColor(fg);
+				drawRightAligned(g, fm, "HP " + self.getCurrentHp() + "/" + self.getMaxHp(),
+					rx, cy + fm.getAscent());
+				cy += fm.getHeight() + 2;
+			}
 		}
 
 		if (self.getMaxPrayer() > 0)
 		{
 			float pct = (float) self.getCurrentPrayer() / self.getMaxPrayer();
 			Color fg   = pct > 0.5f ? PRAYER_FG : pct > 0.25f ? YELLOW : RED;
-			g.setColor(PRAYER_BG);
-			g.fillRect(barX, cy, barW, BAR_H);
-			g.setColor(fg);
-			g.fillRect(barX, cy, Math.max(1, (int) (barW * pct)), BAR_H);
-			cy += BAR_H + 1;
-			g.setColor(fg);
-			drawRightAligned(g, fm, "PR " + self.getCurrentPrayer() + "/" + self.getMaxPrayer(),
-				rx, cy + fm.getAscent());
-			cy += fm.getHeight() + 2;
+			if (showBar)
+			{
+				g.setColor(PRAYER_BG);
+				g.fillRect(barX, cy, barW, BAR_H);
+				g.setColor(fg);
+				g.fillRect(barX, cy, Math.max(1, (int) (barW * pct)), BAR_H);
+				cy += BAR_H + 1;
+			}
+			if (showNum)
+			{
+				g.setColor(fg);
+				drawRightAligned(g, fm, "PR " + self.getCurrentPrayer() + "/" + self.getMaxPrayer(),
+					rx, cy + fm.getAscent());
+				cy += fm.getHeight() + 2;
+			}
 		}
 
 		return cy;
@@ -675,17 +693,22 @@ public class PvpHudOverlay extends Overlay
 		int cx5 = cx4 + col;
 
 		BoostState boosts = state.getBoosts();
-		drawBoostLabel(g, fm, "ATK", boosts.getAttackDelta(),   cx1, baseline);
-		drawBoostLabel(g, fm, "STR", boosts.getStrengthDelta(), cx2, baseline);
-		drawBoostLabel(g, fm, "DEF", boosts.getDefenceDelta(),  cx3, baseline);
-		drawBoostLabel(g, fm, "RNG", boosts.getRangedDelta(),   cx4, baseline);
-		drawBoostLabel(g, fm, "MAG", boosts.getMagicDelta(),    cx5, baseline);
+		drawBoostLabel(g, fm, "ATK", boosts.getAttackBoosted(),   boosts.getAttackReal(),   cx1, baseline);
+		drawBoostLabel(g, fm, "STR", boosts.getStrengthBoosted(), boosts.getStrengthReal(), cx2, baseline);
+		drawBoostLabel(g, fm, "DEF", boosts.getDefenceBoosted(),  boosts.getDefenceReal(),  cx3, baseline);
+		drawBoostLabel(g, fm, "RNG", boosts.getRangedBoosted(),   boosts.getRangedReal(),   cx4, baseline);
+		drawBoostLabel(g, fm, "MAG", boosts.getMagicBoosted(),    boosts.getMagicReal(),    cx5, baseline);
 	}
 
-	private void drawBoostLabel(Graphics2D g, FontMetrics fm, String prefix, int delta, int cx, int baseline)
+	private void drawBoostLabel(Graphics2D g, FontMetrics fm, String prefix,
+		int boosted, int real, int cx, int baseline)
 	{
+		int delta = boosted - real;
 		g.setColor(delta > 0 ? GREEN : delta < 0 ? RED : GRAY);
-		drawCentered(g, fm, prefix + (delta >= 0 ? "+" : "") + delta, cx, baseline);
+		String label = config.boostXOverX()
+			? prefix + " " + boosted + "/" + real
+			: prefix + (delta >= 0 ? "+" : "") + delta;
+		drawCentered(g, fm, label, cx, baseline);
 	}
 
 	// ── Action strip ──────────────────────────────────────────────────────────
