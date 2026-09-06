@@ -1,5 +1,7 @@
 package com.pvphud;
 
+import java.awt.Color;
+import net.runelite.client.config.Alpha;
 import net.runelite.client.config.Config;
 import net.runelite.client.config.ConfigGroup;
 import net.runelite.client.config.ConfigItem;
@@ -45,5 +47,16 @@ public interface PvpHudConfig extends Config
 	default BuffStyle buffStyle()
 	{
 		return BuffStyle.VERTICAL_BAR;
+	}
+
+	@Alpha
+	@ConfigItem(
+		keyName = "backgroundColor",
+		name = "Background Color",
+		description = "HUD background color and opacity. Lower alpha = more transparent."
+	)
+	default Color backgroundColor()
+	{
+		return new Color(20, 20, 20, 220);
 	}
 }

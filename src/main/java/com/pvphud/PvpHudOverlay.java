@@ -9,6 +9,7 @@ import java.awt.Dimension;
 import java.awt.Font;
 import java.awt.FontMetrics;
 import java.awt.Graphics2D;
+import java.awt.Point;
 import java.awt.Rectangle;
 import java.awt.image.BufferedImage;
 import java.util.ArrayList;
@@ -56,8 +57,10 @@ public class PvpHudOverlay extends Overlay
 	private static final Color ORANGE      = new Color(255, 145,   0);
 	private static final Color RED         = new Color(220,  60,  60);
 	private static final Color TOXIC_GREEN = new Color(110, 230,  60);
-	private static final Color HP_FG       = new Color( 20, 185,  45);
-	private static final Color HP_BG       = new Color( 75,  15,  15);
+	private static final Color HP_FG        = new Color( 20, 185,  45);
+	private static final Color HP_BG        = new Color( 75,  15,  15);
+	private static final Color PRAYER_FG    = new Color(150, 140, 255);
+	private static final Color PRAYER_BG    = new Color( 20,  15,  40);
 
 	// ── Injectable services ───────────────────────────────────────────────────
 	private final Client       client;
@@ -176,15 +179,19 @@ public class PvpHudOverlay extends Overlay
 		Rectangle bounds = getChatboxBounds();
 		if (bounds == null) return null;
 
-		if (!bounds.equals(layout.getChatboxBounds()))
+		// Pin overlay to the chatbox position each frame so it can't be dragged away.
+		setPreferredLocation(new Point(bounds.x, bounds.y));
+
+		Rectangle local = new Rectangle(0, 0, bounds.width, bounds.height);
+		if (!local.equals(layout.getChatboxBounds()))
 		{
-			layout.setChatboxBounds(new Rectangle(bounds));
+			layout.setChatboxBounds(new Rectangle(local));
 			layout.markDirty();
 		}
-		if (layout.isDirty()) computeHorizLayout(layout, bounds);
+		if (layout.isDirty()) computeHorizLayout(layout, local);
 
-		drawAll(g, state, layout, bounds, normal, small, false);
-		return null;
+		drawAll(g, state, layout, local, normal, small, false);
+		return new Dimension(bounds.width, bounds.height);
 	}
 
 	private Dimension renderHorizontalFloat(Graphics2D g, PvpHudState state,
@@ -250,7 +257,7 @@ public class PvpHudOverlay extends Overlay
 		Rectangle opp      = layout.getOpponentPanel();
 		Rectangle ev       = layout.getEventPanel();
 
-		g.setColor(BG);
+		g.setColor(config.backgroundColor());
 		g.fillRect(bounds.x, bounds.y, bounds.width, bounds.height);
 
 		if (strip != null)
@@ -397,6 +404,8 @@ public class PvpHudOverlay extends Overlay
 		SelfState   self = state.getSelf();
 		EffectState fx   = state.getEffects();
 
+		cy = drawHpPrayerBars(g, smFm, self, rx, cy, p.width);
+
 		BuffStyle style = config.buffStyle();
 		if (style == BuffStyle.TEXT)
 		{
@@ -411,6 +420,47 @@ public class PvpHudOverlay extends Overlay
 			else
 				drawBuffsIconTray(g, small, buffs, p, cy);
 		}
+	}
+
+	// ── HP / Prayer bars ─────────────────────────────────────────────────────
+
+	private int drawHpPrayerBars(Graphics2D g, FontMetrics fm, SelfState self,
+		int rx, int cy, int panelWidth)
+	{
+		int barW = Math.min(panelWidth - PAD * 2, 90);
+		int barX = rx - barW;
+
+		if (self.getMaxHp() > 0)
+		{
+			float pct = (float) self.getCurrentHp() / self.getMaxHp();
+			Color fg   = pct > 0.5f ? HP_FG : pct > 0.25f ? YELLOW : RED;
+			g.setColor(HP_BG);
+			g.fillRect(barX, cy, barW, BAR_H);
+			g.setColor(fg);
+			g.fillRect(barX, cy, Math.max(1, (int) (barW * pct)), BAR_H);
+			cy += BAR_H + 1;
+			g.setColor(fg);
+			drawRightAligned(g, fm, "HP " + self.getCurrentHp() + "/" + self.getMaxHp(),
+				rx, cy + fm.getAscent());
+			cy += fm.getHeight() + 2;
+		}
+
+		if (self.getMaxPrayer() > 0)
+		{
+			float pct = (float) self.getCurrentPrayer() / self.getMaxPrayer();
+			Color fg   = pct > 0.5f ? PRAYER_FG : pct > 0.25f ? YELLOW : RED;
+			g.setColor(PRAYER_BG);
+			g.fillRect(barX, cy, barW, BAR_H);
+			g.setColor(fg);
+			g.fillRect(barX, cy, Math.max(1, (int) (barW * pct)), BAR_H);
+			cy += BAR_H + 1;
+			g.setColor(fg);
+			drawRightAligned(g, fm, "PR " + self.getCurrentPrayer() + "/" + self.getMaxPrayer(),
+				rx, cy + fm.getAscent());
+			cy += fm.getHeight() + 2;
+		}
+
+		return cy;
 	}
 
 	// ── Text buff display (original behaviour) ────────────────────────────────
@@ -699,8 +749,14 @@ public class PvpHudOverlay extends Overlay
 
 	private Rectangle getChatboxBounds()
 	{
-		Widget chatbox = client.getWidget(InterfaceID.Chatbox.UNIVERSE);
-		if (chatbox == null || chatbox.isHidden()) return null;
-		return chatbox.getBounds();
+		// CHATAREA (the message lines region) is reliable across transparent/opaque modes.
+		// Fall back to UNIVERSE (root layer) if CHATAREA is unavailable.
+		Widget w = client.getWidget(InterfaceID.Chatbox.CHATAREA);
+		if (w == null || w.isHidden() || w.getWidth() == 0)
+		{
+			w = client.getWidget(InterfaceID.Chatbox.UNIVERSE);
+		}
+		if (w == null || w.getWidth() == 0 || w.getHeight() == 0) return null;
+		return w.getBounds();
 	}
 }

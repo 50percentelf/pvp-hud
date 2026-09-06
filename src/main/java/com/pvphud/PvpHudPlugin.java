@@ -77,11 +77,14 @@ public class PvpHudPlugin extends Plugin
 		switch (config.hudLayout())
 		{
 			case CHAT_LOCKED:
-				overlay.setPosition(OverlayPosition.DYNAMIC);
+				// BOTTOM_LEFT with a per-frame preferred-location update anchors
+				// the overlay to the chatbox widget while keeping it draggable-proof.
+				overlay.setPosition(OverlayPosition.BOTTOM_LEFT);
 				break;
 			case HORIZONTAL_FLOAT:
 			case VERTICAL_FLOAT:
 				overlay.setPosition(OverlayPosition.BOTTOM_LEFT);
+				overlay.setPreferredLocation(null);
 				break;
 		}
 	}
@@ -112,6 +115,10 @@ public class PvpHudPlugin extends Plugin
 		SelfState self = hudState.getSelf();
 		self.setVenomed(poisonVal >= 1_000_000);
 		self.setPoisoned(poisonVal > 0);
+		self.setCurrentHp(client.getBoostedSkillLevel(Skill.HITPOINTS));
+		self.setMaxHp(client.getRealSkillLevel(Skill.HITPOINTS));
+		self.setCurrentPrayer(client.getBoostedSkillLevel(Skill.PRAYER));
+		self.setMaxPrayer(client.getRealSkillLevel(Skill.PRAYER));
 		self.setVengActive(client.getVarbitValue(Varbits.VENGEANCE_ACTIVE) == 1);
 		self.setTeleBlockTicksRemaining(client.getVarbitValue(Varbits.TELEBLOCK));
 
@@ -173,6 +180,20 @@ public class PvpHudPlugin extends Plugin
 				boosts.setMagicReal(event.getLevel());
 				boosts.setMagicBoosted(event.getBoostedLevel());
 				break;
+			case HITPOINTS:
+			{
+				SelfState self = hudState.getSelf();
+				self.setCurrentHp(event.getBoostedLevel());
+				self.setMaxHp(event.getLevel());
+				break;
+			}
+			case PRAYER:
+			{
+				SelfState self = hudState.getSelf();
+				self.setCurrentPrayer(event.getBoostedLevel());
+				self.setMaxPrayer(event.getLevel());
+				break;
+			}
 			default:
 				break;
 		}

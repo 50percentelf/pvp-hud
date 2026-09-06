@@ -28,6 +28,11 @@ public class SelfState
 	@Getter @Setter
 	private int freezeSpriteId;
 
+	@Getter @Setter private int currentHp;
+	@Getter @Setter private int maxHp;
+	@Getter @Setter private int currentPrayer;
+	@Getter @Setter private int maxPrayer;
+
 	public void reset()
 	{
 		vengActive = false;
@@ -36,5 +41,9 @@ public class SelfState
 		poisoned = false;
 		venomed = false;
 		freezeSpriteId = 0;
+		currentHp = 0;
+		maxHp = 0;
+		currentPrayer = 0;
+		maxPrayer = 0;
 	}
 }
