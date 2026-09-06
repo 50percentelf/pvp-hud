@@ -26,4 +26,14 @@ public interface PvpHudConfig extends Config
 	{
 		return false;
 	}
+
+	@ConfigItem(
+		keyName = "hudLayout",
+		name = "HUD Layout",
+		description = "Chat Locked: fills the chatbox area. Horizontal Float: same size, freely draggable. Vertical Float: narrow side panel."
+	)
+	default HudLayout hudLayout()
+	{
+		return HudLayout.CHAT_LOCKED;
+	}
 }

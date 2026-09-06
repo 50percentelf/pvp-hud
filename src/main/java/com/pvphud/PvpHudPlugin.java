@@ -2,6 +2,7 @@ package com.pvphud;
 
 import com.google.inject.Provides;
 import com.pvphud.state.BoostState;
+import com.pvphud.state.EffectState;
 import com.pvphud.state.SelfState;
 import javax.inject.Inject;
 import lombok.Getter;
@@ -24,6 +25,7 @@ import net.runelite.client.events.ConfigChanged;
 import net.runelite.client.plugins.Plugin;
 import net.runelite.client.plugins.PluginDescriptor;
 import net.runelite.client.ui.overlay.OverlayManager;
+import net.runelite.client.ui.overlay.OverlayPosition;
 
 @Slf4j
 @PluginDescriptor(
@@ -55,6 +57,7 @@ public class PvpHudPlugin extends Plugin
 		hudState.getContext().setMode(config.hudMode());
 		hudState.getContext().setPvpActive(config.hudVisible());
 		initSelfState();
+		applyOverlayPosition();
 		overlayManager.add(overlay);
 		log.info("PvP HUD started");
 	}
@@ -65,6 +68,20 @@ public class PvpHudPlugin extends Plugin
 		overlayManager.remove(overlay);
 		hudState.fullReset();
 		log.info("PvP HUD stopped");
+	}
+
+	private void applyOverlayPosition()
+	{
+		switch (config.hudLayout())
+		{
+			case CHAT_LOCKED:
+				overlay.setPosition(OverlayPosition.DYNAMIC);
+				break;
+			case HORIZONTAL_FLOAT:
+			case VERTICAL_FLOAT:
+				overlay.setPosition(OverlayPosition.BOTTOM_LEFT);
+				break;
+		}
 	}
 
 	private void initSelfState()
@@ -93,9 +110,16 @@ public class PvpHudPlugin extends Plugin
 		SelfState self = hudState.getSelf();
 		self.setVenomed(poisonVal >= 1_000_000);
 		self.setPoisoned(poisonVal > 0);
-
 		self.setVengActive(client.getVarbitValue(Varbits.VENGEANCE_ACTIVE) == 1);
 		self.setTeleBlockTicksRemaining(client.getVarbitValue(Varbits.TELEBLOCK));
+
+		EffectState fx = hudState.getEffects();
+		fx.setDivineSupercombatTicks(client.getVarbitValue(Varbits.DIVINE_SUPER_COMBAT));
+		fx.setDivineRangingTicks(client.getVarbitValue(Varbits.DIVINE_RANGING));
+		fx.setDivineMagicTicks(client.getVarbitValue(Varbits.DIVINE_MAGIC));
+		fx.setDivineBastionTicks(client.getVarbitValue(Varbits.DIVINE_BASTION));
+		fx.setDivineBattlemageTicks(client.getVarbitValue(Varbits.DIVINE_BATTLEMAGE));
+		fx.setMenaphiteRemedyTicks(client.getVarbitValue(Varbits.MENAPHITE_REMEDY));
 	}
 
 	@Subscribe
@@ -107,6 +131,8 @@ public class PvpHudPlugin extends Plugin
 		}
 		hudState.getContext().setMode(config.hudMode());
 		hudState.getContext().setPvpActive(config.hudVisible());
+		applyOverlayPosition();
+		hudState.getLayout().markDirty();
 	}
 
 	@Subscribe
@@ -164,6 +190,30 @@ public class PvpHudPlugin extends Plugin
 		else if (varbitId == Varbits.TELEBLOCK)
 		{
 			hudState.getSelf().setTeleBlockTicksRemaining(value);
+		}
+		else if (varbitId == Varbits.DIVINE_SUPER_COMBAT)
+		{
+			hudState.getEffects().setDivineSupercombatTicks(value);
+		}
+		else if (varbitId == Varbits.DIVINE_RANGING)
+		{
+			hudState.getEffects().setDivineRangingTicks(value);
+		}
+		else if (varbitId == Varbits.DIVINE_MAGIC)
+		{
+			hudState.getEffects().setDivineMagicTicks(value);
+		}
+		else if (varbitId == Varbits.DIVINE_BASTION)
+		{
+			hudState.getEffects().setDivineBastionTicks(value);
+		}
+		else if (varbitId == Varbits.DIVINE_BATTLEMAGE)
+		{
+			hudState.getEffects().setDivineBattlemageTicks(value);
+		}
+		else if (varbitId == Varbits.MENAPHITE_REMEDY)
+		{
+			hudState.getEffects().setMenaphiteRemedyTicks(value);
 		}
 		else if (varpId == VarPlayer.SPECIAL_ATTACK_PERCENT)
 		{

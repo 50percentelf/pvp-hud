@@ -27,6 +27,10 @@ public class PvpHudOverlay extends Overlay
 	private static final int PAD            = 6;
 	private static final int BAR_H          = 5;
 
+	/** Default vertical-float dimensions (freely draggable by user). */
+	private static final int VERT_W = 220;
+	private static final int VERT_H = 400;
+
 	// ── Colour palette ────────────────────────────────────────────────────────
 	private static final Color BG          = new Color(20,  20,  20,  230);
 	private static final Color STRIP_BG    = new Color(10,  10,  10,  245);
@@ -43,14 +47,19 @@ public class PvpHudOverlay extends Overlay
 	private static final Color HP_FG       = new Color( 20, 185,  45);
 	private static final Color HP_BG       = new Color( 75,  15,  15);
 
-	private final Client client;
+	private final Client       client;
 	private final PvpHudPlugin plugin;
+	private final PvpHudConfig config;
+
+	/** Tracks last layout mode so we can mark layout dirty on a switch. */
+	private HudLayout lastLayout;
 
 	@Inject
-	PvpHudOverlay(Client client, PvpHudPlugin plugin)
+	PvpHudOverlay(Client client, PvpHudPlugin plugin, PvpHudConfig config)
 	{
 		this.client = client;
 		this.plugin = plugin;
+		this.config = config;
 		setLayer(OverlayLayer.ABOVE_WIDGETS);
 		setPosition(OverlayPosition.DYNAMIC);
 	}
@@ -66,13 +75,42 @@ public class PvpHudOverlay extends Overlay
 			return null;
 		}
 
+		HudLayout currentLayout = config.hudLayout();
+		HudLayoutState layout   = state.getLayout();
+
+		if (currentLayout != lastLayout)
+		{
+			lastLayout = currentLayout;
+			layout.markDirty();
+		}
+
+		Font normal = FontManager.getRunescapeFont();
+		Font small  = FontManager.getRunescapeSmallFont();
+
+		switch (currentLayout)
+		{
+			case CHAT_LOCKED:
+				return renderChatLocked(g, state, layout, normal, small);
+			case HORIZONTAL_FLOAT:
+				return renderHorizontalFloat(g, state, layout, normal, small);
+			case VERTICAL_FLOAT:
+				return renderVerticalFloat(g, state, layout, normal, small);
+			default:
+				return null;
+		}
+	}
+
+	// ── Chat-locked rendering (anchored to chatbox widget) ────────────────────
+
+	private Dimension renderChatLocked(Graphics2D g, PvpHudState state,
+		HudLayoutState layout, Font normal, Font small)
+	{
 		Rectangle bounds = getChatboxBounds();
 		if (bounds == null)
 		{
 			return null;
 		}
 
-		HudLayoutState layout = state.getLayout();
 		if (!bounds.equals(layout.getChatboxBounds()))
 		{
 			layout.setChatboxBounds(new Rectangle(bounds));
@@ -80,183 +118,235 @@ public class PvpHudOverlay extends Overlay
 		}
 		if (layout.isDirty())
 		{
-			computeLayout(layout, bounds);
+			computeHorizLayout(layout, bounds);
 		}
 
-		Font normal = FontManager.getRunescapeFont();
-		Font small  = FontManager.getRunescapeSmallFont();
-
-		drawBackground(g, bounds, layout);
-		drawOpponentPanel(g, layout, normal, small);
-		drawEventPanel(g, layout, normal, small);
-		drawSelfPanel(g, state, layout, normal, small);
-		drawBoostRow(g, state, layout, small);
-		drawActionStrip(g, state, layout, small);
-
+		drawAll(g, state, layout, normal, small, false);
 		return null;
 	}
 
-	// ── Layout ────────────────────────────────────────────────────────────────
+	// ── Horizontal-float rendering (same size as chat, freely draggable) ──────
 
-	private void computeLayout(HudLayoutState layout, Rectangle b)
+	private Dimension renderHorizontalFloat(Graphics2D g, PvpHudState state,
+		HudLayoutState layout, Font normal, Font small)
+	{
+		Rectangle stored = layout.getChatboxBounds();
+		int w = stored != null ? stored.width  : 519;
+		int h = stored != null ? stored.height : 142;
+		Rectangle bounds = new Rectangle(0, 0, w, h);
+
+		if (layout.isDirty())
+		{
+			computeHorizLayout(layout, bounds);
+		}
+
+		drawAll(g, state, layout, normal, small, false);
+		return new Dimension(w, h);
+	}
+
+	// ── Vertical-float rendering (narrow sidebar, freely draggable) ───────────
+
+	private Dimension renderVerticalFloat(Graphics2D g, PvpHudState state,
+		HudLayoutState layout, Font normal, Font small)
+	{
+		Rectangle bounds = new Rectangle(0, 0, VERT_W, VERT_H);
+
+		if (layout.isDirty())
+		{
+			computeVertLayout(layout, bounds);
+		}
+
+		drawAll(g, state, layout, normal, small, true);
+		return new Dimension(VERT_W, VERT_H);
+	}
+
+	// ── Layout computation ────────────────────────────────────────────────────
+
+	private void computeHorizLayout(HudLayoutState layout, Rectangle b)
 	{
 		int mainH = b.height - ACTION_STRIP_H - BOOST_ROW_H;
 		int third = b.width / 3;
 		int right = b.width - third;
 
-		layout.setOpponentPanel(new Rectangle(b.x,         b.y,         third,            mainH));
-		layout.setEventPanel   (new Rectangle(b.x + third, b.y,         right - third,    mainH));
-		layout.setSelfPanel    (new Rectangle(b.x + right, b.y,         third,            mainH));
-		layout.setBoostRow     (new Rectangle(b.x,         b.y + mainH, b.width,          BOOST_ROW_H));
+		layout.setOpponentPanel(new Rectangle(b.x,         b.y,         third,         mainH));
+		layout.setEventPanel   (new Rectangle(b.x + third, b.y,         right - third, mainH));
+		layout.setSelfPanel    (new Rectangle(b.x + right, b.y,         third,         mainH));
+		layout.setBoostRow     (new Rectangle(b.x,         b.y + mainH, b.width,       BOOST_ROW_H));
 		layout.setActionStrip  (new Rectangle(b.x,         b.y + mainH + BOOST_ROW_H, b.width, ACTION_STRIP_H));
 		layout.setDirty(false);
 	}
 
-	// ── Background & chrome ───────────────────────────────────────────────────
-
-	private void drawBackground(Graphics2D g, Rectangle b, HudLayoutState layout)
+	private void computeVertLayout(HudLayoutState layout, Rectangle b)
 	{
-		// Base fill
-		g.setColor(BG);
-		g.fillRect(b.x, b.y, b.width, b.height);
+		int mainH = b.height - ACTION_STRIP_H - BOOST_ROW_H;
+		int secH  = mainH / 3;
 
-		// Darker action strip
-		Rectangle strip = layout.getActionStrip();
+		layout.setOpponentPanel(new Rectangle(b.x, b.y,              b.width, secH));
+		layout.setEventPanel   (new Rectangle(b.x, b.y + secH,       b.width, secH));
+		layout.setSelfPanel    (new Rectangle(b.x, b.y + 2 * secH,   b.width, mainH - 2 * secH));
+		layout.setBoostRow     (new Rectangle(b.x, b.y + mainH,      b.width, BOOST_ROW_H));
+		layout.setActionStrip  (new Rectangle(b.x, b.y + mainH + BOOST_ROW_H, b.width, ACTION_STRIP_H));
+		layout.setDirty(false);
+	}
+
+	// ── Draw everything ───────────────────────────────────────────────────────
+
+	private void drawAll(Graphics2D g, PvpHudState state, HudLayoutState layout,
+		Font normal, Font small, boolean vertical)
+	{
+		Rectangle strip    = layout.getActionStrip();
+		Rectangle boostRow = layout.getBoostRow();
+		Rectangle opp      = layout.getOpponentPanel();
+		Rectangle ev       = layout.getEventPanel();
+
+		// background + chrome
+		if (opp != null)
+		{
+			g.setColor(BG);
+			Rectangle full = new Rectangle(
+				opp.x, opp.y,
+				opp.width + (ev != null ? ev.width : 0) + (layout.getSelfPanel() != null ? layout.getSelfPanel().width : 0),
+				opp.height + BOOST_ROW_H + ACTION_STRIP_H);
+			g.fillRect(full.x, full.y, full.width, full.height);
+		}
+
 		if (strip != null)
 		{
 			g.setColor(STRIP_BG);
 			g.fillRect(strip.x, strip.y, strip.width, strip.height);
 		}
 
-		// Horizontal dividers
-		Rectangle boostRow = layout.getBoostRow();
 		if (boostRow != null)
 		{
 			g.setColor(DIVIDER);
-			g.drawLine(b.x, boostRow.y, b.x + b.width, boostRow.y);
+			g.drawLine(boostRow.x, boostRow.y, boostRow.x + boostRow.width, boostRow.y);
 		}
 		if (strip != null)
 		{
 			g.setColor(DIVIDER);
-			g.drawLine(b.x, strip.y, b.x + b.width, strip.y);
+			g.drawLine(strip.x, strip.y, strip.x + strip.width, strip.y);
 		}
 
-		// Vertical panel dividers
-		Rectangle opp = layout.getOpponentPanel();
-		Rectangle ev  = layout.getEventPanel();
-		if (opp != null)
+		if (vertical)
 		{
-			int vx = opp.x + opp.width;
-			g.setColor(VERT_DIV);
-			g.drawLine(vx, opp.y + PAD, vx, opp.y + opp.height - PAD);
+			// Horizontal dividers between stacked panels
+			if (ev != null)
+			{
+				g.setColor(DIVIDER);
+				g.drawLine(ev.x + PAD, ev.y, ev.x + ev.width - PAD, ev.y);
+			}
+			Rectangle self = layout.getSelfPanel();
+			if (self != null)
+			{
+				g.setColor(DIVIDER);
+				g.drawLine(self.x + PAD, self.y, self.x + self.width - PAD, self.y);
+			}
 		}
-		if (ev != null)
+		else
 		{
-			int vx = ev.x + ev.width;
-			g.setColor(VERT_DIV);
-			g.drawLine(vx, ev.y + PAD, vx, ev.y + ev.height - PAD);
+			// Vertical dividers between columns
+			if (opp != null)
+			{
+				int vx = opp.x + opp.width;
+				g.setColor(VERT_DIV);
+				g.drawLine(vx, opp.y + PAD, vx, opp.y + opp.height - PAD);
+			}
+			if (ev != null)
+			{
+				int vx = ev.x + ev.width;
+				g.setColor(VERT_DIV);
+				g.drawLine(vx, ev.y + PAD, vx, ev.y + ev.height - PAD);
+			}
 		}
+
+		drawOpponentPanel(g, layout, normal, small);
+		drawEventPanel(g, layout, normal, small);
+		drawSelfPanel(g, state, layout, normal, small);
+		drawBoostRow(g, state, layout, small);
+		drawActionStrip(g, state, layout, small);
 	}
 
-	// ── Opponent panel (left) ─────────────────────────────────────────────────
+	// ── Opponent panel ────────────────────────────────────────────────────────
 
 	private void drawOpponentPanel(Graphics2D g, HudLayoutState layout, Font normal, Font small)
 	{
 		Rectangle p = layout.getOpponentPanel();
-		if (p == null)
-		{
-			return;
-		}
+		if (p == null) return;
 
 		int x  = p.x + PAD;
 		int w  = p.width - PAD * 2;
 		int cy = p.y + PAD;
 
-		// Section label
 		g.setFont(small);
 		FontMetrics smFm = g.getFontMetrics();
 		g.setColor(GRAY);
 		g.drawString("OPPONENT", x, cy + smFm.getAscent());
 		cy += smFm.getHeight() + 2;
 
-		// Opponent name
 		g.setFont(normal);
 		FontMetrics fm = g.getFontMetrics();
 		g.setColor(WHITE);
 		g.drawString("Marcbob", x, cy + fm.getAscent());
 		cy += fm.getHeight() + 4;
 
-		// HP bar
 		g.setColor(HP_BG);
 		g.fillRect(x, cy, w, BAR_H);
 		g.setColor(HP_FG);
 		g.fillRect(x, cy, (int) (w * (43f / 99f)), BAR_H);
 		cy += BAR_H + 3;
 
-		// HP label
 		g.setFont(small);
 		smFm = g.getFontMetrics();
 		g.setColor(GRAY);
 		g.drawString("~43 HP", x, cy + smFm.getAscent());
 
-		// OPP VENG indicator pinned to panel bottom
 		g.setColor(YELLOW);
 		g.drawString("OPP VENG", x, p.y + p.height - PAD - smFm.getDescent());
 	}
 
-	// ── Event panel (center) ──────────────────────────────────────────────────
+	// ── Event panel ───────────────────────────────────────────────────────────
 
 	private void drawEventPanel(Graphics2D g, HudLayoutState layout, Font normal, Font small)
 	{
 		Rectangle p = layout.getEventPanel();
-		if (p == null)
-		{
-			return;
-		}
+		if (p == null) return;
 
 		int cx = p.x + p.width / 2;
 		int cy = p.y + PAD;
 
-		// Section label
 		g.setFont(small);
 		FontMetrics smFm = g.getFontMetrics();
 		g.setColor(GRAY);
 		drawCentered(g, smFm, "FIGHT", cx, cy + smFm.getAscent());
 		cy += smFm.getHeight() + 6;
 
-		// CHANCE event
 		g.setFont(normal);
 		FontMetrics fm = g.getFontMetrics();
 		g.setColor(YELLOW);
 		drawCentered(g, fm, "* CHANCE *", cx, cy + fm.getAscent());
 		cy += fm.getHeight() + 3;
 
-		// Outgoing hit  (<- = toward opponent)
 		g.setColor(GREEN);
 		drawCentered(g, fm, "<- 46", cx, cy + fm.getAscent());
 		cy += fm.getHeight() + 3;
 
-		// Prayer drain sub-note
 		g.setFont(small);
 		smFm = g.getFontMetrics();
 		g.setColor(ORANGE);
 		drawCentered(g, smFm, "PR -11", cx, cy + smFm.getAscent());
 	}
 
-	// ── Self panel (right) ────────────────────────────────────────────────────
+	// ── Self panel ────────────────────────────────────────────────────────────
 
-	private void drawSelfPanel(Graphics2D g, PvpHudState state, HudLayoutState layout, Font normal, Font small)
+	private void drawSelfPanel(Graphics2D g, PvpHudState state, HudLayoutState layout,
+		Font normal, Font small)
 	{
 		Rectangle p = layout.getSelfPanel();
-		if (p == null)
-		{
-			return;
-		}
+		if (p == null) return;
 
 		int rx = p.x + p.width - PAD;
 		int cy = p.y + PAD;
 
-		// Section label
 		g.setFont(small);
 		FontMetrics smFm = g.getFontMetrics();
 		g.setColor(GRAY);
@@ -266,8 +356,8 @@ public class PvpHudOverlay extends Overlay
 		g.setFont(normal);
 		FontMetrics fm = g.getFontMetrics();
 
-		SelfState self    = state.getSelf();
-		EffectState fx    = state.getEffects();
+		SelfState   self = state.getSelf();
+		EffectState fx   = state.getEffects();
 
 		if (self.isVengActive())
 		{
@@ -287,12 +377,20 @@ public class PvpHudOverlay extends Overlay
 		int tbTicks = self.getTeleBlockTicksRemaining();
 		if (tbTicks > 0)
 		{
-			int totalSec = tbTicks * 600 / 1000;
-			String tbLabel = "TB " + (totalSec / 60) + ":" + String.format("%02d", totalSec % 60);
+			int s = tbTicks * 600 / 1000;
 			g.setColor(ORANGE);
-			drawRightAligned(g, fm, tbLabel, rx, cy + fm.getAscent());
+			drawRightAligned(g, fm, "TB " + (s / 60) + ":" + String.format("%02d", s % 60),
+				rx, cy + fm.getAscent());
 			cy += fm.getHeight() + 1;
 		}
+
+		// Divine potion timers
+		cy = drawDivineTimer(g, fm, "DSC", fx.getDivineSupercombatTicks(), rx, cy);
+		cy = drawDivineTimer(g, fm, "DRG", fx.getDivineRangingTicks(),     rx, cy);
+		cy = drawDivineTimer(g, fm, "DMG", fx.getDivineMagicTicks(),       rx, cy);
+		cy = drawDivineTimer(g, fm, "BAS", fx.getDivineBastionTicks(),     rx, cy);
+		cy = drawDivineTimer(g, fm, "BTM", fx.getDivineBattlemageTicks(),  rx, cy);
+		cy = drawDivineTimer(g, fm, "MEN", fx.getMenaphiteRemedyTicks(),   rx, cy);
 
 		if (self.isVenomed())
 		{
@@ -306,15 +404,23 @@ public class PvpHudOverlay extends Overlay
 		}
 	}
 
+	/** Draws one divine-pot timer right-aligned. Returns the next cy or unchanged cy if ticks == 0. */
+	private int drawDivineTimer(Graphics2D g, FontMetrics fm, String label, int ticks, int rx, int cy)
+	{
+		if (ticks <= 0) return cy;
+		int s = ticks * 600 / 1000;
+		String text = label + " " + (s / 60) + ":" + String.format("%02d", s % 60);
+		g.setColor(s > 60 ? GREEN : s > 30 ? YELLOW : RED);
+		drawRightAligned(g, fm, text, rx, cy + fm.getAscent());
+		return cy + fm.getHeight() + 1;
+	}
+
 	// ── Boost row ─────────────────────────────────────────────────────────────
 
 	private void drawBoostRow(Graphics2D g, PvpHudState state, HudLayoutState layout, Font small)
 	{
 		Rectangle p = layout.getBoostRow();
-		if (p == null)
-		{
-			return;
-		}
+		if (p == null) return;
 
 		g.setFont(small);
 		FontMetrics fm = g.getFontMetrics();
@@ -328,7 +434,6 @@ public class PvpHudOverlay extends Overlay
 		int cx5 = cx4 + col;
 
 		BoostState boosts = state.getBoosts();
-
 		drawBoostLabel(g, fm, "ATK", boosts.getAttackDelta(),   cx1, baseline);
 		drawBoostLabel(g, fm, "STR", boosts.getStrengthDelta(), cx2, baseline);
 		drawBoostLabel(g, fm, "DEF", boosts.getDefenceDelta(),  cx3, baseline);
@@ -343,15 +448,12 @@ public class PvpHudOverlay extends Overlay
 		drawCentered(g, fm, label, cx, baseline);
 	}
 
-	// ── Action strip (bottom) ─────────────────────────────────────────────────
+	// ── Action strip ──────────────────────────────────────────────────────────
 
 	private void drawActionStrip(Graphics2D g, PvpHudState state, HudLayoutState layout, Font small)
 	{
 		Rectangle p = layout.getActionStrip();
-		if (p == null)
-		{
-			return;
-		}
+		if (p == null) return;
 
 		g.setFont(small);
 		FontMetrics fm = g.getFontMetrics();
@@ -361,35 +463,22 @@ public class PvpHudOverlay extends Overlay
 		String[] labels = {"ATK 2t", "EAT", "POT", "SPEC " + spec, "5tx7", "T1 4:31", "SGL"};
 		Color[]  colors = {YELLOW,   GREEN, GREEN, WHITE,            GRAY,   WHITE,     GRAY};
 
-		// Drop items from the end until everything fits in the available width
 		int usable = p.width - PAD * 2;
-		int count = labels.length;
+		int count  = labels.length;
 		while (count > 1)
 		{
 			int total = 0;
-			for (int i = 0; i < count; i++)
-			{
-				total += fm.stringWidth(labels[i]);
-			}
-			// Min 6px per gap when all items present
-			if (total + (count - 1) * 6 <= usable)
-			{
-				break;
-			}
+			for (int i = 0; i < count; i++) total += fm.stringWidth(labels[i]);
+			if (total + (count - 1) * 6 <= usable) break;
 			count--;
 		}
 
-		// Measure total text width of surviving items
 		int textW = 0;
-		for (int i = 0; i < count; i++)
-		{
-			textW += fm.stringWidth(labels[i]);
-		}
+		for (int i = 0; i < count; i++) textW += fm.stringWidth(labels[i]);
 
-		// Distribute remaining space evenly as gaps between items
-		int gaps    = count - 1;
-		int gapW    = gaps > 0 ? (usable - textW) / gaps : 0;
-		int sepX    = gapW / 2; // separator sits in middle of each gap
+		int gaps = count - 1;
+		int gapW = gaps > 0 ? (usable - textW) / gaps : 0;
+		int sepX = gapW / 2;
 
 		int x = p.x + PAD;
 		for (int i = 0; i < count; i++)
@@ -397,7 +486,6 @@ public class PvpHudOverlay extends Overlay
 			int itemW = fm.stringWidth(labels[i]);
 			if (i > 0)
 			{
-				// Separator centred in the gap before this item
 				int sx = x - gapW + sepX;
 				g.setColor(DIVIDER);
 				g.drawLine(sx, p.y + 4, sx, p.y + p.height - 4);
