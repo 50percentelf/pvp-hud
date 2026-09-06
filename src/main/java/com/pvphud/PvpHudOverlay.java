@@ -1,6 +1,9 @@
 package com.pvphud;
 
+import com.pvphud.state.BoostState;
+import com.pvphud.state.EffectState;
 import com.pvphud.state.HudLayoutState;
+import com.pvphud.state.SelfState;
 import java.awt.Color;
 import java.awt.Dimension;
 import java.awt.Font;
@@ -86,9 +89,9 @@ public class PvpHudOverlay extends Overlay
 		drawBackground(g, bounds, layout);
 		drawOpponentPanel(g, layout, normal, small);
 		drawEventPanel(g, layout, normal, small);
-		drawSelfPanel(g, layout, normal, small);
-		drawBoostRow(g, layout, small);
-		drawActionStrip(g, layout, small);
+		drawSelfPanel(g, state, layout, normal, small);
+		drawBoostRow(g, state, layout, small);
+		drawActionStrip(g, state, layout, small);
 
 		return null;
 	}
@@ -242,7 +245,7 @@ public class PvpHudOverlay extends Overlay
 
 	// ── Self panel (right) ────────────────────────────────────────────────────
 
-	private void drawSelfPanel(Graphics2D g, HudLayoutState layout, Font normal, Font small)
+	private void drawSelfPanel(Graphics2D g, PvpHudState state, HudLayoutState layout, Font normal, Font small)
 	{
 		Rectangle p = layout.getSelfPanel();
 		if (p == null)
@@ -263,25 +266,49 @@ public class PvpHudOverlay extends Overlay
 		g.setFont(normal);
 		FontMetrics fm = g.getFontMetrics();
 
-		g.setColor(GREEN);
-		drawRightAligned(g, fm, "VENG RDY", rx, cy + fm.getAscent());
-		cy += fm.getHeight() + 1;
+		SelfState self    = state.getSelf();
+		EffectState fx    = state.getEffects();
 
-		g.setColor(LIGHT_BLUE);
-		drawRightAligned(g, fm, "ICE 4t", rx, cy + fm.getAscent());
-		cy += fm.getHeight() + 1;
+		if (self.isVengActive())
+		{
+			g.setColor(GREEN);
+			drawRightAligned(g, fm, "VENG RDY", rx, cy + fm.getAscent());
+			cy += fm.getHeight() + 1;
+		}
 
-		g.setColor(ORANGE);
-		drawRightAligned(g, fm, "TB 1:21", rx, cy + fm.getAscent());
-		cy += fm.getHeight() + 1;
+		int freezeTicks = self.getFreezeTicksRemaining();
+		if (freezeTicks > 0)
+		{
+			g.setColor(LIGHT_BLUE);
+			drawRightAligned(g, fm, "ICE " + freezeTicks + "t", rx, cy + fm.getAscent());
+			cy += fm.getHeight() + 1;
+		}
 
-		g.setColor(TOXIC_GREEN);
-		drawRightAligned(g, fm, "VENOM", rx, cy + fm.getAscent());
+		int tbTicks = self.getTeleBlockTicksRemaining();
+		if (tbTicks > 0)
+		{
+			int totalSec = tbTicks * 600 / 1000;
+			String tbLabel = "TB " + (totalSec / 60) + ":" + String.format("%02d", totalSec % 60);
+			g.setColor(ORANGE);
+			drawRightAligned(g, fm, tbLabel, rx, cy + fm.getAscent());
+			cy += fm.getHeight() + 1;
+		}
+
+		if (self.isVenomed())
+		{
+			g.setColor(TOXIC_GREEN);
+			drawRightAligned(g, fm, "VENOM", rx, cy + fm.getAscent());
+		}
+		else if (self.isPoisoned())
+		{
+			g.setColor(TOXIC_GREEN);
+			drawRightAligned(g, fm, "POISON", rx, cy + fm.getAscent());
+		}
 	}
 
 	// ── Boost row ─────────────────────────────────────────────────────────────
 
-	private void drawBoostRow(Graphics2D g, HudLayoutState layout, Font small)
+	private void drawBoostRow(Graphics2D g, PvpHudState state, HudLayoutState layout, Font small)
 	{
 		Rectangle p = layout.getBoostRow();
 		if (p == null)
@@ -298,19 +325,23 @@ public class PvpHudOverlay extends Overlay
 		int cx2 = cx1 + col;
 		int cx3 = cx2 + col;
 
-		g.setColor(GREEN);
-		drawCentered(g, fm, "STR +18", cx1, baseline);
+		BoostState boosts = state.getBoosts();
 
-		g.setColor(GREEN);
-		drawCentered(g, fm, "RNG +13", cx2, baseline);
+		drawBoostLabel(g, fm, "STR", boosts.getStrengthDelta(), cx1, baseline);
+		drawBoostLabel(g, fm, "RNG", boosts.getRangedDelta(),   cx2, baseline);
+		drawBoostLabel(g, fm, "MAG", boosts.getMagicDelta(),    cx3, baseline);
+	}
 
-		g.setColor(RED);
-		drawCentered(g, fm, "MAG -7", cx3, baseline);
+	private void drawBoostLabel(Graphics2D g, FontMetrics fm, String prefix, int delta, int cx, int baseline)
+	{
+		String label = prefix + (delta >= 0 ? "+" : "") + delta;
+		g.setColor(delta > 0 ? GREEN : delta < 0 ? RED : GRAY);
+		drawCentered(g, fm, label, cx, baseline);
 	}
 
 	// ── Action strip (bottom) ─────────────────────────────────────────────────
 
-	private void drawActionStrip(Graphics2D g, HudLayoutState layout, Font small)
+	private void drawActionStrip(Graphics2D g, PvpHudState state, HudLayoutState layout, Font small)
 	{
 		Rectangle p = layout.getActionStrip();
 		if (p == null)
@@ -322,8 +353,9 @@ public class PvpHudOverlay extends Overlay
 		FontMetrics fm = g.getFontMetrics();
 		int baseline = p.y + (p.height + fm.getAscent() - fm.getDescent()) / 2;
 
-		String[] labels = {"ATK 2t", "EAT", "POT", "SPEC 50", "5tx7", "T1 4:31", "SGL"};
-		Color[]  colors = {YELLOW,   GREEN, GREEN, WHITE,     GRAY,   WHITE,     GRAY};
+		int spec = state.getEffects().getSpecEnergy();
+		String[] labels = {"ATK 2t", "EAT", "POT", "SPEC " + spec, "5tx7", "T1 4:31", "SGL"};
+		Color[]  colors = {YELLOW,   GREEN, GREEN, WHITE,            GRAY,   WHITE,     GRAY};
 
 		// Drop items from the end until everything fits in the available width
 		int usable = p.width - PAD * 2;
