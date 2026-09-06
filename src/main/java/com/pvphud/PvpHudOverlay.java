@@ -325,25 +325,50 @@ public class PvpHudOverlay extends Overlay
 		String[] labels = {"ATK 2t", "EAT", "POT", "SPEC 50", "5tx7", "T1 4:31", "SGL"};
 		Color[]  colors = {YELLOW,   GREEN, GREEN, WHITE,     GRAY,   WHITE,     GRAY};
 
-		int maxX = p.x + p.width - PAD;
-		int x    = p.x + PAD;
-		for (int i = 0; i < labels.length; i++)
+		// Drop items from the end until everything fits in the available width
+		int usable = p.width - PAD * 2;
+		int count = labels.length;
+		while (count > 1)
 		{
-			int itemW = fm.stringWidth(labels[i]);
-			// Stop drawing if this item would overflow the strip
-			if (x + itemW > maxX)
+			int total = 0;
+			for (int i = 0; i < count; i++)
+			{
+				total += fm.stringWidth(labels[i]);
+			}
+			// Min 6px per gap when all items present
+			if (total + (count - 1) * 6 <= usable)
 			{
 				break;
 			}
+			count--;
+		}
+
+		// Measure total text width of surviving items
+		int textW = 0;
+		for (int i = 0; i < count; i++)
+		{
+			textW += fm.stringWidth(labels[i]);
+		}
+
+		// Distribute remaining space evenly as gaps between items
+		int gaps    = count - 1;
+		int gapW    = gaps > 0 ? (usable - textW) / gaps : 0;
+		int sepX    = gapW / 2; // separator sits in middle of each gap
+
+		int x = p.x + PAD;
+		for (int i = 0; i < count; i++)
+		{
+			int itemW = fm.stringWidth(labels[i]);
 			if (i > 0)
 			{
+				// Separator centred in the gap before this item
+				int sx = x - gapW + sepX;
 				g.setColor(DIVIDER);
-				int sx = x - 3;
 				g.drawLine(sx, p.y + 4, sx, p.y + p.height - 4);
 			}
 			g.setColor(colors[i]);
 			g.drawString(labels[i], x, baseline);
-			x += itemW + 7;
+			x += itemW + gapW;
 		}
 	}
 
