@@ -121,7 +121,7 @@ public class PvpHudOverlay extends Overlay
 			computeHorizLayout(layout, bounds);
 		}
 
-		drawAll(g, state, layout, normal, small, false);
+		drawAll(g, state, layout, bounds, normal, small, false);
 		return null;
 	}
 
@@ -140,7 +140,7 @@ public class PvpHudOverlay extends Overlay
 			computeHorizLayout(layout, bounds);
 		}
 
-		drawAll(g, state, layout, normal, small, false);
+		drawAll(g, state, layout, bounds, normal, small, false);
 		return new Dimension(w, h);
 	}
 
@@ -156,7 +156,7 @@ public class PvpHudOverlay extends Overlay
 			computeVertLayout(layout, bounds);
 		}
 
-		drawAll(g, state, layout, normal, small, true);
+		drawAll(g, state, layout, bounds, normal, small, true);
 		return new Dimension(VERT_W, VERT_H);
 	}
 
@@ -192,23 +192,16 @@ public class PvpHudOverlay extends Overlay
 	// ── Draw everything ───────────────────────────────────────────────────────
 
 	private void drawAll(Graphics2D g, PvpHudState state, HudLayoutState layout,
-		Font normal, Font small, boolean vertical)
+		Rectangle bounds, Font normal, Font small, boolean vertical)
 	{
 		Rectangle strip    = layout.getActionStrip();
 		Rectangle boostRow = layout.getBoostRow();
 		Rectangle opp      = layout.getOpponentPanel();
 		Rectangle ev       = layout.getEventPanel();
 
-		// background + chrome
-		if (opp != null)
-		{
-			g.setColor(BG);
-			Rectangle full = new Rectangle(
-				opp.x, opp.y,
-				opp.width + (ev != null ? ev.width : 0) + (layout.getSelfPanel() != null ? layout.getSelfPanel().width : 0),
-				opp.height + BOOST_ROW_H + ACTION_STRIP_H);
-			g.fillRect(full.x, full.y, full.width, full.height);
-		}
+		// Base fill — use the full bounds so both horiz and vert modes fill correctly
+		g.setColor(BG);
+		g.fillRect(bounds.x, bounds.y, bounds.width, bounds.height);
 
 		if (strip != null)
 		{
