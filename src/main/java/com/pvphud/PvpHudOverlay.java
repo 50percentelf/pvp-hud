@@ -320,16 +320,20 @@ public class PvpHudOverlay extends Overlay
 		FontMetrics fm = g.getFontMetrics();
 		int baseline = p.y + (p.height + fm.getAscent() - fm.getDescent()) / 2;
 
-		int col = p.width / 3;
+		int col = p.width / 5;
 		int cx1 = p.x + col / 2;
 		int cx2 = cx1 + col;
 		int cx3 = cx2 + col;
+		int cx4 = cx3 + col;
+		int cx5 = cx4 + col;
 
 		BoostState boosts = state.getBoosts();
 
-		drawBoostLabel(g, fm, "STR", boosts.getStrengthDelta(), cx1, baseline);
-		drawBoostLabel(g, fm, "RNG", boosts.getRangedDelta(),   cx2, baseline);
-		drawBoostLabel(g, fm, "MAG", boosts.getMagicDelta(),    cx3, baseline);
+		drawBoostLabel(g, fm, "ATK", boosts.getAttackDelta(),   cx1, baseline);
+		drawBoostLabel(g, fm, "STR", boosts.getStrengthDelta(), cx2, baseline);
+		drawBoostLabel(g, fm, "DEF", boosts.getDefenceDelta(),  cx3, baseline);
+		drawBoostLabel(g, fm, "RNG", boosts.getRangedDelta(),   cx4, baseline);
+		drawBoostLabel(g, fm, "MAG", boosts.getMagicDelta(),    cx5, baseline);
 	}
 
 	private void drawBoostLabel(Graphics2D g, FontMetrics fm, String prefix, int delta, int cx, int baseline)
