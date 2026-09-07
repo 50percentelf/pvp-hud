@@ -37,6 +37,13 @@ public class PvpHudState
 	/** Active fight session; null between fights. */
 	private PvpFightSession currentSession;
 
+	/** Wall-clock ms when the last session ended; -1 = no session has ended yet. */
+	@Getter private long sessionEndedMs = -1;
+
+	/** Totals from the most recently ended session (for post-fight display). */
+	@Getter private int lastTotalOutgoing;
+	@Getter private int lastTotalIncoming;
+
 	/** Start a new fight session. Any previous session is discarded. */
 	public void beginSession(String opponentName, int tick)
 	{
@@ -48,8 +55,11 @@ public class PvpHudState
 	{
 		if (currentSession != null)
 		{
+			lastTotalOutgoing = currentSession.getTotalOutgoing();
+			lastTotalIncoming = currentSession.getTotalIncoming();
 			currentSession.terminate();
 			currentSession = null;
+			sessionEndedMs = System.currentTimeMillis();
 		}
 	}
 
@@ -64,5 +74,8 @@ public class PvpHudState
 		effects.reset();
 		layout.reset();
 		endSession();
+		sessionEndedMs = -1;
+		lastTotalOutgoing = 0;
+		lastTotalIncoming = 0;
 	}
 }

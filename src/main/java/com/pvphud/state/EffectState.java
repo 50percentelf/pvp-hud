@@ -26,6 +26,9 @@ public class EffectState
 	@Getter @Setter
 	private long lastSpecRegenMs = -1;
 
+	/** Stamina potion effect ticks remaining (Varbits.STAMINA_EFFECT counts down each tick). */
+	@Getter @Setter private int staminaEffectTicks;
+
 	// ── Divine potion remaining ticks (varbit counts down each game tick) ──────
 	@Getter @Setter private int divineSupercombatTicks;
 	@Getter @Setter private int divineRangingTicks;
@@ -34,6 +37,12 @@ public class EffectState
 	@Getter @Setter private int divineBattlemageTicks;
 	@Getter @Setter private int menaphiteRemedyTicks;
 
+	// ── Anti-poison / anti-venom countdown (derived from POISON varp magnitude) ─
+	/** Estimated ticks remaining on anti-poison protection. Self-decremented each tick, re-synced by varp. */
+	@Getter @Setter private int antiPoisonTicks;
+	/** Estimated ticks remaining on anti-venom protection. Self-decremented each tick, re-synced by varp. */
+	@Getter @Setter private int antiVenomTicks;
+
 	public void reset()
 	{
 		specEnergy = 0;
@@ -41,11 +50,14 @@ public class EffectState
 		lastSpecRegenMs = -1;
 		lightbearer = false;
 		weaponSpeedTicks = 0;
+		staminaEffectTicks = 0;
 		divineSupercombatTicks = 0;
 		divineRangingTicks = 0;
 		divineMagicTicks = 0;
 		divineBastionTicks = 0;
 		divineBattlemageTicks = 0;
 		menaphiteRemedyTicks = 0;
+		antiPoisonTicks = 0;
+		antiVenomTicks = 0;
 	}
 }

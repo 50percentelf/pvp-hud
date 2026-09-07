@@ -8,6 +8,7 @@ import com.pvphud.state.EffectState;
 import com.pvphud.state.HudLayoutState;
 import com.pvphud.state.ManualTimerState;
 import com.pvphud.state.OpponentState;
+import com.pvphud.state.OpponentStats;
 import com.pvphud.state.PvpFightSession;
 import com.pvphud.state.SelfState;
 import java.awt.AlphaComposite;
@@ -44,7 +45,11 @@ public class PvpHudOverlay extends Overlay
 	private static final int PAD            = 6;
 	private static final int BAR_H          = 5;
 	private static final int VERT_W         = 220;
-	private static final int VERT_H         = 400;
+	private static final int VERT_H         = 520;
+
+	/** INVENTORY_HUG: top rail height and left rail width (px). */
+	private static final int INVY_TOP_H  = 50;
+	private static final int INVY_LEFT_W = 54;
 
 	/** Icon size for VERTICAL_BAR and ICON_TRAY buff styles (pixels). */
 	private static final int ICON_SIZE = 18;
@@ -70,6 +75,10 @@ public class PvpHudOverlay extends Overlay
 	private static final Color HP_BG        = new Color( 75,  15,  15);
 	private static final Color PRAYER_FG    = new Color(150, 140, 255);
 	private static final Color PRAYER_BG    = new Color( 20,  15,  40);
+	private static final Color RUN_FG       = new Color(160,  95,  20);
+	private static final Color RUN_STAM_FG  = new Color(210, 145,  30); // stamina-tinted run energy
+	private static final Color RUN_BG       = new Color( 30,  18,   5);
+	private static final Color POTION_BLUE  = new Color( 80, 160, 240); // pot-cooldown dots
 
 	// ── Injectable services ───────────────────────────────────────────────────
 	private final Client       client;
@@ -79,12 +88,15 @@ public class PvpHudOverlay extends Overlay
 	private final SpriteManager spriteManager;
 
 	// ── Cached icons (item images — AsyncBufferedImage, thread-safe) ──────────
-	private BufferedImage dscIcon;   // divine super combat
-	private BufferedImage drgIcon;   // divine ranging
-	private BufferedImage dmgIcon;   // divine magic
-	private BufferedImage basIcon;   // divine bastion
-	private BufferedImage btmIcon;   // divine battlemage
-	private BufferedImage menIcon;   // menaphite remedy
+	private BufferedImage dscIcon;            // divine super combat
+	private BufferedImage drgIcon;            // divine ranging
+	private BufferedImage dmgIcon;            // divine magic
+	private BufferedImage basIcon;            // divine bastion
+	private BufferedImage btmIcon;            // divine battlemage
+	private BufferedImage menIcon;            // menaphite remedy
+	private BufferedImage staminaIcon;        // stamina potion
+	private BufferedImage antiPoisonItemIcon; // anti-poison potion (immunity display)
+	private BufferedImage antiVenomItemIcon;  // anti-venom potion (immunity display)
 
 	// ── Cached icons (spell sprites — loaded async, volatile for EDT visibility)
 	private volatile BufferedImage vengIcon;
@@ -140,12 +152,15 @@ public class PvpHudOverlay extends Overlay
 	/** Called from plugin startUp so images are queued as early as possible. */
 	void loadIcons()
 	{
-		dscIcon = itemManager.getImage(ItemID._4DOSEDIVINECOMBAT);
-		drgIcon = itemManager.getImage(ItemID._4DOSEDIVINERANGE);
-		dmgIcon = itemManager.getImage(ItemID._4DOSEDIVINEMAGIC);
-		basIcon = itemManager.getImage(ItemID._4DOSEDIVINEBASTION);
-		btmIcon = itemManager.getImage(ItemID._4DOSEDIVINEBATTLEMAGE);
-		menIcon = itemManager.getImage(MENAPHITE_REMEDY_4);
+		dscIcon            = itemManager.getImage(ItemID._4DOSEDIVINECOMBAT);
+		drgIcon            = itemManager.getImage(ItemID._4DOSEDIVINERANGE);
+		dmgIcon            = itemManager.getImage(ItemID._4DOSEDIVINEMAGIC);
+		basIcon            = itemManager.getImage(ItemID._4DOSEDIVINEBASTION);
+		btmIcon            = itemManager.getImage(ItemID._4DOSEDIVINEBATTLEMAGE);
+		menIcon            = itemManager.getImage(MENAPHITE_REMEDY_4);
+		staminaIcon        = itemManager.getImage(ItemID._4DOSESTAMINA);
+		antiPoisonItemIcon = itemManager.getImage(ItemID._4DOSEANTIPOISON);
+		antiVenomItemIcon  = itemManager.getImage(ItemID.ANTIVENOM_4);
 
 		spriteManager.getSpriteAsync(SpriteID.SPELL_VENGEANCE,               0, img -> vengIcon      = img);
 		spriteManager.getSpriteAsync(SpriteID.SPELL_TELE_BLOCK,              0, img -> tbIcon         = img);
@@ -199,6 +214,8 @@ public class PvpHudOverlay extends Overlay
 				return renderHorizontalFloat(g, state, layout, normal, small);
 			case VERTICAL_FLOAT:
 				return renderVerticalFloat(g, state, layout, normal, small);
+			case INVENTORY_HUG:
+				return renderInventoryHug(g, state, layout, normal, small);
 			default:
 				return null;
 		}
@@ -232,7 +249,7 @@ public class PvpHudOverlay extends Overlay
 	{
 		Rectangle stored = layout.getChatboxBounds();
 		int w = stored != null ? stored.width  : 519;
-		int h = stored != null ? stored.height : 142;
+		int h = stored != null ? stored.height : 200;
 		Rectangle bounds = new Rectangle(0, 0, w, h);
 
 		if (layout.isDirty()) computeHorizLayout(layout, bounds);
@@ -249,6 +266,143 @@ public class PvpHudOverlay extends Overlay
 
 		drawAll(g, state, layout, bounds, normal, small, true);
 		return new Dimension(VERT_W, VERT_H);
+	}
+
+	private Dimension renderInventoryHug(Graphics2D g, PvpHudState state,
+		HudLayoutState layout, Font normal, Font small)
+	{
+		Widget invWidget = client.getWidget(InterfaceID.Inventory.ITEMS);
+		if (invWidget == null || invWidget.getWidth() == 0 || invWidget.getHeight() == 0) return null;
+
+		Rectangle inv = invWidget.getBounds();
+		int totalW = INVY_LEFT_W + inv.width;
+
+		setPreferredLocation(new Point(inv.x - INVY_LEFT_W, inv.y - INVY_TOP_H));
+
+		g.setColor(new Color(20, 20, 20, config.backgroundOpacity()));
+		g.fillRect(0, 0, totalW, INVY_TOP_H);               // top rail
+		g.fillRect(0, INVY_TOP_H, INVY_LEFT_W, inv.height); // left rail
+
+		g.setColor(DIVIDER);
+		g.drawLine(0, INVY_TOP_H - 1, totalW, INVY_TOP_H - 1);
+		g.drawLine(INVY_LEFT_W - 1, INVY_TOP_H, INVY_LEFT_W - 1, INVY_TOP_H + inv.height);
+
+		drawInventoryTopRail(g, state, normal, small, totalW);
+		drawInventoryLeftRail(g, state, small, inv.height);
+
+		return new Dimension(totalW, INVY_TOP_H + inv.height);
+	}
+
+	private void drawInventoryTopRail(Graphics2D g, PvpHudState state,
+		Font normal, Font small, int totalW)
+	{
+		OpponentState opp = state.getOpponent();
+		int cy = PAD / 2 + 1;
+
+		g.setFont(small);
+		FontMetrics smFm = g.getFontMetrics();
+
+		if (!opp.isTracked())
+		{
+			g.setColor(GRAY);
+			g.drawString("no target", PAD, cy + smFm.getAscent());
+			return;
+		}
+
+		// Opponent name (left); veng warning (right) on same line
+		g.setFont(normal);
+		FontMetrics fm = g.getFontMetrics();
+		g.setColor(WHITE);
+		String name = opp.getName();
+		int maxNameW = Math.max(40, totalW - PAD * 2
+			- (opp.isVengActive() ? smFm.stringWidth("VENG!") + PAD : 0));
+		while (name.length() > 1 && fm.stringWidth(name) > maxNameW)
+			name = name.substring(0, name.length() - 1);
+		g.drawString(name, PAD, cy + fm.getAscent());
+
+		if (opp.isVengActive())
+		{
+			g.setFont(small);
+			g.setColor(ORANGE);
+			drawRightAligned(g, smFm, "VENG!", totalW - PAD, cy + fm.getAscent());
+		}
+		cy += fm.getHeight() + 2;
+
+		// HP bar spanning full top rail width
+		int estHp = opp.getEstimatedHp();
+		int maxHp = opp.getMaxHp();
+		int barW  = totalW - PAD * 2;
+		g.setFont(small);
+		smFm = g.getFontMetrics();
+		if (maxHp > 0)
+		{
+			float pct = Math.min(1f, (float) estHp / maxHp);
+			Color fg = pct > 0.5f ? HP_FG : pct > 0.25f ? YELLOW : RED;
+			g.setColor(HP_BG);
+			g.fillRect(PAD, cy, barW, BAR_H);
+			g.setColor(fg);
+			g.fillRect(PAD, cy, Math.max(1, (int)(barW * pct)), BAR_H);
+			cy += BAR_H + 2;
+			g.setColor(fg);
+			g.drawString("~" + estHp + " HP", PAD, cy + smFm.getAscent());
+		}
+		else
+		{
+			g.setColor(HP_BG);
+			g.fillRect(PAD, cy, barW, BAR_H);
+			cy += BAR_H + 2;
+			g.setColor(GRAY);
+			g.drawString("HP ?", PAD, cy + smFm.getAscent());
+		}
+	}
+
+	private void drawInventoryLeftRail(Graphics2D g, PvpHudState state,
+		Font small, int railH)
+	{
+		int cx = INVY_LEFT_W / 2;
+		int cy = INVY_TOP_H + PAD;
+
+		ActionClockState clock = state.getActionClock();
+		int atk    = clock.getAttackDelayTicks();
+		int atkMax = clock.getLastWeaponSpeedTicks();
+
+		if (atkMax > 0)
+		{
+			final int DOT_SZ  = 7;
+			final int DOT_GAP = 3;
+			for (int i = 0; i < atkMax; i++)
+			{
+				g.setColor(i < atk ? RED : DIVIDER);
+				g.fillRect(cx - DOT_SZ / 2, cy + i * (DOT_SZ + DOT_GAP), DOT_SZ, DOT_SZ);
+			}
+			cy += atkMax * (DOT_SZ + DOT_GAP) + PAD;
+		}
+
+		g.setFont(small);
+		FontMetrics fm = g.getFontMetrics();
+		SelfState self = state.getSelf();
+
+		if (self.isVengActive())
+		{
+			g.setColor(GREEN);
+			drawCentered(g, fm, "VNG", cx, cy + fm.getAscent());
+			cy += fm.getHeight() + 1;
+		}
+
+		int ice = self.getFreezeTicksRemaining();
+		if (ice > 0)
+		{
+			g.setColor(LIGHT_BLUE);
+			drawCentered(g, fm, "ICE", cx, cy + fm.getAscent());
+			cy += fm.getHeight() + 1;
+		}
+
+		int tb = self.getTeleBlockTicksRemaining();
+		if (tb > 0)
+		{
+			g.setColor(ORANGE);
+			drawCentered(g, fm, "TB", cx, cy + fm.getAscent());
+		}
 	}
 
 	// ── Layout computation ────────────────────────────────────────────────────
@@ -344,7 +498,7 @@ public class PvpHudOverlay extends Overlay
 		drawEventPanel(g, state, layout, normal, small);
 		drawSelfPanel(g, state, layout, normal, small);
 		drawBoostRow(g, state, layout, small);
-		drawActionStrip(g, state, layout, small);
+		drawActionStrip(g, state, layout, small, vertical);
 	}
 
 	// ── Opponent panel ────────────────────────────────────────────────────────
@@ -361,11 +515,39 @@ public class PvpHudOverlay extends Overlay
 
 		g.setFont(small);
 		FontMetrics smFm = g.getFontMetrics();
+
+		// Title row: "OPPONENT" label left; large dedicated prayer icon right.
+		// The icon sits here unconditionally so it's never displaced by content below.
+		OpponentState opp    = state.getOpponent();
+		final int     PRAY_SZ = 24;
+		int titleRowH = Math.max(smFm.getHeight() + 2, PRAY_SZ + 2);
+
 		g.setColor(GRAY);
 		g.drawString("OPPONENT", x, cy + smFm.getAscent());
-		cy += smFm.getHeight() + 2;
 
-		OpponentState opp = state.getOpponent();
+		HeadIcon prayer = opp.isTracked() ? opp.getOverheadPrayer() : null;
+		if (prayer != null)
+		{
+			BufferedImage pIcon  = prayerIconFor(prayer);
+			Color         pColor = prayerColorFor(prayer);
+			int iconX = p.x + p.width - PAD - PRAY_SZ;
+			int iconY = cy + (titleRowH - PRAY_SZ) / 2;
+			if (pIcon != null)
+			{
+				g.drawImage(pIcon, iconX, iconY, PRAY_SZ, PRAY_SZ, null);
+			}
+			else
+			{
+				String pLabel = prayerShortFor(prayer);
+				if (pLabel != null)
+				{
+					g.setColor(pColor);
+					drawRightAligned(g, smFm, pLabel, p.x + p.width - PAD, cy + smFm.getAscent());
+				}
+			}
+		}
+		cy += titleRowH;
+
 		if (!opp.isTracked())
 		{
 			g.setColor(GRAY);
@@ -373,20 +555,29 @@ public class PvpHudOverlay extends Overlay
 			return;
 		}
 
+		// Name row (left) + VENG! indicator (right, if active)
 		g.setFont(normal);
 		FontMetrics fm = g.getFontMetrics();
 		g.setColor(WHITE);
 		String name = opp.getName();
-		// Truncate long names to fit panel
-		while (name.length() > 1 && fm.stringWidth(name) > w)
+		int maxNameW = w - (opp.isVengActive() ? smFm.stringWidth("VENG!") + PAD : 0);
+		while (name.length() > 1 && fm.stringWidth(name) > maxNameW)
 			name = name.substring(0, name.length() - 1);
 		g.drawString(name, x, cy + fm.getAscent());
+		if (opp.isVengActive())
+		{
+			g.setFont(small);
+			g.setColor(ORANGE);
+			drawRightAligned(g, smFm, "VENG!", p.x + p.width - PAD, cy + fm.getAscent());
+		}
 		cy += fm.getHeight() + 4;
 
-		// HP bar (ratio-based from actor health bar)
+		// HP bar + HP text
 		int estHp  = opp.getEstimatedHp();
 		int maxHp  = opp.getMaxHp();
-		int hpBarY = cy; // saved for pending-hit animation
+		int hpBarY = cy;
+		g.setFont(small);
+		smFm = g.getFontMetrics();
 		if (estHp >= 0 && maxHp > 0)
 		{
 			float pct = Math.min(1f, (float) estHp / maxHp);
@@ -394,10 +585,8 @@ public class PvpHudOverlay extends Overlay
 			g.fillRect(x, cy, w, BAR_H);
 			Color fg = pct > 0.5f ? HP_FG : pct > 0.25f ? YELLOW : RED;
 			g.setColor(fg);
-			g.fillRect(x, cy, Math.max(1, (int) (w * pct)), BAR_H);
+			g.fillRect(x, cy, Math.max(1, (int)(w * pct)), BAR_H);
 			cy += BAR_H + 3;
-			g.setFont(small);
-			smFm = g.getFontMetrics();
 			g.setColor(GRAY);
 			g.drawString("~" + estHp + " HP", x, cy + smFm.getAscent());
 			cy += smFm.getHeight() + 2;
@@ -407,24 +596,20 @@ public class PvpHudOverlay extends Overlay
 			g.setColor(HP_BG);
 			g.fillRect(x, cy, w, BAR_H);
 			cy += BAR_H + 3;
-			g.setFont(small);
-			smFm = g.getFontMetrics();
 			g.setColor(GRAY);
 			g.drawString("HP ?", x, cy + smFm.getAscent());
 			cy += smFm.getHeight() + 2;
 		}
 
-		// Pending-hit indicator: damage from XP drop, animates from above the bar down into it
+		// Pending-hit animation: floats above the HP bar then fades
 		if (opp.hasPendingHit())
 		{
 			long elapsed = System.currentTimeMillis() - opp.getPendingHitTimestampMs();
-			float t = Math.min(1f, elapsed / 600f); // 0→1 over 600 ms
-			// Float 14px above the bar, land at bar centre
-			int floatY  = hpBarY - 14;
-			int landY   = hpBarY + BAR_H / 2;
-			int displayY = (int) (floatY + (landY - floatY) * t);
-			// Fade out in the last 300 ms
-			float alpha = t < 0.67f ? 1f : (float) (1 - (t - 0.67) / 0.33);
+			float t = Math.min(1f, elapsed / 600f);
+			int floatY   = hpBarY - 14;
+			int landY    = hpBarY + BAR_H / 2;
+			int displayY = (int)(floatY + (landY - floatY) * t);
+			float alpha  = t < 0.67f ? 1f : (float)(1 - (t - 0.67) / 0.33);
 
 			Composite prev = g.getComposite();
 			g.setComposite(AlphaComposite.getInstance(AlphaComposite.SRC_OVER, Math.max(0f, alpha)));
@@ -436,55 +621,28 @@ public class PvpHudOverlay extends Overlay
 			g.setComposite(prev);
 		}
 
-		// Veng warning — shown while opponent has unspent Vengeance (no countdown;
-		// Vengeance has no duration, it waits indefinitely for the next hit)
-		if (opp.isVengActive())
+		// Opponent base stats (hiscores, async) — pinned to the panel bottom.
+		// Omitted when there's not enough vertical room so the HP content is never displaced.
+		g.setFont(small);
+		smFm = g.getFontMetrics();
+		int statsRowH = ICON_SIZE + 2 + smFm.getHeight() + 3;
+		int statsY    = p.y + p.height - PAD - statsRowH;
+		if (statsY >= cy + 2)
 		{
-			g.setFont(small);
-			smFm = g.getFontMetrics();
-			g.setColor(ORANGE);
-			drawRightAligned(g, smFm, "VENG!", p.x + p.width - PAD,
-				cy + smFm.getAscent());
-			cy += smFm.getHeight() + 2;
-		}
-
-		// Overhead prayer indicator — icon + short label
-		HeadIcon prayer = opp.getOverheadPrayer();
-		if (prayer != null)
-		{
-			g.setFont(small);
-			smFm = g.getFontMetrics();
-			String        pLabel = prayerShortFor(prayer);
-			Color         pColor = prayerColorFor(prayer);
-			BufferedImage pIcon  = prayerIconFor(prayer);
-			if (pLabel != null)
-			{
-				int iconSz = ICON_SIZE; // 18 px
-				int rowH   = Math.max(iconSz, smFm.getHeight());
-				int rx2    = p.x + p.width - PAD;
-				int textY  = cy + (rowH + smFm.getAscent() - smFm.getDescent()) / 2;
-				g.setColor(pColor);
-				drawRightAligned(g, smFm, pLabel, rx2, textY);
-				if (pIcon != null)
-				{
-					int textW = smFm.stringWidth(pLabel);
-					g.drawImage(pIcon, rx2 - textW - 2 - iconSz,
-						cy + (rowH - iconSz) / 2, iconSz, iconSz, null);
-				}
-				cy += rowH + 2;
-			}
-		}
-
-		// Last outgoing hit in corner
-		int lastHit = opp.getLastOutgoingHit();
-		if (lastHit > 0)
-		{
-			g.setFont(small);
-			smFm = g.getFontMetrics();
-			g.setColor(YELLOW);
-			String hitStr = "→ " + lastHit;
-			g.drawString(hitStr, p.x + p.width - PAD - smFm.stringWidth(hitStr),
-				p.y + p.height - PAD - smFm.getDescent());
+			OpponentStats stats = opp.getStats();
+			int col = p.width / 5;
+			int c1  = p.x + col / 2;
+			int c2  = c1 + col;
+			int c3  = c2 + col;
+			int c4  = c3 + col;
+			int c5  = c4 + col;
+			int iconY  = statsY;
+			int textY  = statsY + ICON_SIZE + 2 + smFm.getAscent();
+			drawStatColumn(g, smFm, atkSkillIcon, "ATK", stats.getAttack(),   c1, iconY, textY);
+			drawStatColumn(g, smFm, strSkillIcon, "STR", stats.getStrength(), c2, iconY, textY);
+			drawStatColumn(g, smFm, defSkillIcon, "DEF", stats.getDefence(),  c3, iconY, textY);
+			drawStatColumn(g, smFm, rngSkillIcon, "RNG", stats.getRanged(),   c4, iconY, textY);
+			drawStatColumn(g, smFm, magSkillIcon, "MAG", stats.getMagic(),    c5, iconY, textY);
 		}
 	}
 
@@ -565,9 +723,19 @@ public class PvpHudOverlay extends Overlay
 			cy += isFirst ? fm.getHeight() + 2 : fm.getHeight() + 1;
 		}
 
-		// Totals row at the bottom
-		int totalDealt    = session != null ? session.getTotalOutgoing()  : 0;
-		int totalReceived = session != null ? session.getTotalIncoming() : 0;
+		// Fight over banner — shown when session has ended and no new session is active
+		if (session == null && state.getSessionEndedMs() > 0)
+		{
+			g.setFont(small);
+			smFm = g.getFontMetrics();
+			g.setColor(RED);
+			drawCentered(g, smFm, "FIGHT OVER", cx, cy + smFm.getAscent());
+			cy += smFm.getHeight() + 4;
+		}
+
+		// Totals row at the bottom (live session or last session)
+		int totalDealt    = session != null ? session.getTotalOutgoing()  : state.getLastTotalOutgoing();
+		int totalReceived = session != null ? session.getTotalIncoming() : state.getLastTotalIncoming();
 		if (totalDealt > 0 || totalReceived > 0)
 		{
 			// Thin divider above totals
@@ -599,8 +767,9 @@ public class PvpHudOverlay extends Overlay
 		Rectangle p = layout.getSelfPanel();
 		if (p == null) return;
 
-		int rx = p.x + p.width - PAD;
-		int cy = p.y + PAD;
+		int rx  = p.x + p.width - PAD;
+		int lx  = p.x + PAD;
+		int cy  = p.y + PAD;
 
 		g.setFont(small);
 		FontMetrics smFm = g.getFontMetrics();
@@ -608,53 +777,58 @@ public class PvpHudOverlay extends Overlay
 		drawRightAligned(g, smFm, "YOU", rx, cy + smFm.getAscent());
 		cy += smFm.getHeight() + 2;
 
-		SelfState   self = state.getSelf();
-		EffectState fx   = state.getEffects();
+		SelfState   self   = state.getSelf();
+		EffectState fx     = state.getEffects();
+		BoostState  boosts = state.getBoosts();
 
-		cy = drawHpPrayerBars(g, smFm, self, rx, cy, p.width);
+		// Right side: resource bars (HP, Prayer, Run, Spec). Left side: buff indicators.
+		// Both start from the same cy so they coexist side-by-side within the panel.
+		drawHpPrayerBars(g, smFm, self, fx, rx, cy, p.width);
 
-		BoostState boosts = state.getBoosts();
 		BuffStyle style = config.buffStyle();
 		if (style == BuffStyle.TEXT)
 		{
-			drawBuffsText(g, normal, small, self, fx, boosts, rx, cy);
+			drawBuffsText(g, normal, small, self, fx, boosts, lx, cy);
 		}
 		else
 		{
 			List<Buff> buffs = buildBuffList(self, fx, boosts);
-			if (buffs.isEmpty()) return;
-			if (style == BuffStyle.VERTICAL_BAR)
-				drawBuffsVertBar(g, small, buffs, rx, cy);
-			else
-				drawBuffsIconTray(g, small, buffs, p, cy);
+			if (!buffs.isEmpty())
+			{
+				if (style == BuffStyle.VERTICAL_BAR)
+					drawBuffsVertBar(g, small, buffs, lx, cy);
+				else
+					drawBuffsIconTray(g, small, buffs, lx, cy);
+			}
 		}
 	}
 
 	// ── HP / Prayer bars ─────────────────────────────────────────────────────
 
+	private static boolean barVisible(BarDisplayStyle s) { return s != BarDisplayStyle.HIDDEN; }
+	private static boolean showBar(BarDisplayStyle s)    { return s == BarDisplayStyle.BARS_AND_NUMBERS || s == BarDisplayStyle.BARS_ONLY; }
+	private static boolean showNum(BarDisplayStyle s)    { return s == BarDisplayStyle.BARS_AND_NUMBERS || s == BarDisplayStyle.NUMBERS_ONLY; }
+
 	private int drawHpPrayerBars(Graphics2D g, FontMetrics fm, SelfState self,
-		int rx, int cy, int panelWidth)
+		EffectState fx, int rx, int cy, int panelWidth)
 	{
-		SelfBarStyle style = config.selfBarStyle();
-		if (style == SelfBarStyle.HIDDEN) return cy;
-
-		boolean showBar = style == SelfBarStyle.BARS_AND_NUMBERS || style == SelfBarStyle.BARS_ONLY;
-		boolean showNum = style == SelfBarStyle.BARS_AND_NUMBERS || style == SelfBarStyle.NUMBERS_ONLY;
-
 		int barW = Math.min(panelWidth - PAD * 2, 90);
 
-		// Damped shake for 600 ms after incoming damage.
+		// Damped shake for 600 ms after incoming damage (can be disabled in config).
 		// ω = 0.025 rad/ms → ~4 Hz (3 cycles over 600 ms); amplitude 8px.
 		// Bar and text both shift by shakeX so they move as a unit.
 		int shakeX = 0;
-		long incomingMs = self.getLastIncomingDamageMs();
-		if (incomingMs > 0)
+		if (config.showHpShake())
 		{
-			long elapsed = System.currentTimeMillis() - incomingMs;
-			if (elapsed < 600)
+			long incomingMs = self.getLastIncomingDamageMs();
+			if (incomingMs > 0)
 			{
-				double damping = 1.0 - elapsed / 600.0;
-				shakeX = (int) (Math.sin(elapsed * 0.025) * 8 * damping);
+				long elapsed = System.currentTimeMillis() - incomingMs;
+				if (elapsed < 600)
+				{
+					double damping = 1.0 - elapsed / 600.0;
+					shakeX = (int) (Math.sin(elapsed * 0.025) * 8 * damping);
+				}
 			}
 		}
 
@@ -662,33 +836,22 @@ public class PvpHudOverlay extends Overlay
 		int effectiveRx = rx + shakeX;
 		int barX = effectiveRx - barW;
 
-		if (self.getMaxHp() > 0)
+		// ── HP ──────────────────────────────────────────────────────────────────
+		BarDisplayStyle hpStyle = config.hpBarStyle();
+		if (self.getMaxHp() > 0 && barVisible(hpStyle))
 		{
-			// Cap pct at 1.0 so boosted HP doesn't overflow the bar
 			float pct = Math.min(1f, (float) self.getCurrentHp() / self.getMaxHp());
 			Color fg   = pct > 0.5f ? HP_FG : pct > 0.25f ? YELLOW : RED;
-			if (showBar)
+			if (showBar(hpStyle))
 			{
 				g.setColor(HP_BG);
 				g.fillRect(barX, cy, barW, BAR_H);
 				g.setColor(fg);
 				g.fillRect(barX, cy, Math.max(1, (int) (barW * pct)), BAR_H);
-
-				// Regen strip: 2px along the top of the HP bar, drains between natural HP ticks.
-				// Black at full HP (cycle still shown, cosmetically); yellow/red below max.
-				int regenTicks = self.getHpRegenTicksRemaining();
-				if (regenTicks > 0)
-				{
-					boolean atMax  = self.getCurrentHp() >= self.getMaxHp();
-					Color regenFg  = atMax ? Color.BLACK : (pct > 0.25f ? YELLOW : RED);
-					int   regenW   = (int) (barW * regenTicks / 100.0);
-					g.setColor(regenFg);
-					g.fillRect(barX, cy, regenW, 2);
-				}
-
+				/* HP regen strip — commented out until timing is correct */
 				cy += BAR_H + 1;
 			}
-			if (showNum)
+			if (showNum(hpStyle))
 			{
 				g.setColor(fg);
 				drawRightAligned(g, fm, "HP " + self.getCurrentHp() + "/" + self.getMaxHp(),
@@ -697,11 +860,13 @@ public class PvpHudOverlay extends Overlay
 			}
 		}
 
-		if (self.getMaxPrayer() > 0)
+		// ── Prayer ───────────────────────────────────────────────────────────────
+		BarDisplayStyle prStyle = config.prayerBarStyle();
+		if (self.getMaxPrayer() > 0 && barVisible(prStyle))
 		{
 			float pct = Math.min(1f, (float) self.getCurrentPrayer() / self.getMaxPrayer());
 			Color fg   = pct > 0.5f ? PRAYER_FG : pct > 0.25f ? YELLOW : RED;
-			if (showBar)
+			if (showBar(prStyle))
 			{
 				g.setColor(PRAYER_BG);
 				g.fillRect(barX, cy, barW, BAR_H);
@@ -709,11 +874,54 @@ public class PvpHudOverlay extends Overlay
 				g.fillRect(barX, cy, Math.max(1, (int) (barW * pct)), BAR_H);
 				cy += BAR_H + 1;
 			}
-			if (showNum)
+			if (showNum(prStyle))
 			{
 				g.setColor(fg);
 				drawRightAligned(g, fm, "PR " + self.getCurrentPrayer() + "/" + self.getMaxPrayer(),
 					effectiveRx, cy + fm.getAscent());
+				cy += fm.getHeight() + 2;
+			}
+		}
+
+		// ── Run energy ───────────────────────────────────────────────────────────
+		BarDisplayStyle runStyle = config.runBarStyle();
+		if (barVisible(runStyle))
+		{
+			int run = self.getRunEnergy();
+			if (showBar(runStyle))
+			{
+				float runPct = Math.min(1f, run / 100f);
+				g.setColor(RUN_BG);
+				g.fillRect(barX, cy, barW, BAR_H);
+				g.setColor(RUN_FG);
+				g.fillRect(barX, cy, Math.max(1, (int) (barW * runPct)), BAR_H);
+				cy += BAR_H + 1;
+			}
+			if (showNum(runStyle))
+			{
+				g.setColor(RUN_FG);
+				drawRightAligned(g, fm, "RUN " + self.getRunEnergy() + "%", effectiveRx, cy + fm.getAscent());
+				cy += fm.getHeight() + 2;
+			}
+		}
+
+		// ── Spec ─────────────────────────────────────────────────────────────────
+		BarDisplayStyle specStyle = config.specBarStyle();
+		if (barVisible(specStyle))
+		{
+			int spec = fx.getSpecEnergy();
+			if (showBar(specStyle))
+			{
+				g.setColor(HP_BG);
+				g.fillRect(barX, cy, barW, BAR_H);
+				g.setColor(YELLOW);
+				g.fillRect(barX, cy, Math.max(1, (int) (barW * spec / 100.0)), BAR_H);
+				cy += BAR_H + 1;
+			}
+			if (showNum(specStyle))
+			{
+				g.setColor(YELLOW);
+				drawRightAligned(g, fm, "SPEC " + spec + "%", effectiveRx, cy + fm.getAscent());
 				cy += fm.getHeight() + 2;
 			}
 		}
@@ -724,7 +932,7 @@ public class PvpHudOverlay extends Overlay
 	// ── Text buff display (original behaviour) ────────────────────────────────
 
 	private void drawBuffsText(Graphics2D g, Font normal, Font small,
-		SelfState self, EffectState fx, BoostState boosts, int rx, int cy)
+		SelfState self, EffectState fx, BoostState boosts, int lx, int cy)
 	{
 		g.setFont(normal);
 		FontMetrics fm = g.getFontMetrics();
@@ -732,15 +940,15 @@ public class PvpHudOverlay extends Overlay
 		if (self.isVengActive())
 		{
 			g.setColor(GREEN);
-			drawRightAligned(g, fm, "VENG RDY", rx, cy + fm.getAscent());
+			g.drawString("VENG RDY", lx, cy + fm.getAscent());
 			cy += fm.getHeight() + 1;
 		}
 
 		int freezeTicks = self.getFreezeTicksRemaining();
-		if (freezeTicks > 0)
+		if (freezeTicks > 0 && config.showFreezeTimer())
 		{
 			g.setColor(LIGHT_BLUE);
-			drawRightAligned(g, fm, "ICE " + ticksToSecs(freezeTicks), rx, cy + fm.getAscent());
+			g.drawString("ICE " + ticksToSecs(freezeTicks), lx, cy + fm.getAscent());
 			cy += fm.getHeight() + 1;
 		}
 
@@ -749,58 +957,79 @@ public class PvpHudOverlay extends Overlay
 		{
 			int s = tbTicks * 600 / 1000;
 			g.setColor(ORANGE);
-			drawRightAligned(g, fm, "TB " + (s / 60) + ":" + String.format("%02d", s % 60),
-				rx, cy + fm.getAscent());
+			g.drawString("TB " + (s / 60) + ":" + String.format("%02d", s % 60),
+				lx, cy + fm.getAscent());
 			cy += fm.getHeight() + 1;
 		}
 
-		cy = drawDivineTimerText(g, fm, "DSC", fx.getDivineSupercombatTicks(), rx, cy);
-		cy = drawDivineTimerText(g, fm, "DRG", fx.getDivineRangingTicks(),     rx, cy);
-		cy = drawDivineTimerText(g, fm, "DMG", fx.getDivineMagicTicks(),       rx, cy);
-		cy = drawDivineTimerText(g, fm, "BAS", fx.getDivineBastionTicks(),     rx, cy);
-		cy = drawDivineTimerText(g, fm, "BTM", fx.getDivineBattlemageTicks(),  rx, cy);
-		cy = drawDivineTimerText(g, fm, "MEN", fx.getMenaphiteRemedyTicks(),   rx, cy);
+		if (config.showDivineTimers())
+		{
+			cy = drawDivineTimerText(g, fm, "DSC", fx.getDivineSupercombatTicks(), lx, cy);
+			cy = drawDivineTimerText(g, fm, "DRG", fx.getDivineRangingTicks(),     lx, cy);
+			cy = drawDivineTimerText(g, fm, "DMG", fx.getDivineMagicTicks(),       lx, cy);
+			cy = drawDivineTimerText(g, fm, "BAS", fx.getDivineBastionTicks(),     lx, cy);
+			cy = drawDivineTimerText(g, fm, "BTM", fx.getDivineBattlemageTicks(),  lx, cy);
+			cy = drawDivineTimerText(g, fm, "MEN", fx.getMenaphiteRemedyTicks(),   lx, cy);
+		}
+
+		int staminaTicks = fx.getStaminaEffectTicks();
+		if (staminaTicks > 0)
+		{
+			int secs = staminaTicks * 600 / 1000;
+			g.setColor(secs > 60 ? GREEN : secs > 30 ? YELLOW : RED);
+			g.drawString("STAM " + (secs / 60) + ":" + String.format("%02d", secs % 60),
+				lx, cy + fm.getAscent());
+			cy += fm.getHeight() + 1;
+		}
 
 		if (self.isVenomed())
 		{
 			g.setColor(TOXIC_GREEN);
-			drawRightAligned(g, fm, "VENOM", rx, cy + fm.getAscent());
+			g.drawString("VENOM", lx, cy + fm.getAscent());
 			cy += fm.getHeight() + 1;
 		}
 		else if (self.isPoisoned())
 		{
 			g.setColor(TOXIC_GREEN);
-			drawRightAligned(g, fm, "POISON", rx, cy + fm.getAscent());
+			g.drawString("POISON", lx, cy + fm.getAscent());
 			cy += fm.getHeight() + 1;
 		}
 		if (self.isAntiVenomActive())
 		{
-			g.setColor(GREEN);
-			drawRightAligned(g, fm, "ANTI-V", rx, cy + fm.getAscent());
-			cy += fm.getHeight() + 1;
+			cy = drawDivineTimerText(g, fm, "ANTI-V", fx.getAntiVenomTicks(), lx, cy);
 		}
 		else if (self.isAntiPoisonActive())
 		{
-			g.setColor(GREEN);
-			drawRightAligned(g, fm, "ANTI-P", rx, cy + fm.getAscent());
-			cy += fm.getHeight() + 1;
+			cy = drawDivineTimerText(g, fm, "ANTI-P", fx.getAntiPoisonTicks(), lx, cy);
 		}
 
 		int drainTicks = self.getStatDrainTicksRemaining();
 		if (drainTicks > 0 && self.getStatDrainPeriod() > 0 && boosts.hasAnyBoost())
 		{
 			g.setColor(YELLOW);
-			drawRightAligned(g, fm, "drain " + drainTicks + "t", rx, cy + fm.getAscent());
+			g.drawString("drain " + drainTicks + "t", lx, cy + fm.getAscent());
 		}
 	}
 
-	private int drawDivineTimerText(Graphics2D g, FontMetrics fm, String label, int ticks, int rx, int cy)
+	/**
+	 * Draws a timer label. When ticks > 0 shows "LABEL M:SS" with colour-coded time.
+	 * When ticks == 0 the effect is active but the countdown is unavailable — shows
+	 * just the label in green so the buff is still visible.
+	 */
+	private int drawDivineTimerText(Graphics2D g, FontMetrics fm, String label, int ticks, int lx, int cy)
 	{
-		if (ticks <= 0) return cy;
-		int s = ticks * 600 / 1000;
-		g.setColor(s > 60 ? GREEN : s > 30 ? YELLOW : RED);
-		drawRightAligned(g, fm, label + " " + (s / 60) + ":" + String.format("%02d", s % 60),
-			rx, cy + fm.getAscent());
+		if (ticks > 0)
+		{
+			int s = ticks * 600 / 1000;
+			g.setColor(s > 60 ? GREEN : s > 30 ? YELLOW : RED);
+			g.drawString(label + " " + (s / 60) + ":" + String.format("%02d", s % 60),
+				lx, cy + fm.getAscent());
+		}
+		else
+		{
+			g.setColor(GREEN);
+			g.drawString(label, lx, cy + fm.getAscent());
+		}
 		return cy + fm.getHeight() + 1;
 	}
 
@@ -815,7 +1044,7 @@ public class PvpHudOverlay extends Overlay
 			slot = addBuff(buffScratch, buffPool, slot, vengIcon, "VENG", GREEN);
 
 		int freeze = self.getFreezeTicksRemaining();
-		if (freeze > 0)
+		if (freeze > 0 && config.showFreezeTimer())
 			slot = addBuff(buffScratch, buffPool, slot, iceIconFor(self.getFreezeSpriteId()),
 				ticksToSecs(freeze), LIGHT_BLUE);
 
@@ -827,12 +1056,17 @@ public class PvpHudOverlay extends Overlay
 				(s / 60) + ":" + String.format("%02d", s % 60), ORANGE);
 		}
 
-		slot = addDivineBuff(buffScratch, buffPool, slot, dscIcon, fx.getDivineSupercombatTicks());
-		slot = addDivineBuff(buffScratch, buffPool, slot, drgIcon, fx.getDivineRangingTicks());
-		slot = addDivineBuff(buffScratch, buffPool, slot, dmgIcon, fx.getDivineMagicTicks());
-		slot = addDivineBuff(buffScratch, buffPool, slot, basIcon, fx.getDivineBastionTicks());
-		slot = addDivineBuff(buffScratch, buffPool, slot, btmIcon, fx.getDivineBattlemageTicks());
-		slot = addDivineBuff(buffScratch, buffPool, slot, menIcon, fx.getMenaphiteRemedyTicks());
+		if (config.showDivineTimers())
+		{
+			slot = addDivineBuff(buffScratch, buffPool, slot, dscIcon, fx.getDivineSupercombatTicks());
+			slot = addDivineBuff(buffScratch, buffPool, slot, drgIcon, fx.getDivineRangingTicks());
+			slot = addDivineBuff(buffScratch, buffPool, slot, dmgIcon, fx.getDivineMagicTicks());
+			slot = addDivineBuff(buffScratch, buffPool, slot, basIcon, fx.getDivineBastionTicks());
+			slot = addDivineBuff(buffScratch, buffPool, slot, btmIcon, fx.getDivineBattlemageTicks());
+			slot = addDivineBuff(buffScratch, buffPool, slot, menIcon, fx.getMenaphiteRemedyTicks());
+		}
+
+		slot = addDivineBuff(buffScratch, buffPool, slot, staminaIcon, fx.getStaminaEffectTicks());
 
 		if (self.isVenomed())
 			slot = addBuff(buffScratch, buffPool, slot, venomIcon, "VEN", TOXIC_GREEN);
@@ -840,9 +1074,11 @@ public class PvpHudOverlay extends Overlay
 			slot = addBuff(buffScratch, buffPool, slot, poisonIcon, "PSN", TOXIC_GREEN);
 
 		if (self.isAntiVenomActive())
-			slot = addBuff(buffScratch, buffPool, slot, null, "ANTI-V", GREEN);
+			slot = addDivineBuffFallback(buffScratch, buffPool, slot, antiVenomItemIcon,
+				fx.getAntiVenomTicks(), "ANTI-V");
 		else if (self.isAntiPoisonActive())
-			slot = addBuff(buffScratch, buffPool, slot, null, "ANTI-P", GREEN);
+			slot = addDivineBuffFallback(buffScratch, buffPool, slot, antiPoisonItemIcon,
+				fx.getAntiPoisonTicks(), "ANTI-P");
 
 		int drainTicks = self.getStatDrainTicksRemaining();
 		if (drainTicks > 0 && self.getStatDrainPeriod() > 0 && boosts.hasAnyBoost())
@@ -873,6 +1109,14 @@ public class PvpHudOverlay extends Overlay
 			(s / 60) + ":" + String.format("%02d", s % 60), c);
 	}
 
+	/** Like addDivineBuff but shows the fallback label in green when ticks == 0 (active, no countdown). */
+	private static int addDivineBuffFallback(List<Buff> list, Buff[] pool, int slot,
+		BufferedImage icon, int ticks, String fallbackLabel)
+	{
+		if (ticks > 0) return addDivineBuff(list, pool, slot, icon, ticks);
+		return addBuff(list, pool, slot, icon, fallbackLabel, GREEN);
+	}
+
 	private BufferedImage iceIconFor(int spriteId)
 	{
 		switch (spriteId)
@@ -885,9 +1129,9 @@ public class PvpHudOverlay extends Overlay
 		}
 	}
 
-	// ── VERTICAL_BAR: icon to left of right-aligned label ────────────────────
+	// ── VERTICAL_BAR: icon then label, left-aligned in the buff column ──────────
 
-	private void drawBuffsVertBar(Graphics2D g, Font small, List<Buff> buffs, int rx, int cy)
+	private void drawBuffsVertBar(Graphics2D g, Font small, List<Buff> buffs, int lx, int cy)
 	{
 		g.setFont(small);
 		FontMetrics fm = g.getFontMetrics();
@@ -895,14 +1139,12 @@ public class PvpHudOverlay extends Overlay
 
 		for (Buff b : buffs)
 		{
-			int textX = rx - fm.stringWidth(b.label);
 			int iconY = cy + (lineH - 1 - ICON_SIZE) / 2;
-
 			if (b.icon != null)
 			{
-				g.drawImage(b.icon, textX - ICON_SIZE - ICON_GAP, iconY, ICON_SIZE, ICON_SIZE, null);
+				g.drawImage(b.icon, lx, iconY, ICON_SIZE, ICON_SIZE, null);
 			}
-
+			int textX = b.icon != null ? lx + ICON_SIZE + ICON_GAP : lx;
 			g.setColor(b.color);
 			g.drawString(b.label, textX, cy + fm.getAscent());
 			cy += lineH;
@@ -911,15 +1153,14 @@ public class PvpHudOverlay extends Overlay
 
 	// ── ICON_TRAY: horizontal strip of icons with labels below ────────────────
 
-	private void drawBuffsIconTray(Graphics2D g, Font small, List<Buff> buffs, Rectangle p, int cy)
+	private void drawBuffsIconTray(Graphics2D g, Font small, List<Buff> buffs, int lx, int cy)
 	{
 		g.setFont(small);
 		FontMetrics fm = g.getFontMetrics();
 
-		int slotW   = ICON_SIZE + ICON_GAP;
-		int count   = buffs.size();
-		int trayW   = count * slotW - ICON_GAP;
-		int trayX   = p.x + p.width - PAD - trayW; // right-aligned
+		int slotW  = ICON_SIZE + ICON_GAP;
+		int count  = buffs.size();
+		int trayX  = lx; // left-aligned in the buff column
 
 		for (int i = 0; i < count; i++)
 		{
@@ -939,8 +1180,8 @@ public class PvpHudOverlay extends Overlay
 
 			// Label centred under the icon
 			g.setColor(b.color);
-			int lx = ix + (ICON_SIZE - fm.stringWidth(b.label)) / 2;
-			g.drawString(b.label, lx, cy + ICON_SIZE + 1 + fm.getAscent());
+			int labelX = ix + (ICON_SIZE - fm.stringWidth(b.label)) / 2;
+			g.drawString(b.label, labelX, cy + ICON_SIZE + 1 + fm.getAscent());
 		}
 	}
 
@@ -948,6 +1189,7 @@ public class PvpHudOverlay extends Overlay
 
 	private void drawBoostRow(Graphics2D g, PvpHudState state, HudLayoutState layout, Font small)
 	{
+		if (!config.showBoostRow()) return;
 		Rectangle p = layout.getBoostRow();
 		if (p == null) return;
 
@@ -969,6 +1211,21 @@ public class PvpHudOverlay extends Overlay
 		drawBoostColumn(g, fm, defSkillIcon, "DEF", boosts.getDefenceBoosted(),  boosts.getDefenceReal(),  cx3, iconY, textBaseline);
 		drawBoostColumn(g, fm, rngSkillIcon, "RNG", boosts.getRangedBoosted(),   boosts.getRangedReal(),   cx4, iconY, textBaseline);
 		drawBoostColumn(g, fm, magSkillIcon, "MAG", boosts.getMagicBoosted(),    boosts.getMagicReal(),    cx5, iconY, textBaseline);
+	}
+
+	/** Renders an opponent stat column: skill icon above, plain level number below (white = known, gray = unknown). */
+	private void drawStatColumn(Graphics2D g, FontMetrics fm, BufferedImage icon,
+		String prefix, int level, int cx, int iconY, int textBaseline)
+	{
+		if (icon != null)
+			g.drawImage(icon, cx - ICON_SIZE / 2, iconY, ICON_SIZE, ICON_SIZE, null);
+		else
+		{
+			g.setColor(GRAY);
+			drawCentered(g, fm, prefix, cx, iconY + fm.getAscent());
+		}
+		g.setColor(level >= 0 ? WHITE : GRAY);
+		drawCentered(g, fm, level >= 0 ? String.valueOf(level) : "?", cx, textBaseline);
 	}
 
 	private void drawBoostColumn(Graphics2D g, FontMetrics fm, BufferedImage icon,
@@ -996,56 +1253,110 @@ public class PvpHudOverlay extends Overlay
 
 	// ── Action strip ──────────────────────────────────────────────────────────
 
-	private void drawActionStrip(Graphics2D g, PvpHudState state, HudLayoutState layout, Font small)
+	private void drawActionStrip(Graphics2D g, PvpHudState state, HudLayoutState layout,
+		Font small, boolean vertical)
 	{
 		Rectangle p = layout.getActionStrip();
 		if (p == null) return;
+
+		ActionClockState clock = state.getActionClock();
+		int atk    = clock.getAttackDelayTicks();
+		int atkMax = clock.getLastWeaponSpeedTicks();
+
+		// Vertical layout: compact dots on the left, T1/T2 timer text on the right.
+		if (vertical)
+		{
+			final int DOT_SZ_V  = 8;
+			final int DOT_GAP_V = 2;
+			int dotY = p.y + (p.height - DOT_SZ_V) / 2;
+
+			for (int i = 0; i < 10; i++)
+			{
+				g.setColor(i < Math.min(atk, 10) ? RED : DIVIDER);
+				g.fillRect(p.x + PAD + i * (DOT_SZ_V + DOT_GAP_V), dotY, DOT_SZ_V, DOT_SZ_V);
+			}
+
+			int textX    = p.x + PAD + 10 * (DOT_SZ_V + DOT_GAP_V) + 4;
+			int textRx   = p.x + p.width - PAD;
+			g.setFont(small);
+			FontMetrics fm = g.getFontMetrics();
+			int baseline = p.y + (p.height + fm.getAscent() - fm.getDescent()) / 2;
+
+			ManualTimerState t1 = state.getTimer1();
+			if (t1.isRunning() && textX < textRx)
+			{
+				int s = (int)(t1.getRemainingMs() / 1000);
+				g.setColor(s > 30 ? WHITE : RED);
+				String lbl = "T1 " + (s / 60) + ":" + String.format("%02d", s % 60);
+				g.drawString(lbl, textX, baseline);
+				textX += fm.stringWidth(lbl) + 6;
+			}
+			ManualTimerState t2 = state.getTimer2();
+			if (t2.isRunning() && textX < textRx)
+			{
+				int s = (int)(t2.getRemainingMs() / 1000);
+				g.setColor(s > 30 ? WHITE : RED);
+				g.drawString("T2 " + (s / 60) + ":" + String.format("%02d", s % 60), textX, baseline);
+			}
+			return;
+		}
 
 		g.setFont(small);
 		FontMetrics fm = g.getFontMetrics();
 		int baseline = p.y + (p.height + fm.getAscent() - fm.getDescent()) / 2;
 
-		ActionClockState clock = state.getActionClock();
-		int atk  = clock.getAttackDelayTicks();
-		int eat  = clock.getEatCooldownTicks();
-		int pot  = clock.getPotCooldownTicks();
-		EffectState fx   = state.getEffects();
-		int spec         = fx.getSpecEnergy();
+		int eat = state.getActionClock().getEatCooldownTicks();
+		int pot = state.getActionClock().getPotCooldownTicks();
 
-		// Spec recharge countdown: time until next +10% regen tick (~30 s)
-		String specSuffix = "";
-		if (spec < 100)
+		// Dot section: [ATK dots] [EAT dots × 3] [POT dots × 3]
+		final int DOT_SZ  = 5;
+		final int DOT_GAP = 3;
+		int dp = 0; // dot-pen x offset from (p.x + PAD)
+
+		int dotY    = p.y + (p.height - DOT_SZ) / 2;
+		int labelY  = p.y + (p.height + fm.getAscent() - fm.getDescent()) / 2;
+
+		if (atkMax > 0)
 		{
-			long lastRegen = fx.getLastSpecRegenMs();
-			if (lastRegen > 0)
+			for (int i = 0; i < atkMax; i++)
 			{
-				int secs = Math.max(0, 30 - (int) ((System.currentTimeMillis() - lastRegen) / 1000));
-				specSuffix = " (" + secs + "s)";
+				g.setColor(i < atk ? RED : DIVIDER);
+				g.fillRect(p.x + PAD + dp + i * (DOT_SZ + DOT_GAP), dotY, DOT_SZ, DOT_SZ);
 			}
+			dp += atkMax * (DOT_SZ + DOT_GAP) + DOT_GAP; // +DOT_GAP = group separator
 		}
 
-		// Build strip items dynamically; timers only shown while running
+		// EAT dots: "E" label then 3 dots (orange = cooling down, dimmed = ready)
+		{
+			g.setColor(eat > 0 ? ORANGE : DIVIDER);
+			g.drawString("E", p.x + PAD + dp, labelY);
+			dp += fm.stringWidth("E") + 2;
+			for (int i = 0; i < 3; i++)
+			{
+				g.setColor(i < eat ? ORANGE : DIVIDER);
+				g.fillRect(p.x + PAD + dp + i * (DOT_SZ + DOT_GAP), dotY, DOT_SZ, DOT_SZ);
+			}
+			dp += 3 * (DOT_SZ + DOT_GAP) + DOT_GAP;
+		}
+
+		// POT dots: "P" label then 3 dots (blue = cooling down, dimmed = ready)
+		{
+			g.setColor(pot > 0 ? POTION_BLUE : DIVIDER);
+			g.drawString("P", p.x + PAD + dp, labelY);
+			dp += fm.stringWidth("P") + 2;
+			for (int i = 0; i < 3; i++)
+			{
+				g.setColor(i < pot ? POTION_BLUE : DIVIDER);
+				g.fillRect(p.x + PAD + dp + i * (DOT_SZ + DOT_GAP), dotY, DOT_SZ, DOT_SZ);
+			}
+			dp += 3 * (DOT_SZ + DOT_GAP);
+		}
+
+		int dotSectionW = dp;
+
+		// Text items (spec moved to self panel; strip shows timers + context info only)
 		List<String> labelList = new ArrayList<>(6);
 		List<Color>  colorList  = new ArrayList<>(6);
-
-		labelList.add(atk > 0 ? "ATK " + atk + "t" : "ATK rdy");
-		colorList.add(atk > 0 ? YELLOW : GREEN);
-		labelList.add(eat > 0 ? "EAT " + eat + "t" : "EAT");
-		colorList.add(eat > 0 ? ORANGE : GREEN);
-		labelList.add(pot > 0 ? "POT " + pot + "t" : "POT");
-		colorList.add(pot > 0 ? ORANGE : GREEN);
-		SpecDisplay specDisplay = config.specDisplay();
-		if (specDisplay == SpecDisplay.LABELED)
-		{
-			labelList.add("SPEC " + spec + specSuffix);
-			colorList.add(spec < 100 ? YELLOW : WHITE);
-		}
-		else if (specDisplay == SpecDisplay.NUMBER)
-		{
-			labelList.add(spec + "%" + specSuffix);
-			colorList.add(spec < 100 ? YELLOW : WHITE);
-		}
-		// BAR mode: spec drawn separately below, not as a text label
 
 		ManualTimerState t1 = state.getTimer1();
 		if (t1.isRunning())
@@ -1077,7 +1388,7 @@ public class PvpHudOverlay extends Overlay
 		String[] labels = labelList.toArray(new String[0]);
 		Color[]  colors = colorList.toArray(new Color[0]);
 
-		int usable = p.width - PAD * 2;
+		int usable = p.width - PAD * 2 - dotSectionW;
 		int count  = labels.length;
 		while (count > 1)
 		{
@@ -1094,7 +1405,7 @@ public class PvpHudOverlay extends Overlay
 		int gapW = gaps > 0 ? (usable - textW) / gaps : 0;
 		int sepX = gapW / 2;
 
-		int x = p.x + PAD;
+		int x = p.x + PAD + dotSectionW;
 		for (int i = 0; i < count; i++)
 		{
 			int itemW = fm.stringWidth(labels[i]);
@@ -1106,15 +1417,6 @@ public class PvpHudOverlay extends Overlay
 			g.setColor(colors[i]);
 			g.drawString(labels[i], x, baseline);
 			x += itemW + gapW;
-		}
-
-		// BAR mode: thin spec bar along the bottom edge of the strip
-		if (config.specDisplay() == SpecDisplay.BAR)
-		{
-			int barY = p.y + p.height - 2;
-			int barW = (int) ((p.width - PAD * 2) * (spec / 100.0));
-			g.setColor(spec >= 100 ? GREEN : spec >= 50 ? YELLOW : ORANGE);
-			g.fillRect(p.x + PAD, barY, barW, 2);
 		}
 	}
 
@@ -1174,12 +1476,12 @@ public class PvpHudOverlay extends Overlay
 
 	private Rectangle getChatboxBounds()
 	{
-		// CHATAREA (the message lines region) is reliable across transparent/opaque modes.
-		// Fall back to UNIVERSE (root layer) if CHATAREA is unavailable.
-		Widget w = client.getWidget(InterfaceID.Chatbox.CHATAREA);
+		// UNIVERSE is the full chatbox panel — its bounds match the area we want to fill.
+		// Fall back to CHATAREA if UNIVERSE is unavailable (e.g. transparent chatbox mode).
+		Widget w = client.getWidget(InterfaceID.Chatbox.UNIVERSE);
 		if (w == null || w.isHidden() || w.getWidth() == 0)
 		{
-			w = client.getWidget(InterfaceID.Chatbox.UNIVERSE);
+			w = client.getWidget(InterfaceID.Chatbox.CHATAREA);
 		}
 		if (w == null || w.getWidth() == 0 || w.getHeight() == 0) return null;
 		return w.getBounds();

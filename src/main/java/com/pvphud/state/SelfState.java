@@ -51,6 +51,9 @@ public class SelfState
 	/** Wall-clock ms of the last incoming hitsplat; -1 = none yet. Used for HP bar shake. */
 	@Getter @Setter private long lastIncomingDamageMs = -1;
 
+	/** Run energy 0–100 (polled each game tick from client.getEnergy()). */
+	@Getter @Setter private int runEnergy;
+
 	/**
 	 * Self-calibrating drain period: the observed tick interval between
 	 * consecutive 1-point combat-stat drains back toward base. 0 = never
@@ -79,5 +82,6 @@ public class SelfState
 		statDrainPeriod = 0;
 		statDrainTicksRemaining = 0;
 		lastIncomingDamageMs = -1;
+		runEnergy = 0;
 	}
 }

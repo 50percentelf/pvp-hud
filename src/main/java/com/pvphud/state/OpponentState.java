@@ -7,6 +7,9 @@ import net.runelite.api.HeadIcon;
 /** Runtime-observable state for the current PvP opponent (left panel). */
 public class OpponentState
 {
+	/** Hiscores-derived base stats; populated asynchronously on combat start. */
+	@Getter
+	private final OpponentStats stats = new OpponentStats();
 	/** Opponent's display name; null when no opponent is tracked. */
 	@Getter @Setter
 	private String name;
@@ -78,5 +81,6 @@ public class OpponentState
 		overheadPrayer        = null;
 		pendingHitDamage      = 0;
 		pendingHitTimestampMs = -1;
+		stats.reset();
 	}
 }

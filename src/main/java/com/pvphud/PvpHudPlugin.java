@@ -10,6 +10,10 @@ import com.pvphud.state.OpponentState;
 import com.pvphud.state.PrayerEffect;
 import com.pvphud.state.PvpFightSession;
 import com.pvphud.state.SelfState;
+import java.io.IOException;
+import java.util.HashSet;
+import java.util.List;
+import java.util.Set;
 import javax.inject.Inject;
 import lombok.Getter;
 import lombok.extern.slf4j.Slf4j;
@@ -38,6 +42,7 @@ import net.runelite.api.events.InteractingChanged;
 import net.runelite.api.events.MenuOptionClicked;
 import net.runelite.api.events.StatChanged;
 import net.runelite.api.events.VarbitChanged;
+import net.runelite.client.callback.ClientThread;
 import net.runelite.client.config.ConfigManager;
 import net.runelite.client.eventbus.Subscribe;
 import net.runelite.client.events.ConfigChanged;
@@ -50,7 +55,13 @@ import net.runelite.client.ui.overlay.OverlayPosition;
 import net.runelite.client.util.HotkeyListener;
 import net.runelite.http.api.item.ItemEquipmentStats;
 import net.runelite.http.api.item.ItemStats;
-import java.util.List;
+import okhttp3.Call;
+import okhttp3.Callback;
+import okhttp3.HttpUrl;
+import okhttp3.OkHttpClient;
+import okhttp3.Request;
+import okhttp3.Response;
+import okhttp3.ResponseBody;
 
 @Slf4j
 @PluginDescriptor(
@@ -60,15 +71,21 @@ import java.util.List;
 )
 public class PvpHudPlugin extends Plugin
 {
-	@Inject private Client       client;
-	@Inject private PvpHudConfig config;
+	@Inject private Client         client;
+	@Inject private PvpHudConfig   config;
+	@Inject private ConfigManager  configManager;
 	@Inject private OverlayManager overlayManager;
 	@Inject private PvpHudOverlay  overlay;
 	@Inject private ItemManager    itemManager;
 	@Inject private KeyManager     keyManager;
+	@Inject private OkHttpClient   okHttpClient;
+	@Inject private ClientThread   clientThread;
 
 	@Getter
 	private final PvpHudState hudState = new PvpHudState();
+
+	/** Names already queued for a hiscores lookup this session (case-lowered). */
+	private final Set<String> lookedUp = new HashSet<>();
 
 	/** Previous HP XP value — used only to drive the pending-hit animation. */
 	private long prevHpXp;
@@ -84,6 +101,15 @@ public class PvpHudPlugin extends Plugin
 	 * weapon type; kept as fallback alongside graphic-based detection.
 	 */
 	private static final int[] ANIM_VENGEANCE_IDS = {4410, 4411, 4671, 4072, 4071};
+
+	private final HotkeyListener hudToggleListener = new HotkeyListener(() -> config.hudToggleKey())
+	{
+		@Override
+		public void hotkeyPressed()
+		{
+			configManager.setConfiguration("pvp-hud", "hudVisible", !config.hudVisible());
+		}
+	};
 
 	private final HotkeyListener timer1Listener = new HotkeyListener(() -> config.timer1Key())
 	{
@@ -112,6 +138,7 @@ public class PvpHudPlugin extends Plugin
 	@Override
 	protected void startUp() throws Exception
 	{
+		lookedUp.clear();
 		hudState.fullReset();
 		hudState.getContext().setMode(config.hudMode());
 		hudState.getContext().setPvpActive(config.hudVisible());
@@ -119,6 +146,7 @@ public class PvpHudPlugin extends Plugin
 		applyOverlayPosition();
 		overlay.loadIcons();
 		overlayManager.add(overlay);
+		keyManager.registerKeyListener(hudToggleListener);
 		keyManager.registerKeyListener(timer1Listener);
 		keyManager.registerKeyListener(timer2Listener);
 		log.info("PvP HUD started");
@@ -127,6 +155,7 @@ public class PvpHudPlugin extends Plugin
 	@Override
 	protected void shutDown() throws Exception
 	{
+		keyManager.unregisterKeyListener(hudToggleListener);
 		keyManager.unregisterKeyListener(timer1Listener);
 		keyManager.unregisterKeyListener(timer2Listener);
 		overlayManager.remove(overlay);
@@ -161,15 +190,33 @@ public class PvpHudPlugin extends Plugin
 			client.getVarpValue(VarPlayer.SPECIAL_ATTACK_PERCENT) / 10);
 
 		int poisonVal = client.getVarpValue(VarPlayer.POISON);
-		SelfState self = hudState.getSelf();
+		SelfState   self  = hudState.getSelf();
+		EffectState efxI  = hudState.getEffects();
 		self.setVenomed(poisonVal >= 1_000_000);
 		self.setPoisoned(poisonVal > 0 && poisonVal < 1_000_000);
-		self.setAntiVenomActive(poisonVal <= -500_000);
-		self.setAntiPoisonActive(poisonVal < 0 && poisonVal > -500_000);
+		if (poisonVal < 0 && poisonVal > -500_000)
+		{
+			self.setAntiVenomActive(false);
+			self.setAntiPoisonActive(true);
+			efxI.setAntiPoisonTicks(Math.abs(poisonVal) * 30);
+		}
+		else if (poisonVal <= -500_000)
+		{
+			self.setAntiVenomActive(true);
+			self.setAntiPoisonActive(false);
+			efxI.setAntiVenomTicks((Math.abs(poisonVal) - 500_000) * 30);
+		}
+		else
+		{
+			self.setAntiVenomActive(false);
+			self.setAntiPoisonActive(false);
+		}
 		self.setCurrentHp(client.getBoostedSkillLevel(Skill.HITPOINTS));
 		self.setMaxHp(client.getRealSkillLevel(Skill.HITPOINTS));
 		self.setCurrentPrayer(client.getBoostedSkillLevel(Skill.PRAYER));
 		self.setMaxPrayer(client.getRealSkillLevel(Skill.PRAYER));
+		// client.getEnergy() returns 0-10000; divide by 100 for 0-100%
+		self.setRunEnergy(client.getEnergy() / 100);
 		self.setVengActive(client.getVarbitValue(Varbits.VENGEANCE_ACTIVE) == 1);
 		self.setTeleBlockTicksRemaining(client.getVarbitValue(Varbits.TELEBLOCK));
 
@@ -180,6 +227,8 @@ public class PvpHudPlugin extends Plugin
 		fx.setDivineBastionTicks(client.getVarbitValue(Varbits.DIVINE_BASTION));
 		fx.setDivineBattlemageTicks(client.getVarbitValue(Varbits.DIVINE_BATTLEMAGE));
 		fx.setMenaphiteRemedyTicks(client.getVarbitValue(Varbits.MENAPHITE_REMEDY));
+		// Stamina effect is self-tracked (STAMINA_EFFECT is binary, not a countdown).
+		// At startup we can't know remaining time, so we don't initialize the timer.
 
 		prevHpXp = client.getSkillExperience(Skill.HITPOINTS);
 	}
@@ -202,6 +251,7 @@ public class PvpHudPlugin extends Plugin
 		if (event.getGameState() == GameState.LOGGING_IN
 			|| event.getGameState() == GameState.HOPPING)
 		{
+			lookedUp.clear();
 			hudState.fullReset();
 		}
 	}
@@ -354,6 +404,15 @@ public class PvpHudPlugin extends Plugin
 		{
 			hudState.getEffects().setMenaphiteRemedyTicks(value);
 		}
+		else if (varbitId == Varbits.STAMINA_EFFECT)
+		{
+			// STAMINA_EFFECT is not a countdown varbit — it's a binary flag (1 = active, 0 = done).
+			// We self-track the duration: 200 ticks (2 min) per dose, reset on each activation.
+			if (value > 0)
+				hudState.getEffects().setStaminaEffectTicks(200);
+			else
+				hudState.getEffects().setStaminaEffectTicks(0);
+		}
 		else if (varpId == VarPlayer.SPECIAL_ATTACK_PERCENT)
 		{
 			int newSpec = value / 10;
@@ -365,13 +424,37 @@ public class PvpHudPlugin extends Plugin
 		}
 		else if (varpId == VarPlayer.POISON)
 		{
-			SelfState self = hudState.getSelf();
+			SelfState   self = hudState.getSelf();
+			EffectState efx  = hudState.getEffects();
 			self.setVenomed(value >= 1_000_000);
 			self.setPoisoned(value > 0 && value < 1_000_000);
 			// Negative POISON var = active anti-poison/anti-venom protection.
-			// Values <= -500,000 indicate anti-venom potions (antidote++/anti-venom).
-			self.setAntiVenomActive(value <= -500_000);
-			self.setAntiPoisonActive(value < 0 && value > -500_000);
+			// Values <= -500,000 indicate anti-venom (antidote++/anti-venom potion).
+			// The magnitude of the varp encodes remaining protection:
+			//   anti-poison:  |value| * 30 ticks
+			//   anti-venom:   (|value| - 500_000) * 30 ticks
+			// Each game tick, the POISON varp ticks by +1 toward 0.
+			if (value < 0 && value > -500_000)
+			{
+				self.setAntiVenomActive(false);
+				self.setAntiPoisonActive(true);
+				efx.setAntiPoisonTicks(Math.abs(value) * 30);
+				efx.setAntiVenomTicks(0);
+			}
+			else if (value <= -500_000)
+			{
+				self.setAntiVenomActive(true);
+				self.setAntiPoisonActive(false);
+				efx.setAntiVenomTicks((Math.abs(value) - 500_000) * 30);
+				efx.setAntiPoisonTicks(0);
+			}
+			else
+			{
+				self.setAntiVenomActive(false);
+				self.setAntiPoisonActive(false);
+				efx.setAntiPoisonTicks(0);
+				efx.setAntiVenomTicks(0);
+			}
 		}
 	}
 
@@ -434,10 +517,21 @@ public class PvpHudPlugin extends Plugin
 		if (self.getStatDrainTicksRemaining() > 0)
 			self.setStatDrainTicksRemaining(self.getStatDrainTicksRemaining() - 1);
 
+		EffectState fxTick = hudState.getEffects();
+		if (fxTick.getStaminaEffectTicks() > 0)
+			fxTick.setStaminaEffectTicks(fxTick.getStaminaEffectTicks() - 1);
+		if (fxTick.getAntiPoisonTicks() > 0)
+			fxTick.setAntiPoisonTicks(fxTick.getAntiPoisonTicks() - 1);
+		if (fxTick.getAntiVenomTicks() > 0)
+			fxTick.setAntiVenomTicks(fxTick.getAntiVenomTicks() - 1);
+
 		ActionClockState clock = hudState.getActionClock();
 		if (clock.getAttackDelayTicks() > 0) clock.setAttackDelayTicks(clock.getAttackDelayTicks() - 1);
 		if (clock.getEatCooldownTicks() > 0) clock.setEatCooldownTicks(clock.getEatCooldownTicks() - 1);
 		if (clock.getPotCooldownTicks() > 0) clock.setPotCooldownTicks(clock.getPotCooldownTicks() - 1);
+
+		// Run energy: polled each tick (no reliable varbit event fires for it)
+		hudState.getSelf().setRunEnergy(client.getEnergy() / 100);
 
 		// Expire stale fight session (no combat for ~30 s)
 		PvpFightSession session = hudState.getCurrentSession();
@@ -470,7 +564,11 @@ public class PvpHudPlugin extends Plugin
 		{
 			int anim = client.getLocalPlayer().getAnimation();
 			if (anim != -1 && client.getLocalPlayer().getInteracting() != null)
-				hudState.getActionClock().setAttackDelayTicks(getWeaponSpeed());
+			{
+				int speed = getWeaponSpeed();
+				hudState.getActionClock().setAttackDelayTicks(speed);
+				hudState.getActionClock().setLastWeaponSpeedTicks(speed);
+			}
 		}
 		else if (actor instanceof Player)
 		{
@@ -497,18 +595,20 @@ public class PvpHudPlugin extends Plugin
 	@Subscribe
 	public void onInteractingChanged(InteractingChanged event)
 	{
-		if (event.getSource() != client.getLocalPlayer()) return;
+		Actor source = event.getSource();
 		Actor target = event.getTarget();
 
-		if (target instanceof Player)
+		if (source == client.getLocalPlayer())
 		{
+			// Local player changed target
+			if (!(target instanceof Player)) return;
 			String name = ((Player) target).getName();
 			if (name == null) return;
 
 			PvpFightSession session = hudState.getCurrentSession();
 
 			// Re-targeting the same opponent (e.g. after a brief null) — keep session alive
-			if (session != null && name.equals(session.getOpponentName()))
+			if (session != null && name.equalsIgnoreCase(session.getOpponentName()))
 			{
 				hudState.getOpponent().setName(name);
 				return;
@@ -518,8 +618,25 @@ public class PvpHudPlugin extends Plugin
 			hudState.getOpponent().reset();
 			hudState.getOpponent().setName(name);
 			hudState.beginSession(name, client.getTickCount());
+			enqueueHiscoresLookup(name);
 		}
-		// Null target: do nothing — session survives brief disengagement
+		else if (source instanceof Player && target == client.getLocalPlayer())
+		{
+			// Another player targeted the local player — create a session if none exists,
+			// so incoming hits are tracked in the fight panel before the player clicks back.
+			String name = ((Player) source).getName();
+			if (name == null) return;
+
+			PvpFightSession session = hudState.getCurrentSession();
+			if (session == null)
+			{
+				hudState.getOpponent().reset();
+				hudState.getOpponent().setName(name);
+				hudState.beginSession(name, client.getTickCount());
+				enqueueHiscoresLookup(name);
+			}
+		}
+		// Null target from local player: do nothing — session survives brief disengagement
 	}
 
 	// ── Hitsplat events — combat log and HP estimation ────────────────────────
@@ -620,7 +737,7 @@ public class PvpHudPlugin extends Plugin
 
 		for (Player p : players)
 		{
-			if (p == null || !p.getName().equals(opp.getName())) continue;
+			if (p == null || p.getName() == null || !p.getName().equalsIgnoreCase(opp.getName())) continue;
 
 			opp.setOverheadPrayer(p.getOverheadIcon());
 
@@ -699,6 +816,91 @@ public class PvpHudPlugin extends Plugin
 			case GraphicID.ICE_BLITZ:   return SpriteID.SPELL_ICE_BLITZ;
 			case GraphicID.ICE_BARRAGE: return SpriteID.SPELL_ICE_BARRAGE;
 			default:                    return SpriteID.SPELL_ICE_BARRAGE;
+		}
+	}
+
+	// ── Hiscores lookup ───────────────────────────────────────────────────────────
+
+	private void enqueueHiscoresLookup(String playerName)
+	{
+		String key = playerName.toLowerCase();
+		if (!lookedUp.add(key)) return; // already queued
+
+		HttpUrl url = HttpUrl.parse("https://secure.runescape.com/m=hiscore_oldschool/index_lite.ws")
+			.newBuilder()
+			.addQueryParameter("player", playerName)
+			.build();
+		Request request = new Request.Builder().url(url).build();
+
+		okHttpClient.newCall(request).enqueue(new Callback()
+		{
+			@Override
+			public void onFailure(Call call, IOException e)
+			{
+				log.debug("Hiscores lookup failed for {}: {}", playerName, e.getMessage());
+			}
+
+			@Override
+			public void onResponse(Call call, Response response)
+			{
+				try (ResponseBody body = response.body())
+				{
+					if (!response.isSuccessful() || body == null) return;
+					String text = body.string();
+					applyHiscoresResponse(playerName, text);
+				}
+				catch (IOException e)
+				{
+					log.debug("Hiscores read error for {}: {}", playerName, e.getMessage());
+				}
+			}
+		});
+	}
+
+	private void applyHiscoresResponse(String playerName, String text)
+	{
+		String[] lines = text.split("\n");
+		// Hiscores line order: Total(0), Attack(1), Defence(2), Strength(3),
+		//   Hitpoints(4), Ranged(5), Prayer(6), Magic(7), ...
+		// Each line: rank,level,xp
+		try
+		{
+			int attack   = parseHiscoreLevel(lines, 1);
+			int defence  = parseHiscoreLevel(lines, 2);
+			int strength = parseHiscoreLevel(lines, 3);
+			int ranged   = parseHiscoreLevel(lines, 5);
+			int magic    = parseHiscoreLevel(lines, 7);
+
+			clientThread.invoke(() ->
+			{
+				OpponentState opp = hudState.getOpponent();
+				if (!opp.isTracked() || !playerName.equalsIgnoreCase(opp.getName())) return;
+				opp.getStats().setAttack(attack);
+				opp.getStats().setDefence(defence);
+				opp.getStats().setStrength(strength);
+				opp.getStats().setRanged(ranged);
+				opp.getStats().setMagic(magic);
+			});
+		}
+		catch (Exception e)
+		{
+			log.debug("Failed to parse hiscores for {}: {}", playerName, e.getMessage());
+		}
+	}
+
+	private static int parseHiscoreLevel(String[] lines, int index)
+	{
+		if (index >= lines.length) return -1;
+		String[] parts = lines[index].trim().split(",");
+		if (parts.length < 2) return -1;
+		try
+		{
+			int level = Integer.parseInt(parts[1].trim());
+			return level > 0 ? level : -1;
+		}
+		catch (NumberFormatException e)
+		{
+			return -1;
 		}
 	}
 

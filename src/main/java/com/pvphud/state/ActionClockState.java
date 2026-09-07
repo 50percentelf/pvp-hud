@@ -10,6 +10,10 @@ public class ActionClockState
 	@Getter @Setter
 	private int attackDelayTicks;
 
+	/** Weapon speed (ticks) at the time of the last attack; 0 = never attacked. */
+	@Getter @Setter
+	private int lastWeaponSpeedTicks;
+
 	/** Ticks until the player may eat food again (0 = ready). */
 	@Getter @Setter
 	private int eatCooldownTicks;
@@ -38,5 +42,6 @@ public class ActionClockState
 		attackDelayTicks = 0;
 		eatCooldownTicks = 0;
 		potCooldownTicks = 0;
+		lastWeaponSpeedTicks = 0;
 	}
 }
