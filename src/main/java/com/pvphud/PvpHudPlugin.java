@@ -563,7 +563,7 @@ public class PvpHudPlugin extends Plugin
 		{
 			if (p == null || !p.getName().equals(opp.getName())) continue;
 
-			opp.setSmiteActive(p.getOverheadIcon() == HeadIcon.SMITE);
+			opp.setOverheadPrayer(p.getOverheadIcon());
 
 			int ratio = p.getHealthRatio();
 			int scale = p.getHealthScale();

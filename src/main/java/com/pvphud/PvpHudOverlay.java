@@ -21,6 +21,7 @@ import java.util.ArrayList;
 import java.util.List;
 import javax.inject.Inject;
 import net.runelite.api.Client;
+import net.runelite.api.HeadIcon;
 import net.runelite.api.SpriteID;
 import net.runelite.api.gameval.InterfaceID;
 import net.runelite.api.gameval.ItemID;
@@ -36,15 +37,15 @@ public class PvpHudOverlay extends Overlay
 {
 	// ── Layout constants ──────────────────────────────────────────────────────
 	private static final int ACTION_STRIP_H = 22;
-	private static final int BOOST_ROW_H    = 28; // icon (14) + gap (2) + text (~7) + padding
+	private static final int BOOST_ROW_H    = 34; // icon (18) + gap (2) + text (~9) + padding
 	private static final int PAD            = 6;
 	private static final int BAR_H          = 5;
 	private static final int VERT_W         = 220;
 	private static final int VERT_H         = 400;
 
 	/** Icon size for VERTICAL_BAR and ICON_TRAY buff styles (pixels). */
-	private static final int ICON_SIZE = 14;
-	private static final int ICON_GAP  = 2;
+	private static final int ICON_SIZE = 18;
+	private static final int ICON_GAP  = 3;
 
 	// Menaphite Remedy 4-dose — not yet in gameval/ItemID, use raw ID
 	private static final int MENAPHITE_REMEDY_4 = 27202;
@@ -403,7 +404,7 @@ public class PvpHudOverlay extends Overlay
 			g.setFont(small);
 			smFm = g.getFontMetrics();
 			g.setColor(LIGHT_BLUE);
-			drawRightAligned(g, smFm, "ICE " + oppFreeze + "t", p.x + p.width - PAD,
+			drawRightAligned(g, smFm, "ICE " + ticksToSecs(oppFreeze), p.x + p.width - PAD,
 				cy + smFm.getAscent());
 			cy += smFm.getHeight() + 2;
 		}
@@ -419,15 +420,29 @@ public class PvpHudOverlay extends Overlay
 			cy += smFm.getHeight() + 2;
 		}
 
-		// Smite indicator
-		if (opp.isSmiteActive())
+		// Overhead prayer indicator
+		HeadIcon prayer = opp.getOverheadPrayer();
+		if (prayer != null)
 		{
 			g.setFont(small);
 			smFm = g.getFontMetrics();
-			g.setColor(PRAYER_FG);
-			drawRightAligned(g, smFm, "SMITE", p.x + p.width - PAD,
-				cy + smFm.getAscent());
-			cy += smFm.getHeight() + 2;
+			String prayerLabel;
+			Color prayerColor;
+			switch (prayer)
+			{
+				case MELEE:   prayerLabel = "PRAY MELE"; prayerColor = YELLOW;     break;
+				case RANGED:  prayerLabel = "PRAY RNG";  prayerColor = GREEN;      break;
+				case MAGIC:   prayerLabel = "PRAY MAGE"; prayerColor = LIGHT_BLUE; break;
+				case SMITE:   prayerLabel = "SMITE";     prayerColor = PRAYER_FG;  break;
+				default:      prayerLabel = null;         prayerColor = null;       break;
+			}
+			if (prayerLabel != null)
+			{
+				g.setColor(prayerColor);
+				drawRightAligned(g, smFm, prayerLabel, p.x + p.width - PAD,
+					cy + smFm.getAscent());
+				cy += smFm.getHeight() + 2;
+			}
 		}
 
 		// Last outgoing hit in corner
@@ -627,7 +642,7 @@ public class PvpHudOverlay extends Overlay
 		if (freezeTicks > 0)
 		{
 			g.setColor(LIGHT_BLUE);
-			drawRightAligned(g, fm, "ICE " + freezeTicks + "t", rx, cy + fm.getAscent());
+			drawRightAligned(g, fm, "ICE " + ticksToSecs(freezeTicks), rx, cy + fm.getAscent());
 			cy += fm.getHeight() + 1;
 		}
 
@@ -692,7 +707,7 @@ public class PvpHudOverlay extends Overlay
 		int freeze = self.getFreezeTicksRemaining();
 		if (freeze > 0)
 			slot = addBuff(buffScratch, buffPool, slot, iceIconFor(self.getFreezeSpriteId()),
-				freeze + "t", LIGHT_BLUE);
+				ticksToSecs(freeze), LIGHT_BLUE);
 
 		int tb = self.getTeleBlockTicksRemaining();
 		if (tb > 0)
@@ -966,6 +981,12 @@ public class PvpHudOverlay extends Overlay
 	private void drawRightAligned(Graphics2D g, FontMetrics fm, String text, int rx, int baseline)
 	{
 		g.drawString(text, rx - fm.stringWidth(text), baseline);
+	}
+
+	/** Convert game ticks to a rounded-seconds string, e.g. 32 → "19s". */
+	private static String ticksToSecs(int ticks)
+	{
+		return (int) Math.round(ticks * 0.6) + "s";
 	}
 
 	private Rectangle getChatboxBounds()

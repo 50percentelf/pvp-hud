@@ -2,6 +2,7 @@ package com.pvphud.state;
 
 import lombok.Getter;
 import lombok.Setter;
+import net.runelite.api.HeadIcon;
 
 /** State for the current PvP opponent (left panel). */
 public class OpponentState
@@ -39,13 +40,18 @@ public class OpponentState
 	@Getter @Setter
 	private int freezeTicksRemaining = 0;
 
-	/** True when the opponent has Smite as their active overhead prayer. */
+	/** Active overhead prayer (null = none). Updated each game tick. */
 	@Getter @Setter
-	private boolean smiteActive;
+	private HeadIcon overheadPrayer;
 
 	public boolean isVengActive()
 	{
 		return vengExpiryMs > 0 && System.currentTimeMillis() < vengExpiryMs;
+	}
+
+	public boolean isSmiteActive()
+	{
+		return overheadPrayer == HeadIcon.SMITE;
 	}
 
 	/** Mark the opponent's Vengeance as active; expires after 30 s. */
@@ -73,6 +79,6 @@ public class OpponentState
 		lastOutgoingHit = -1;
 		totalDamageDealt = 0;
 		freezeTicksRemaining = 0;
-		smiteActive = false;
+		overheadPrayer = null;
 	}
 }
