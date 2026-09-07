@@ -36,13 +36,9 @@ public class PvpFightSession
 	/** True once terminate() has been called; immutable after that. */
 	@Getter private boolean terminated;
 
-	// ── CHANCE! detection — rolling max per direction ──────────────────────────
-	private int     maxOutgoingHit;
-	private int     maxIncomingHit;
-	private boolean hasOutgoingHit;
-	private boolean hasIncomingHit;
-
-	// ── Same-tick STACK detection ──────────────────────────────────────────────
+	// ── STACK detection — multiple damage sources on the same actor in one tick ─
+	// Outgoing stack: e.g. weapon hit + recoil ring on the opponent.
+	// Incoming stack: e.g. opponent weapon hit + their vengeance on us.
 	private int lastOutgoingHitTick = -1;
 	private int lastIncomingHitTick = -1;
 
@@ -72,40 +68,27 @@ public class PvpFightSession
 	}
 
 	/**
-	 * Returns true if this outgoing hit ties or beats the rolling per-session max,
-	 * meaning it qualifies as a CHANCE! event. Also updates the max.
-	 * The first outgoing hit is never flagged (no baseline to compare against).
+	 * Records an outgoing hit tick and returns true if a second (or later) outgoing
+	 * hitsplat landed on the opponent in the same game tick — indicating a damage
+	 * stack (e.g. weapon hit + recoil ring both resolving at once).
 	 */
-	public boolean checkOutgoingChance(int damage)
+	public boolean recordAndCheckOutgoingStack(int tick)
 	{
-		boolean chance = hasOutgoingHit && damage > 0 && damage >= maxOutgoingHit;
-		if (damage > 0 && damage >= maxOutgoingHit) maxOutgoingHit = damage;
-		hasOutgoingHit = true;
-		return chance;
+		boolean stack = (tick == lastOutgoingHitTick);
+		lastOutgoingHitTick = tick;
+		return stack;
 	}
 
 	/**
-	 * Returns true if this incoming hit ties or beats the rolling per-session max.
-	 * The first incoming hit is never flagged.
+	 * Records an incoming hit tick and returns true if a second (or later) incoming
+	 * hitsplat landed on the local player in the same game tick — indicating a
+	 * damage stack (e.g. opponent weapon hit + their vengeance both resolving at once).
 	 */
-	public boolean checkIncomingChance(int damage)
+	public boolean recordAndCheckIncomingStack(int tick)
 	{
-		boolean chance = hasIncomingHit && damage > 0 && damage >= maxIncomingHit;
-		if (damage > 0 && damage >= maxIncomingHit) maxIncomingHit = damage;
-		hasIncomingHit = true;
-		return chance;
-	}
-
-	/** True if an outgoing hit on {@code tick} lands the same tick as the last incoming hit. */
-	public boolean isOutgoingStack(int tick)
-	{
-		return lastIncomingHitTick >= 0 && tick == lastIncomingHitTick;
-	}
-
-	/** True if an incoming hit on {@code tick} lands the same tick as the last outgoing hit. */
-	public boolean isIncomingStack(int tick)
-	{
-		return lastOutgoingHitTick >= 0 && tick == lastOutgoingHitTick;
+		boolean stack = (tick == lastIncomingHitTick);
+		lastIncomingHitTick = tick;
+		return stack;
 	}
 
 	/** Recent events newest-first; never null. */

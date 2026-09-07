@@ -1,58 +1,71 @@
 package com.pvphud.state;
 
 /**
- * Tracks protection windows after PvP events:
- *   - PJ safe:      ticks after a kill before another player can attack you
- *   - Combat lock:  ticks until the combat flag clears (prevents logout)
- *   - Immune:       post-kill immunity period (LMS)
- *   - Switch lock:  brief delay after switching targets (tracks re-targeting flicker)
+ * PvP protection timers with correct OSRS values.
+ *
+ * PJ safe timer
+ *   Wilderness (singles/multi): 20 ticks / 12 s.
+ *   PvP worlds (since 25 Mar 2026): 16 ticks / 9.6 s.
+ *   Bounty Hunter does not use this system.
+ *   Refreshed on EVERY attack between the two players, including 0-damage.
+ *
+ * Combat-logout restriction
+ *   16 ticks / 9.6 s after the last INCOMING hit.
+ *   Outgoing attacks do NOT refresh this timer.
+ *
+ * Under-attack lock
+ *   20 ticks / 12 s after receiving an incoming hit.
+ *   During this window the player can only attack back at their current attacker.
+ *   Reset each time another incoming hit lands.
+ *
+ * LMS post-kill immunity
+ *   33 ticks / ~20 s — only set when the plugin detects the player is in LMS.
  */
 public class ProtectionState
 {
 	private int pjSafeTicksRemaining;
 	private int combatLogoutTicksRemaining;
-	private int immuneTicksRemaining;
-	private int targetSwitchLockTicksRemaining;
+	private int underAttackLockTicksRemaining;
+	private int lmsImmuneTicksRemaining;
 
-	public int  getPjSafeTicksRemaining()           { return pjSafeTicksRemaining; }
-	public int  getCombatLogoutTicksRemaining()      { return combatLogoutTicksRemaining; }
-	public int  getImmuneTicksRemaining()            { return immuneTicksRemaining; }
-	public int  getTargetSwitchLockTicksRemaining()  { return targetSwitchLockTicksRemaining; }
+	public int  getPjSafeTicksRemaining()            { return pjSafeTicksRemaining; }
+	public int  getCombatLogoutTicksRemaining()       { return combatLogoutTicksRemaining; }
+	public int  getUnderAttackLockTicksRemaining()    { return underAttackLockTicksRemaining; }
+	public int  getLmsImmuneTicksRemaining()          { return lmsImmuneTicksRemaining; }
 
-	public boolean isPjSafe()             { return pjSafeTicksRemaining > 0; }
-	public boolean isInCombatLogoutLock() { return combatLogoutTicksRemaining > 0; }
-	public boolean isImmune()             { return immuneTicksRemaining > 0; }
-	public boolean isTargetSwitchLocked() { return targetSwitchLockTicksRemaining > 0; }
+	public boolean isPjSafe()            { return pjSafeTicksRemaining > 0; }
+	public boolean isInCombatLogoutLock(){ return combatLogoutTicksRemaining > 0; }
+	public boolean isUnderAttackLocked() { return underAttackLockTicksRemaining > 0; }
+	public boolean isLmsImmune()         { return lmsImmuneTicksRemaining > 0; }
 
 	/**
-	 * Called when the local player's current opponent dies (HP ratio → 0).
+	 * Called on every attack exchange between the local player and their opponent,
+	 * including 0-damage (splash) hits — OSRS PJ protection activates on any attack.
 	 *
-	 * @param pjSafeTicks  ticks of PJ protection (e.g. 59 = ~36 s, wilderness standard)
-	 * @param immuneTicks  ticks of post-kill immunity (e.g. 100 = 60 s, LMS)
+	 * @param pjTicks 20 for normal Wilderness, 16 for PvP worlds.
 	 */
-	public void onKill(int pjSafeTicks, int immuneTicks)
+	public void onAttackExchanged(int pjTicks)
 	{
-		pjSafeTicksRemaining = pjSafeTicks;
-		immuneTicksRemaining = immuneTicks;
+		pjSafeTicksRemaining = pjTicks;
 	}
 
-	/** Called when any incoming hitsplat lands on the local player. */
-	public void onIncomingDamage()
+	/**
+	 * Called when any incoming hit (including 0-damage) lands on the local player.
+	 * Sets the 16-tick logout restriction and the 20-tick under-attack lock.
+	 */
+	public void onIncomingHit()
 	{
-		combatLogoutTicksRemaining = 10;
+		combatLogoutTicksRemaining    = 16;
+		underAttackLockTicksRemaining = 20;
 	}
 
-	/** Called when the local player deals an outgoing hit. */
-	public void onOutgoingDamage()
+	/**
+	 * Called when the local player kills an opponent while inside LMS.
+	 * Must NOT be called for normal Wilderness or PvP-world kills.
+	 */
+	public void onKillInLms()
 	{
-		if (combatLogoutTicksRemaining < 10)
-			combatLogoutTicksRemaining = 10;
-	}
-
-	/** Called when the local player switches to a genuinely new opponent. */
-	public void onTargetSwitch()
-	{
-		targetSwitchLockTicksRemaining = 3;
+		lmsImmuneTicksRemaining = 33;
 	}
 
 	/** Decrement all timers by one game tick. */
@@ -60,15 +73,15 @@ public class ProtectionState
 	{
 		if (pjSafeTicksRemaining           > 0) pjSafeTicksRemaining--;
 		if (combatLogoutTicksRemaining     > 0) combatLogoutTicksRemaining--;
-		if (immuneTicksRemaining           > 0) immuneTicksRemaining--;
-		if (targetSwitchLockTicksRemaining > 0) targetSwitchLockTicksRemaining--;
+		if (underAttackLockTicksRemaining  > 0) underAttackLockTicksRemaining--;
+		if (lmsImmuneTicksRemaining        > 0) lmsImmuneTicksRemaining--;
 	}
 
 	public void reset()
 	{
 		pjSafeTicksRemaining           = 0;
 		combatLogoutTicksRemaining     = 0;
-		immuneTicksRemaining           = 0;
-		targetSwitchLockTicksRemaining = 0;
+		underAttackLockTicksRemaining  = 0;
+		lmsImmuneTicksRemaining        = 0;
 	}
 }

@@ -21,6 +21,7 @@ import lombok.Getter;
 import lombok.extern.slf4j.Slf4j;
 import net.runelite.api.Actor;
 import net.runelite.api.ActorSpotAnim;
+import net.runelite.api.ChatMessageType;
 import net.runelite.api.Client;
 import net.runelite.api.EquipmentInventorySlot;
 import net.runelite.api.GameState;
@@ -34,8 +35,10 @@ import net.runelite.api.Skill;
 import net.runelite.api.SpriteID;
 import net.runelite.api.VarPlayer;
 import net.runelite.api.Varbits;
+import net.runelite.api.WorldType;
 import net.runelite.api.coords.WorldPoint;
 import net.runelite.api.events.AnimationChanged;
+import net.runelite.api.events.ChatMessage;
 import net.runelite.api.events.GameStateChanged;
 import net.runelite.api.events.GameTick;
 import net.runelite.api.events.GraphicChanged;
@@ -55,6 +58,7 @@ import net.runelite.client.plugins.PluginDescriptor;
 import net.runelite.client.ui.overlay.OverlayManager;
 import net.runelite.client.ui.overlay.OverlayPosition;
 import net.runelite.client.util.HotkeyListener;
+import net.runelite.client.util.Text;
 import net.runelite.http.api.item.ItemEquipmentStats;
 import net.runelite.http.api.item.ItemStats;
 import okhttp3.Call;
@@ -91,6 +95,14 @@ public class PvpHudPlugin extends Plugin
 
 	/** Previous HP XP value — used only to drive the pending-hit animation. */
 	private long prevHpXp;
+
+	/**
+	 * Most recent freeze-spell graphic seen on the local player this session.
+	 * Set in onGraphicChanged, consumed in onChatMessage when "You have been frozen!"
+	 * arrives on the same tick so the chat-message handler can identify which spell.
+	 */
+	private int lastFreezeGraphicId   = -1;
+	private int lastFreezeGraphicTick = -1;
 
 	/**
 	 * Vengeance cast spot-anim. More reliable than animation ID because the cast
@@ -167,7 +179,18 @@ public class PvpHudPlugin extends Plugin
 
 	private void applyOverlayPosition()
 	{
-		overlay.setPosition(OverlayPosition.DYNAMIC);
+		// DYNAMIC overlays are excluded from RuneLite's Alt+drag overlay editor.
+		// Float layouts need a non-DYNAMIC position so the user can drag them.
+		switch (config.hudLayout())
+		{
+			case HORIZONTAL_FLOAT:
+			case VERTICAL_FLOAT:
+				overlay.setPosition(OverlayPosition.TOP_LEFT);
+				break;
+			default:
+				overlay.setPosition(OverlayPosition.DYNAMIC);
+				break;
+		}
 	}
 
 	// ── Self state initialisation ─────────────────────────────────────────────
@@ -469,16 +492,21 @@ public class PvpHudPlugin extends Plugin
 
 		if (actor == client.getLocalPlayer())
 		{
+			// Cache the freeze-spell graphic so onChatMessage can use it to refine
+			// the duration when "You have been frozen!" arrives on the same tick.
+			// Do NOT apply the freeze timer here — that only happens on the confirmed
+			// chat message so repeated ice hits while already frozen are ignored.
+			int tick = client.getTickCount();
 			for (ActorSpotAnim sa : actor.getSpotAnims())
 			{
-				int ticks = freezeTicksForGraphic(sa.getId());
-				if (ticks > 0)
+				if (freezeTicksForGraphic(sa.getId()) > 0)
 				{
-					hudState.getSelf().setFreezeTicksRemaining(ticks);
-					hudState.getSelf().setFreezeSpriteId(freezeSpriteIdForGraphic(sa.getId()));
-					return;
+					lastFreezeGraphicId   = sa.getId();
+					lastFreezeGraphicTick = tick;
+					break;
 				}
 			}
+			return;
 		}
 		else if (actor instanceof Player)
 		{
@@ -509,11 +537,6 @@ public class PvpHudPlugin extends Plugin
 		int tick = client.getTickCount();
 
 		SelfState self = hudState.getSelf();
-		if (self.getFreezeTicksRemaining() > 0)
-		{
-			self.setFreezeTicksRemaining(self.getFreezeTicksRemaining() - 1);
-			if (self.getFreezeTicksRemaining() == 0) self.setFreezeSpriteId(0);
-		}
 		if (self.getHpRegenTicksRemaining() > 0)
 			self.setHpRegenTicksRemaining(self.getHpRegenTicksRemaining() - 1);
 		if (self.getStatDrainTicksRemaining() > 0)
@@ -621,7 +644,6 @@ public class PvpHudPlugin extends Plugin
 			}
 
 			// Genuinely new opponent — start a fresh session
-			hudState.getProtection().onTargetSwitch();
 			hudState.getOpponent().reset();
 			hudState.getOpponent().setName(name);
 			hudState.getOpponent().setCachedActor(targetPlayer);
@@ -659,10 +681,14 @@ public class PvpHudPlugin extends Plugin
 		if (actor == client.getLocalPlayer())
 		{
 			int dmg = event.getHitsplat().getAmount();
-			if (dmg <= 0) return;
 
+			// PJ safe, logout lock, and under-attack timers refresh on ANY incoming
+			// attack — including 0-damage splashes (OSRS uses attacks, not damage).
+			hudState.getProtection().onAttackExchanged(getPjTimerTicks());
+			hudState.getProtection().onIncomingHit();
 			hudState.getSelf().setLastIncomingDamageMs(System.currentTimeMillis());
-			hudState.getProtection().onIncomingDamage();
+
+			if (dmg <= 0) return;
 
 			PvpFightSession session = hudState.getCurrentSession();
 			if (session == null) return;
@@ -677,13 +703,12 @@ public class PvpHudPlugin extends Plugin
 				prayerDrain = dmg / 4;
 			}
 
-			int     tick   = client.getTickCount();
-			boolean chance = session.checkIncomingChance(dmg);
-			boolean stack  = session.isIncomingStack(tick);
+			int     tick  = client.getTickCount();
+			boolean stack = session.recordAndCheckIncomingStack(tick);
 
 			session.onIncomingHit(
 				new CombatEvent(CombatEventType.INCOMING_HIT, dmg,
-					prayerDrain, 0, effect, chance, stack, System.currentTimeMillis()),
+					prayerDrain, 0, effect, false, stack, System.currentTimeMillis()),
 				tick);
 		}
 		else if (actor instanceof Player)
@@ -696,6 +721,9 @@ public class PvpHudPlugin extends Plugin
 			{
 				return;
 			}
+
+			// PJ safe timer refreshes on ANY outgoing attack, including 0-damage.
+			hudState.getProtection().onAttackExchanged(getPjTimerTicks());
 
 			int dmg = event.getHitsplat().getAmount();
 			if (dmg <= 0) return;
@@ -716,24 +744,22 @@ public class PvpHudPlugin extends Plugin
 		if (session == null) return;
 
 		// Outgoing Smite: local player's overhead icon determines if Smite is active
-		PrayerEffect outEffect     = PrayerEffect.NONE;
+		PrayerEffect outEffect      = PrayerEffect.NONE;
 		int          outPrayerDrain = 0;
-		Player       local         = client.getLocalPlayer();
-		if (local != null && local.getOverheadIcon() == HeadIcon.SMITE && damage > 0)
+		Player       local          = client.getLocalPlayer();
+		if (local != null && local.getOverheadIcon() == HeadIcon.SMITE)
 		{
 			outEffect      = PrayerEffect.SMITE;
 			outPrayerDrain = damage / 4;
 		}
 
-		int     tick   = client.getTickCount();
-		boolean chance = session.checkOutgoingChance(damage);
-		boolean stack  = session.isOutgoingStack(tick);
+		int     tick  = client.getTickCount();
+		boolean stack = session.recordAndCheckOutgoingStack(tick);
 
 		session.onOutgoingHit(
 			new CombatEvent(CombatEventType.OUTGOING_HIT, damage,
-				outPrayerDrain, 0, outEffect, chance, stack, System.currentTimeMillis()),
+				outPrayerDrain, 0, outEffect, false, stack, System.currentTimeMillis()),
 			tick);
-		hudState.getProtection().onOutgoingDamage();
 	}
 
 	// ── Environment polling ───────────────────────────────────────────────────
@@ -794,7 +820,8 @@ public class PvpHudPlugin extends Plugin
 		// Terminate fight session when opponent HP reaches 0
 		if (ratio == 0)
 		{
-			hudState.getProtection().onKill(59, 100);
+			hudState.getProtection().onAttackExchanged(getPjTimerTicks());
+			if (isInLms()) hudState.getProtection().onKillInLms();
 			hudState.endSession();
 			return;
 		}
@@ -840,7 +867,23 @@ public class PvpHudPlugin extends Plugin
 		return speed > 0 ? speed : 4;
 	}
 
-	private static int freezeTicksForGraphic(int graphicId)
+	// ── Standard-spellbook binding spell spot-anim IDs (on target) ─────────────
+	// TODO: verify these IDs in-game; numbers taken from community references.
+	private static final int SPOTANIM_BIND     = 181;
+	private static final int SPOTANIM_SNARE    = 180;
+	private static final int SPOTANIM_ENTANGLE = 179;
+
+	/**
+	 * Returns the base freeze duration for a spell graphic, matching RuneLite's
+	 * Timer plugin values.
+	 *
+	 * Ice spells (Ancient Magicks): Rush 8t, Burst 16t, Blitz 24t, Barrage 32t.
+	 * Standard binding spells: Bind 5t, Snare 10t, Entangle 15t.
+	 *
+	 * Equipment extensions (Sceptre of the Gods, Swampbark) are applied separately
+	 * in {@link #adjustedFreezeTicks}.
+	 */
+	static int freezeTicksForGraphic(int graphicId)
 	{
 		switch (graphicId)
 		{
@@ -848,11 +891,14 @@ public class PvpHudPlugin extends Plugin
 			case GraphicID.ICE_BURST:   return 16;
 			case GraphicID.ICE_BLITZ:   return 24;
 			case GraphicID.ICE_BARRAGE: return 32;
+			case SPOTANIM_BIND:         return 5;
+			case SPOTANIM_SNARE:        return 10;
+			case SPOTANIM_ENTANGLE:     return 15;
 			default:                    return 0;
 		}
 	}
 
-	private static int freezeSpriteIdForGraphic(int graphicId)
+	static int freezeSpriteIdForGraphic(int graphicId)
 	{
 		switch (graphicId)
 		{
@@ -860,8 +906,87 @@ public class PvpHudPlugin extends Plugin
 			case GraphicID.ICE_BURST:   return SpriteID.SPELL_ICE_BURST;
 			case GraphicID.ICE_BLITZ:   return SpriteID.SPELL_ICE_BLITZ;
 			case GraphicID.ICE_BARRAGE: return SpriteID.SPELL_ICE_BARRAGE;
+			// Bind/Snare/Entangle reuse ICE_BARRAGE sprite as placeholder.
+			// TODO: use correct standard-spellbook spell sprite IDs once verified.
+			case SPOTANIM_BIND:
+			case SPOTANIM_SNARE:
+			case SPOTANIM_ENTANGLE:     return SpriteID.SPELL_ICE_BARRAGE;
 			default:                    return SpriteID.SPELL_ICE_BARRAGE;
 		}
+	}
+
+	// ── Freeze detection — chat message is the authoritative trigger ──────────────
+
+	/**
+	 * "You have been frozen!" is a SPAM-type game message that fires exactly once
+	 * when a freeze successfully applies. Using it (rather than the graphic) as the
+	 * trigger ensures repeated ice hits while already frozen do not extend the timer.
+	 *
+	 * The same-tick graphic (captured in onGraphicChanged or read from live spot
+	 * anims) is used only to identify which spell was cast so the correct base
+	 * duration can be selected — it does not drive the freeze by itself.
+	 */
+	@Subscribe
+	public void onChatMessage(ChatMessage event)
+	{
+		if (event.getType() != ChatMessageType.SPAM) return;
+		String msg = Text.removeTags(event.getMessage());
+		if (!msg.equals("You have been frozen!") && !msg.equals("You are frozen.")) return;
+
+		int       tick  = client.getTickCount();
+		SelfState self  = hudState.getSelf();
+
+		// Try live spot anims first (most reliable when graphic fires before message)
+		int graphicId = -1;
+		Player local = client.getLocalPlayer();
+		if (local != null)
+		{
+			for (ActorSpotAnim sa : local.getSpotAnims())
+			{
+				if (freezeTicksForGraphic(sa.getId()) > 0)
+				{
+					graphicId = sa.getId();
+					break;
+				}
+			}
+		}
+		// Fall back to the cached graphic if it landed on the same tick
+		if (graphicId < 0 && lastFreezeGraphicTick == tick)
+		{
+			graphicId = lastFreezeGraphicId;
+		}
+
+		int baseTicks = graphicId >= 0 ? freezeTicksForGraphic(graphicId) : 32;
+		int duration  = adjustedFreezeTicks(graphicId, baseTicks);
+		int spriteId  = graphicId >= 0 ? freezeSpriteIdForGraphic(graphicId) : SpriteID.SPELL_ICE_BARRAGE;
+
+		self.applyFreeze(tick, duration, spriteId);
+	}
+
+	/**
+	 * Applies equipment-based freeze extensions on top of the base duration.
+	 *
+	 * TODO: implement — Sceptre of the Gods adds +3 ticks to all ice freezes;
+	 *       Swampbark armour adds +1 tick per piece worn to Bind/Snare/Entangle.
+	 */
+	private int adjustedFreezeTicks(int graphicId, int baseTicks)
+	{
+		return baseTicks;
+	}
+
+	// ── Protection helpers ────────────────────────────────────────────────────────
+
+	/** PvP worlds use 16-tick PJ protection (since 25 Mar 2026); Wilderness uses 20. */
+	private int getPjTimerTicks()
+	{
+		return client.getWorldType().contains(WorldType.PVP) ? 16 : 20;
+	}
+
+	/** Returns true when the player is inside Last Man Standing. */
+	private boolean isInLms()
+	{
+		// TODO: detect LMS via region check or varbit
+		return false;
 	}
 
 	// ── Hiscores lookup ───────────────────────────────────────────────────────────

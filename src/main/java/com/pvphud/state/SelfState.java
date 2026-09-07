@@ -10,9 +10,15 @@ public class SelfState
 	@Getter @Setter
 	private boolean vengActive;
 
-	/** Ticks remaining on the local player's freeze (0 = not frozen). */
-	@Getter @Setter
-	private int freezeTicksRemaining;
+	/**
+	 * Game tick on which the freeze started (-1 = not frozen).
+	 * The freeze timer is stored as a start/end tick pair rather than a
+	 * countdown so that repeated ice impacts cannot accidentally extend it.
+	 */
+	private int freezeStartTick = -1;
+
+	/** Game tick on which the freeze expires (-1 = not frozen). */
+	private int freezeEndTick = -1;
 
 	/** Ticks remaining on the local player's Tele Block (0 = not TB'd). */
 	@Getter @Setter
@@ -32,9 +38,49 @@ public class SelfState
 	@Getter @Setter
 	private boolean antiVenomActive;
 
-	/** SpriteID of the ice spell that froze the player (0 when not frozen). */
+	/**
+	 * SpriteID of the spell that froze the player (0 = unknown / not frozen).
+	 * Set alongside freezeEndTick and cleared by reset().
+	 */
 	@Getter @Setter
 	private int freezeSpriteId;
+
+	/** True while the freeze timer has not yet expired. */
+	public boolean isFrozen(int currentTick)
+	{
+		return freezeEndTick > currentTick;
+	}
+
+	/**
+	 * Ticks remaining on the freeze, derived from the stored end tick.
+	 * Returns 0 once the freeze has expired or if no freeze is active.
+	 */
+	public int getFreezeTicksRemaining(int currentTick)
+	{
+		if (freezeEndTick < 0) return 0;
+		return Math.max(0, freezeEndTick - currentTick);
+	}
+
+	/**
+	 * Applies a freeze starting at {@code startTick} for {@code durationTicks}.
+	 * Has no effect if the player is already frozen — repeated ice impacts while
+	 * frozen do not extend or reset the timer.
+	 */
+	public void applyFreeze(int startTick, int durationTicks, int spriteId)
+	{
+		if (isFrozen(startTick)) return;
+		freezeStartTick = startTick;
+		freezeEndTick   = startTick + durationTicks;
+		freezeSpriteId  = spriteId;
+	}
+
+	/** Clears the freeze unconditionally (logout, world-hop, explicit cancellation). */
+	public void clearFreeze()
+	{
+		freezeStartTick = -1;
+		freezeEndTick   = -1;
+		freezeSpriteId  = 0;
+	}
 
 	@Getter @Setter private int currentHp;
 	@Getter @Setter private int maxHp;
@@ -67,13 +113,12 @@ public class SelfState
 	public void reset()
 	{
 		vengActive = false;
-		freezeTicksRemaining = 0;
+		clearFreeze();
 		teleBlockTicksRemaining = 0;
 		poisoned = false;
 		venomed = false;
 		antiPoisonActive = false;
 		antiVenomActive = false;
-		freezeSpriteId = 0;
 		currentHp = 0;
 		maxHp = 0;
 		currentPrayer = 0;

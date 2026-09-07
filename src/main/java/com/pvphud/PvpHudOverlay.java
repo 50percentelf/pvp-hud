@@ -393,7 +393,7 @@ public class PvpHudOverlay extends Overlay
 			cy += fm.getHeight() + 1;
 		}
 
-		int ice = self.getFreezeTicksRemaining();
+		int ice = self.getFreezeTicksRemaining(client.getTickCount());
 		if (ice > 0)
 		{
 			g.setColor(LIGHT_BLUE);
@@ -970,7 +970,7 @@ public class PvpHudOverlay extends Overlay
 			cy += fm.getHeight() + 1;
 		}
 
-		int freezeTicks = self.getFreezeTicksRemaining();
+		int freezeTicks = self.getFreezeTicksRemaining(client.getTickCount());
 		if (freezeTicks > 0 && config.showFreezeTimer())
 		{
 			g.setColor(LIGHT_BLUE);
@@ -1069,7 +1069,7 @@ public class PvpHudOverlay extends Overlay
 		if (self.isVengActive())
 			slot = addBuff(buffScratch, buffPool, slot, vengIcon, "VENG", GREEN);
 
-		int freeze = self.getFreezeTicksRemaining();
+		int freeze = self.getFreezeTicksRemaining(client.getTickCount());
 		if (freeze > 0 && config.showFreezeTimer())
 			slot = addBuff(buffScratch, buffPool, slot, iceIconFor(self.getFreezeSpriteId()),
 				ticksToSecs(freeze), LIGHT_BLUE);
@@ -1335,9 +1335,9 @@ public class PvpHudOverlay extends Overlay
 				g.drawString(lbl, textX, baseline);
 				textX += fm.stringWidth(lbl) + 6;
 			}
-			if (prot.isImmune() && textX < textRx)
+			if (prot.isLmsImmune() && textX < textRx)
 			{
-				int s = (int) Math.round(prot.getImmuneTicksRemaining() * 0.6);
+				int s = (int) Math.round(prot.getLmsImmuneTicksRemaining() * 0.6);
 				String lbl = "IMM " + s;
 				g.setColor(PRAYER_FG);
 				g.drawString(lbl, textX, baseline);
@@ -1349,7 +1349,7 @@ public class PvpHudOverlay extends Overlay
 				g.drawString("LOG", textX, baseline);
 				textX += fm.stringWidth("LOG") + 6;
 			}
-			if (prot.isTargetSwitchLocked() && textX < textRx)
+			if (prot.isUnderAttackLocked() && textX < textRx)
 			{
 				g.setColor(LIGHT_BLUE);
 				g.drawString("LCK", textX, baseline);
@@ -1436,9 +1436,9 @@ public class PvpHudOverlay extends Overlay
 			labelList.add("PJ " + s + "s");
 			colorList.add(s > 20 ? GREEN : s > 10 ? YELLOW : RED);
 		}
-		if (prot.isImmune())
+		if (prot.isLmsImmune())
 		{
-			int s = (int) Math.round(prot.getImmuneTicksRemaining() * 0.6);
+			int s = (int) Math.round(prot.getLmsImmuneTicksRemaining() * 0.6);
 			labelList.add("IMM " + s + "s");
 			colorList.add(PRAYER_FG);
 		}
@@ -1447,7 +1447,7 @@ public class PvpHudOverlay extends Overlay
 			labelList.add("LOG");
 			colorList.add(ORANGE);
 		}
-		if (prot.isTargetSwitchLocked())
+		if (prot.isUnderAttackLocked())
 		{
 			labelList.add("LCK");
 			colorList.add(LIGHT_BLUE);
