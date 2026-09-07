@@ -257,7 +257,7 @@ public class PvpHudOverlay extends Overlay
 		Rectangle opp      = layout.getOpponentPanel();
 		Rectangle ev       = layout.getEventPanel();
 
-		g.setColor(config.backgroundColor());
+		g.setColor(new Color(20, 20, 20, config.backgroundOpacity()));
 		g.fillRect(bounds.x, bounds.y, bounds.width, bounds.height);
 
 		if (strip != null)
@@ -732,8 +732,10 @@ public class PvpHudOverlay extends Overlay
 	{
 		int delta = boosted - real;
 		g.setColor(delta > 0 ? GREEN : delta < 0 ? RED : GRAY);
+		// x/x mode: omit the prefix so the numbers fit inside the narrow column.
+		// The column order (ATK STR DEF RNG MAG) is fixed, so position implies the stat.
 		String label = config.boostXOverX()
-			? prefix + " " + boosted + "/" + real
+			? boosted + "/" + real
 			: prefix + (delta >= 0 ? "+" : "") + delta;
 		drawCentered(g, fm, label, cx, baseline);
 	}

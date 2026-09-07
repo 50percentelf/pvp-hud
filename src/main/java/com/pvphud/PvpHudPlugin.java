@@ -74,19 +74,10 @@ public class PvpHudPlugin extends Plugin
 
 	private void applyOverlayPosition()
 	{
-		switch (config.hudLayout())
-		{
-			case CHAT_LOCKED:
-				// BOTTOM_LEFT with a per-frame preferred-location update anchors
-				// the overlay to the chatbox widget while keeping it draggable-proof.
-				overlay.setPosition(OverlayPosition.BOTTOM_LEFT);
-				break;
-			case HORIZONTAL_FLOAT:
-			case VERTICAL_FLOAT:
-				overlay.setPosition(OverlayPosition.BOTTOM_LEFT);
-				overlay.setPreferredLocation(null);
-				break;
-		}
+		// All modes use BOTTOM_LEFT so the overlay framework translates the
+		// graphics context correctly. CHAT_LOCKED pins the location each frame
+		// via renderChatLocked; float modes let the user drag freely.
+		overlay.setPosition(OverlayPosition.BOTTOM_LEFT);
 	}
 
 	private void initSelfState()
@@ -140,7 +131,12 @@ public class PvpHudPlugin extends Plugin
 		}
 		hudState.getContext().setMode(config.hudMode());
 		hudState.getContext().setPvpActive(config.hudVisible());
-		applyOverlayPosition();
+		// Only touch overlay position when the layout setting itself changes —
+		// other config toggles must not reset the user's dragged position.
+		if ("hudLayout".equals(event.getKey()))
+		{
+			applyOverlayPosition();
+		}
 		hudState.getLayout().markDirty();
 	}
 

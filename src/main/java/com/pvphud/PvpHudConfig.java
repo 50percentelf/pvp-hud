@@ -1,10 +1,9 @@
 package com.pvphud;
 
-import java.awt.Color;
-import net.runelite.client.config.Alpha;
 import net.runelite.client.config.Config;
 import net.runelite.client.config.ConfigGroup;
 import net.runelite.client.config.ConfigItem;
+import net.runelite.client.config.Range;
 
 @ConfigGroup("pvp-hud")
 public interface PvpHudConfig extends Config
@@ -49,15 +48,15 @@ public interface PvpHudConfig extends Config
 		return BuffStyle.VERTICAL_BAR;
 	}
 
-	@Alpha
+	@Range(min = 0, max = 255)
 	@ConfigItem(
-		keyName = "backgroundColor",
-		name = "Background Color",
-		description = "HUD background color and opacity. Lower alpha = more transparent."
+		keyName = "backgroundOpacity",
+		name = "Background Opacity",
+		description = "HUD background opacity: 0 = fully transparent, 255 = fully opaque. Default: 220."
 	)
-	default Color backgroundColor()
+	default int backgroundOpacity()
 	{
-		return new Color(20, 20, 20, 220);
+		return 220;
 	}
 
 	@ConfigItem(
@@ -72,8 +71,8 @@ public interface PvpHudConfig extends Config
 
 	@ConfigItem(
 		keyName = "boostXOverX",
-		name = "Show Boosts as X/X",
-		description = "Boost row shows boosted/base (e.g. 115/99) instead of delta (+16)."
+		name = "Show Boosts as Boosted/Base",
+		description = "Boost row shows the actual boosted level vs base level (e.g. 115/99) instead of the delta (+16)."
 	)
 	default boolean boostXOverX()
 	{
