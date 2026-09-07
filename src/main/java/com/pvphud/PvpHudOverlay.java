@@ -123,6 +123,7 @@ public class PvpHudOverlay extends Overlay
 	private volatile BufferedImage magSkillIcon;
 
 	private HudLayout lastLayout;
+	private Widget    cachedInventoryPane = null;
 
 	// ── Buff descriptor (built each frame, kept small to minimise GC) ─────────
 	private static final class Buff
@@ -279,35 +280,129 @@ public class PvpHudOverlay extends Overlay
 		HudLayoutState layout, Font normal, Font small)
 	{
 		Widget invWidget = client.getWidget(InterfaceID.Inventory.ITEMS);
-		if (invWidget == null || invWidget.getWidth() == 0 || invWidget.getHeight() == 0) return null;
+		boolean inventoryActive = invWidget != null
+			&& !invWidget.isHidden()
+			&& invWidget.getWidth() > 0
+			&& invWidget.getHeight() > 0;
 
-		Rectangle inv   = invWidget.getBounds();
-		int       railH = INVY_TOP_H + inv.height;
+		// When the inventory tab is visible, update the cached pane reference.
+		// The pane is the ancestor widget that includes the tab row above the item grid.
+		// We cache it so the HUD stays anchored when the user switches to equipment/
+		// prayer/magic/etc. tabs (which hide the ITEMS widget but not the container).
+		if (inventoryActive)
+		{
+			Widget found = findInventoryPane(invWidget);
+			if (found != null)
+				cachedInventoryPane = found;
+			else if (cachedInventoryPane == null)
+				cachedInventoryPane = invWidget;
+		}
 
-		// Position the strip flush against the left edge of the inventory, extending above it.
-		// The overlay is INVY_LEFT_W wide — it never overlaps the inventory bounds.
-		setPreferredLocation(new Point(inv.x - INVY_LEFT_W, inv.y - INVY_TOP_H));
+		Widget paneWidget = cachedInventoryPane;
+		if (paneWidget == null || paneWidget.isHidden() || paneWidget.getWidth() <= 0)
+			return null;
 
-		g.setColor(new Color(20, 20, 20, config.backgroundOpacity()));
-		g.fillRect(0, 0, INVY_LEFT_W, railH);
+		Rectangle pane  = paneWidget.getBounds();
+		if (pane.width <= 0 || pane.height <= 0) return null;
 
+		// When a non-inventory tab is active, treat the full pane as the item area
+		// so tabH = 0 and the left rail covers the entire pane height.
+		Rectangle items = inventoryActive ? invWidget.getBounds() : pane;
+
+		HugGeometry hug = computeHug(items, pane, INVY_LEFT_W, INVY_TOP_H);
+		setPreferredLocation(hug.anchor);
+
+		Color bg = new Color(20, 20, 20, config.backgroundOpacity());
+		g.setColor(bg);
+
+		// ── Top arm: horizontal strip spanning the full overlay width ─────────
+		g.fillRect(0, 0, hug.totalW, INVY_TOP_H);
+
+		// ── Left arm: vertical strip covering the full pane height ────────────
+		g.fillRect(0, INVY_TOP_H, INVY_LEFT_W, hug.paneH);
+
+		// ── Inner border edges that face the inventory ────────────────────────
 		g.setColor(DIVIDER);
-		g.drawLine(0, INVY_TOP_H - 1, INVY_LEFT_W, INVY_TOP_H - 1); // section separator
-		g.drawLine(INVY_LEFT_W - 1, 0, INVY_LEFT_W - 1, railH);      // right edge border
+		g.drawLine(0, INVY_TOP_H - 1, hug.totalW - 1, INVY_TOP_H - 1);               // arm bottom
+		g.drawLine(INVY_LEFT_W - 1, INVY_TOP_H, INVY_LEFT_W - 1, hug.totalH - 1);    // left arm right
 
-		drawInventoryTopRail(g, state, small, INVY_LEFT_W);
-		drawInventoryLeftRail(g, state, small, inv.height);
+		drawInventoryTopRail(g, state, small, hug.totalW);
+		drawInventoryLeftRail(g, state, small, hug.tabH, hug.itemsH);
 
-		return new Dimension(INVY_LEFT_W, railH);
+		return new Dimension(hug.totalW, hug.totalH);
+	}
+
+	/**
+	 * Walks the widget parent chain from the ITEMS widget to find the side-panel
+	 * container that also holds the tab row. Returns the first ancestor that:
+	 *   (a) is not hidden and has a positive width,
+	 *   (b) has its top edge above items.y (it wraps the tab row), and
+	 *   (c) is not unreasonably tall (not a full-viewport root — stop if > 200 px taller).
+	 */
+	private Widget findInventoryPane(Widget invWidget)
+	{
+		Rectangle items = invWidget.getBounds();
+		int maxH = items.height + 200;
+		for (Widget w = invWidget.getParent(); w != null; w = w.getParent())
+		{
+			if (w.isHidden() || w.getWidth() <= 0) break;
+			Rectangle wb = w.getBounds();
+			if (wb.height > maxH) break;
+			if (wb.y < items.y && wb.width >= items.width)
+				return w;
+		}
+		return null;
+	}
+
+	/** Immutable geometry bundle for the inventory-hug L-shape. Package-visible for tests. */
+	static final class HugGeometry
+	{
+		final Point anchor;  // overlay top-left in screen coordinates
+		final int   totalW;  // left rail + pane width
+		final int   totalH;  // top arm + pane height
+		final int   paneH;   // pane.height = tabH + itemsH
+		final int   tabH;    // pixels from pane top to item-grid top (tab-row height; 0 if absent)
+		final int   itemsH;  // item-grid height
+
+		HugGeometry(Point anchor, int totalW, int totalH, int paneH, int tabH, int itemsH)
+		{
+			this.anchor = anchor;
+			this.totalW = totalW;
+			this.totalH = totalH;
+			this.paneH  = paneH;
+			this.tabH   = tabH;
+			this.itemsH = itemsH;
+		}
+	}
+
+	/**
+	 * Pure geometry: given item-grid and pane rectangles in screen coordinates and
+	 * rail dimensions, returns all values needed to render the L-shape.
+	 *
+	 * {@code pane} equals {@code items} when no tab-containing ancestor was found.
+	 * In that case {@code tabH} will be 0 and the top arm is anchored directly
+	 * above the item grid — which may still clip into the tab row if the tab row
+	 * lives outside the widget hierarchy we could reach.
+	 *
+	 * Package-visible so tests can verify the geometry without a running client.
+	 */
+	static HugGeometry computeHug(Rectangle items, Rectangle pane, int leftW, int topH)
+	{
+		int tabH   = items.y - pane.y;
+		int totalW = leftW + pane.width;
+		int totalH = topH  + pane.height;
+		return new HugGeometry(
+			new Point(pane.x - leftW, pane.y - topH),
+			totalW, totalH, pane.height, tabH, items.height);
 	}
 
 	private void drawInventoryTopRail(Graphics2D g, PvpHudState state,
-		Font small, int stripW)
+		Font small, int totalW)
 	{
 		OpponentState opp = state.getOpponent();
 		g.setFont(small);
 		FontMetrics fm = g.getFontMetrics();
-		int barW = stripW - PAD * 2;
+		int barW = totalW - PAD * 2;
 		int cy   = PAD / 2 + 1;
 
 		if (!opp.isTracked())
@@ -352,10 +447,11 @@ public class PvpHudOverlay extends Overlay
 	}
 
 	private void drawInventoryLeftRail(Graphics2D g, PvpHudState state,
-		Font small, int railH)
+		Font small, int tabH, int itemsH)
 	{
 		int cx = INVY_LEFT_W / 2;
-		int cy = INVY_TOP_H + PAD;
+		// Content starts at the item grid, not at the pane top, so we skip the tab row.
+		int cy = INVY_TOP_H + tabH + PAD;
 
 		ActionClockState clock = state.getActionClock();
 		int atk    = clock.getAttackDelayTicks();

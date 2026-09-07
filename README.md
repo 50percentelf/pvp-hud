@@ -123,6 +123,24 @@ When the local player has Smite active, outgoing hits show `-Np` in the fight lo
 
 ---
 
+## Pending tasks
+
+These are confirmed next tasks. Each one starts only after the previous is verified in-game.
+
+### Task 2 — Opponent acquisition
+Only acquire an opponent from actual PvP combat. `InteractingChanged` alone must not create a fight session — a session requires at least one of: Attack menu option used, outgoing hitsplat on the target, or incoming hitsplat from the target. Follow interactions and other non-combat interactions must not start a session.
+
+### Task 3 — Boost row geometry collapse
+When `showBoostRow` is off, `computeHorizLayout` and `computeVertLayout` still subtract `BOOST_ROW_H` from the available height. The surrounding panels must reclaim that space when the row is hidden. Float layouts should have an optional `reserveBoostDockWhenHidden` flag (so users can dock another plugin there); Chat Locked and Inventory Hug should always collapse.
+
+### Task 4 — Opponent stat row placement
+The opponent stat row (ATK/STR/DEF/RNG/MAG) is currently bottom-pinned via `p.y + p.height - PAD - statsRowH`. It should be a first-class row rendered after the name/HP section, not pinned to the panel bottom.
+
+### Task 5 — Independent float positions
+Horizontal Float and Vertical Float should remember their positions independently. Switching layouts should restore the correct prior position for each layout. Chat Locked and Inventory Hug remain pinned and are unaffected.
+
+---
+
 ## Known bugs
 
 *No confirmed bugs at this time. Bug reports will be listed here and removed only after in-game confirmation of the fix.*
