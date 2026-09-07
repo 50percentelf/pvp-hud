@@ -1,32 +1,53 @@
 package com.pvphud;
 
 import com.google.inject.Provides;
+import com.pvphud.state.ActionClockState;
 import com.pvphud.state.BoostState;
+import com.pvphud.state.CombatEvent;
+import com.pvphud.state.CombatEventType;
 import com.pvphud.state.EffectState;
+import com.pvphud.state.ManualTimerState;
+import com.pvphud.state.OpponentState;
 import com.pvphud.state.SelfState;
 import javax.inject.Inject;
 import lombok.Getter;
 import lombok.extern.slf4j.Slf4j;
+import net.runelite.api.Actor;
 import net.runelite.api.ActorSpotAnim;
 import net.runelite.api.Client;
+import net.runelite.api.EquipmentInventorySlot;
 import net.runelite.api.GameState;
 import net.runelite.api.GraphicID;
+import net.runelite.api.InventoryID;
+import java.util.List;
+import net.runelite.api.Item;
+import net.runelite.api.ItemContainer;
+import net.runelite.api.Player;
 import net.runelite.api.Skill;
 import net.runelite.api.SpriteID;
 import net.runelite.api.VarPlayer;
 import net.runelite.api.Varbits;
+import net.runelite.api.events.AnimationChanged;
 import net.runelite.api.events.GameStateChanged;
 import net.runelite.api.events.GameTick;
 import net.runelite.api.events.GraphicChanged;
+import net.runelite.api.events.HitsplatApplied;
+import net.runelite.api.events.InteractingChanged;
+import net.runelite.api.events.MenuOptionClicked;
 import net.runelite.api.events.StatChanged;
 import net.runelite.api.events.VarbitChanged;
 import net.runelite.client.config.ConfigManager;
 import net.runelite.client.eventbus.Subscribe;
 import net.runelite.client.events.ConfigChanged;
+import net.runelite.client.game.ItemManager;
+import net.runelite.http.api.item.ItemEquipmentStats;
+import net.runelite.http.api.item.ItemStats;
+import net.runelite.client.input.KeyManager;
 import net.runelite.client.plugins.Plugin;
 import net.runelite.client.plugins.PluginDescriptor;
 import net.runelite.client.ui.overlay.OverlayManager;
 import net.runelite.client.ui.overlay.OverlayPosition;
+import net.runelite.client.util.HotkeyListener;
 
 @Slf4j
 @PluginDescriptor(
@@ -48,8 +69,38 @@ public class PvpHudPlugin extends Plugin
 	@Inject
 	private PvpHudOverlay overlay;
 
+	@Inject
+	private ItemManager itemManager;
+
+	@Inject
+	private KeyManager keyManager;
+
 	@Getter
 	private final PvpHudState hudState = new PvpHudState();
+
+	private long prevHpXp;
+
+	private final HotkeyListener timer1Listener = new HotkeyListener(() -> config.timer1Key())
+	{
+		@Override
+		public void hotkeyPressed()
+		{
+			ManualTimerState t = hudState.getTimer1();
+			if (t.isRunning()) t.clear();
+			else t.start(config.timer1Duration() * 1000L);
+		}
+	};
+
+	private final HotkeyListener timer2Listener = new HotkeyListener(() -> config.timer2Key())
+	{
+		@Override
+		public void hotkeyPressed()
+		{
+			ManualTimerState t = hudState.getTimer2();
+			if (t.isRunning()) t.clear();
+			else t.start(config.timer2Duration() * 1000L);
+		}
+	};
 
 	@Override
 	protected void startUp() throws Exception
@@ -61,12 +112,16 @@ public class PvpHudPlugin extends Plugin
 		applyOverlayPosition();
 		overlay.loadIcons();
 		overlayManager.add(overlay);
+		keyManager.registerKeyListener(timer1Listener);
+		keyManager.registerKeyListener(timer2Listener);
 		log.info("PvP HUD started");
 	}
 
 	@Override
 	protected void shutDown() throws Exception
 	{
+		keyManager.unregisterKeyListener(timer1Listener);
+		keyManager.unregisterKeyListener(timer2Listener);
 		overlayManager.remove(overlay);
 		hudState.fullReset();
 		log.info("PvP HUD stopped");
@@ -120,6 +175,8 @@ public class PvpHudPlugin extends Plugin
 		fx.setDivineBastionTicks(client.getVarbitValue(Varbits.DIVINE_BASTION));
 		fx.setDivineBattlemageTicks(client.getVarbitValue(Varbits.DIVINE_BATTLEMAGE));
 		fx.setMenaphiteRemedyTicks(client.getVarbitValue(Varbits.MENAPHITE_REMEDY));
+
+		prevHpXp = client.getSkillExperience(Skill.HITPOINTS);
 	}
 
 	@Subscribe
@@ -213,6 +270,19 @@ public class PvpHudPlugin extends Plugin
 				{
 					self.setHpRegenTicksRemaining(100);
 				}
+
+				// Outgoing damage from HP XP delta (all combat styles use same 4/3 HP XP rate)
+				long newHpXp = event.getXp();
+				if (prevHpXp > 0)
+				{
+					long xpDelta = newHpXp - prevHpXp;
+					if (xpDelta > 0)
+					{
+						int damage = (int) Math.round(xpDelta * 3.0 / 4.0);
+						if (damage > 0) handleOutgoingHit(damage);
+					}
+				}
+				prevHpXp = newHpXp;
 				break;
 			}
 			case PRAYER:
@@ -342,6 +412,134 @@ public class PvpHudPlugin extends Plugin
 		{
 			self.setStatDrainTicksRemaining(self.getStatDrainTicksRemaining() - 1);
 		}
+
+		ActionClockState clock = hudState.getActionClock();
+		if (clock.getAttackDelayTicks() > 0)
+			clock.setAttackDelayTicks(clock.getAttackDelayTicks() - 1);
+		if (clock.getEatCooldownTicks() > 0)
+			clock.setEatCooldownTicks(clock.getEatCooldownTicks() - 1);
+		if (clock.getPotCooldownTicks() > 0)
+			clock.setPotCooldownTicks(clock.getPotCooldownTicks() - 1);
+
+		pollOpponentHealth();
+	}
+
+	@Subscribe
+	public void onMenuOptionClicked(MenuOptionClicked event)
+	{
+		ActionClockState clock = hudState.getActionClock();
+		switch (event.getMenuOption())
+		{
+			case "Eat":
+				clock.setEatCooldownTicks(3);
+				break;
+			case "Drink":
+				clock.setPotCooldownTicks(3);
+				break;
+		}
+	}
+
+	@Subscribe
+	public void onAnimationChanged(AnimationChanged event)
+	{
+		if (event.getActor() != client.getLocalPlayer()) return;
+		int anim = client.getLocalPlayer().getAnimation();
+		if (anim == -1) return;
+		if (client.getLocalPlayer().getInteracting() == null) return;
+		hudState.getActionClock().setAttackDelayTicks(getWeaponSpeed());
+	}
+
+	@Subscribe
+	public void onInteractingChanged(InteractingChanged event)
+	{
+		if (event.getSource() != client.getLocalPlayer()) return;
+		Actor target = event.getTarget();
+		if (target instanceof Player)
+		{
+			String name = ((Player) target).getName();
+			OpponentState opp = hudState.getOpponent();
+			if (name != null && !name.equals(opp.getName()))
+			{
+				opp.reset();
+				opp.setName(name);
+			}
+		}
+	}
+
+	@Subscribe
+	public void onHitsplatApplied(HitsplatApplied event)
+	{
+		if (event.getActor() == client.getLocalPlayer())
+		{
+			int dmg = event.getHitsplat().getAmount();
+			if (dmg > 0)
+			{
+				hudState.getCombatEvent().post(
+					new CombatEvent(CombatEventType.INCOMING_HIT, dmg, 0), 2500);
+			}
+		}
+	}
+
+	private void handleOutgoingHit(int damage)
+	{
+		OpponentState opp = hudState.getOpponent();
+		opp.setLastOutgoingHit(damage);
+		hudState.getCombatEvent().post(
+			new CombatEvent(CombatEventType.OUTGOING_HIT, damage, 0), 2500);
+		if (opp.getEstimatedHp() > 0)
+			opp.setEstimatedHp(Math.max(0, opp.getEstimatedHp() - damage));
+	}
+
+	private void pollOpponentHealth()
+	{
+		OpponentState opp = hudState.getOpponent();
+		if (!opp.isTracked()) return;
+
+		List<Player> players = client.getPlayers();
+		if (players == null) return;
+		for (Player p : players)
+		{
+			if (p == null || !p.getName().equals(opp.getName())) continue;
+			int ratio = p.getHealthRatio();
+			int scale = p.getHealthScale();
+			if (ratio < 0 || scale <= 0) break;
+
+			// If opponent was just acquired at full health, use XP damage to derive max HP.
+			// Otherwise use health-bar % + accumulated damage to refine the estimate.
+			if (opp.getMaxHp() <= 0 && ratio == scale)
+			{
+				// Full health — can't estimate max yet; wait for first damage observation.
+				break;
+			}
+			if (opp.getMaxHp() <= 0 && opp.getLastOutgoingHit() > 0)
+			{
+				// We dealt damage; health bar now shows < 100 %. Back-calculate max HP.
+				double pct = (double) ratio / scale;
+				// totalDamage ≈ maxHp * (1 - pct)
+				// Use last outgoing hit as proxy for total damage if estimatedHp not set.
+				// A more accurate approach accumulates multiple hits.
+				break;
+			}
+			if (opp.getMaxHp() > 0)
+			{
+				opp.setEstimatedHp((int) Math.round(opp.getMaxHp() * (double) ratio / scale));
+			}
+			break;
+		}
+	}
+
+	private int getWeaponSpeed()
+	{
+		ItemContainer equipment = client.getItemContainer(InventoryID.EQUIPMENT);
+		if (equipment == null) return 4;
+		Item weapon = equipment.getItem(EquipmentInventorySlot.WEAPON.getSlotIdx());
+		if (weapon == null) return 4;
+		ItemStats stats = itemManager.getItemStats(weapon.getId(), false);
+		if (stats == null) return 4;
+		ItemEquipmentStats eq = stats.getEquipment();
+		if (eq == null) return 4;
+		int speed = eq.getAspeed();
+		return speed > 0 ? speed : 4;
 	}
 
 	private static int freezeTicksForGraphic(int graphicId)

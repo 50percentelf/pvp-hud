@@ -3,6 +3,7 @@ package com.pvphud;
 import net.runelite.client.config.Config;
 import net.runelite.client.config.ConfigGroup;
 import net.runelite.client.config.ConfigItem;
+import net.runelite.client.config.Keybind;
 import net.runelite.client.config.Range;
 
 @ConfigGroup("pvp-hud")
@@ -77,5 +78,45 @@ public interface PvpHudConfig extends Config
 	default boolean boostXOverX()
 	{
 		return false;
+	}
+
+	@ConfigItem(
+		keyName = "timer1Key",
+		name = "Timer 1 Hotkey",
+		description = "Press to start/stop manual countdown timer 1. Shown as T1 in the action strip while running."
+	)
+	default Keybind timer1Key()
+	{
+		return Keybind.NOT_SET;
+	}
+
+	@ConfigItem(
+		keyName = "timer1Duration",
+		name = "Timer 1 Duration (s)",
+		description = "How long timer 1 counts down in seconds."
+	)
+	default int timer1Duration()
+	{
+		return 300;
+	}
+
+	@ConfigItem(
+		keyName = "timer2Key",
+		name = "Timer 2 Hotkey",
+		description = "Press to start/stop manual countdown timer 2. Shown as T2 in the action strip while running."
+	)
+	default Keybind timer2Key()
+	{
+		return Keybind.NOT_SET;
+	}
+
+	@ConfigItem(
+		keyName = "timer2Duration",
+		name = "Timer 2 Duration (s)",
+		description = "How long timer 2 counts down in seconds."
+	)
+	default int timer2Duration()
+	{
+		return 300;
 	}
 }

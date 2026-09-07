@@ -1,8 +1,12 @@
 package com.pvphud;
 
+import com.pvphud.state.ActionClockState;
 import com.pvphud.state.BoostState;
+import com.pvphud.state.CombatEvent;
 import com.pvphud.state.EffectState;
 import com.pvphud.state.HudLayoutState;
+import com.pvphud.state.ManualTimerState;
+import com.pvphud.state.OpponentState;
 import com.pvphud.state.SelfState;
 import java.awt.Color;
 import java.awt.Dimension;
@@ -320,8 +324,8 @@ public class PvpHudOverlay extends Overlay
 			}
 		}
 
-		drawOpponentPanel(g, layout, normal, small);
-		drawEventPanel(g, layout, normal, small);
+		drawOpponentPanel(g, state, layout, normal, small);
+		drawEventPanel(g, state, layout, normal, small);
 		drawSelfPanel(g, state, layout, normal, small);
 		drawBoostRow(g, state, layout, small);
 		drawActionStrip(g, state, layout, small);
@@ -329,7 +333,8 @@ public class PvpHudOverlay extends Overlay
 
 	// ── Opponent panel ────────────────────────────────────────────────────────
 
-	private void drawOpponentPanel(Graphics2D g, HudLayoutState layout, Font normal, Font small)
+	private void drawOpponentPanel(Graphics2D g, PvpHudState state, HudLayoutState layout,
+		Font normal, Font small)
 	{
 		Rectangle p = layout.getOpponentPanel();
 		if (p == null) return;
@@ -344,30 +349,67 @@ public class PvpHudOverlay extends Overlay
 		g.drawString("OPPONENT", x, cy + smFm.getAscent());
 		cy += smFm.getHeight() + 2;
 
+		OpponentState opp = state.getOpponent();
+		if (!opp.isTracked())
+		{
+			g.setColor(GRAY);
+			g.drawString("none", x, cy + smFm.getAscent());
+			return;
+		}
+
 		g.setFont(normal);
 		FontMetrics fm = g.getFontMetrics();
 		g.setColor(WHITE);
-		g.drawString("Marcbob", x, cy + fm.getAscent());
+		String name = opp.getName();
+		// Truncate long names to fit panel
+		while (name.length() > 1 && fm.stringWidth(name) > w)
+			name = name.substring(0, name.length() - 1);
+		g.drawString(name, x, cy + fm.getAscent());
 		cy += fm.getHeight() + 4;
 
-		g.setColor(HP_BG);
-		g.fillRect(x, cy, w, BAR_H);
-		g.setColor(HP_FG);
-		g.fillRect(x, cy, (int) (w * (43f / 99f)), BAR_H);
-		cy += BAR_H + 3;
+		// HP bar (ratio-based from actor health bar)
+		int estHp  = opp.getEstimatedHp();
+		int maxHp  = opp.getMaxHp();
+		if (estHp >= 0 && maxHp > 0)
+		{
+			float pct = Math.min(1f, (float) estHp / maxHp);
+			g.setColor(HP_BG);
+			g.fillRect(x, cy, w, BAR_H);
+			Color fg = pct > 0.5f ? HP_FG : pct > 0.25f ? YELLOW : RED;
+			g.setColor(fg);
+			g.fillRect(x, cy, Math.max(1, (int) (w * pct)), BAR_H);
+			cy += BAR_H + 3;
+			g.setFont(small);
+			smFm = g.getFontMetrics();
+			g.setColor(GRAY);
+			g.drawString("~" + estHp + " HP", x, cy + smFm.getAscent());
+		}
+		else
+		{
+			g.setColor(HP_BG);
+			g.fillRect(x, cy, w, BAR_H);
+			cy += BAR_H + 3;
+			g.setFont(small);
+			smFm = g.getFontMetrics();
+			g.setColor(GRAY);
+			g.drawString("HP ?", x, cy + smFm.getAscent());
+		}
 
-		g.setFont(small);
-		smFm = g.getFontMetrics();
-		g.setColor(GRAY);
-		g.drawString("~43 HP", x, cy + smFm.getAscent());
-
-		g.setColor(YELLOW);
-		g.drawString("OPP VENG", x, p.y + p.height - PAD - smFm.getDescent());
+		// Last outgoing hit in corner
+		int lastHit = opp.getLastOutgoingHit();
+		if (lastHit > 0)
+		{
+			g.setColor(YELLOW);
+			String hitStr = "-> " + lastHit;
+			g.drawString(hitStr, p.x + p.width - PAD - smFm.stringWidth(hitStr),
+				p.y + p.height - PAD - smFm.getDescent());
+		}
 	}
 
 	// ── Event panel ───────────────────────────────────────────────────────────
 
-	private void drawEventPanel(Graphics2D g, HudLayoutState layout, Font normal, Font small)
+	private void drawEventPanel(Graphics2D g, PvpHudState state, HudLayoutState layout,
+		Font normal, Font small)
 	{
 		Rectangle p = layout.getEventPanel();
 		if (p == null) return;
@@ -381,20 +423,31 @@ public class PvpHudOverlay extends Overlay
 		drawCentered(g, smFm, "FIGHT", cx, cy + smFm.getAscent());
 		cy += smFm.getHeight() + 6;
 
+		if (!state.getCombatEvent().hasActiveEvent())
+		{
+			g.setColor(GRAY);
+			drawCentered(g, smFm, "---", cx, cy + smFm.getAscent());
+			return;
+		}
+
+		CombatEvent ev = state.getCombatEvent().getCurrentEvent();
 		g.setFont(normal);
 		FontMetrics fm = g.getFontMetrics();
-		g.setColor(YELLOW);
-		drawCentered(g, fm, "* CHANCE *", cx, cy + fm.getAscent());
-		cy += fm.getHeight() + 3;
 
-		g.setColor(GREEN);
-		drawCentered(g, fm, "<- 46", cx, cy + fm.getAscent());
-		cy += fm.getHeight() + 3;
-
-		g.setFont(small);
-		smFm = g.getFontMetrics();
-		g.setColor(ORANGE);
-		drawCentered(g, smFm, "PR -11", cx, cy + smFm.getAscent());
+		switch (ev.getType())
+		{
+			case OUTGOING_HIT:
+				g.setColor(GREEN);
+				drawCentered(g, fm, "-> " + ev.getDamage(), cx, cy + fm.getAscent());
+				break;
+			case INCOMING_HIT:
+				g.setColor(RED);
+				drawCentered(g, fm, "<- " + ev.getDamage(), cx, cy + fm.getAscent());
+				break;
+			default:
+				g.setColor(GRAY);
+				drawCentered(g, fm, "---", cx, cy + fm.getAscent());
+		}
 	}
 
 	// ── Self panel ────────────────────────────────────────────────────────────
@@ -775,9 +828,42 @@ public class PvpHudOverlay extends Overlay
 		FontMetrics fm = g.getFontMetrics();
 		int baseline = p.y + (p.height + fm.getAscent() - fm.getDescent()) / 2;
 
+		ActionClockState clock = state.getActionClock();
+		int atk  = clock.getAttackDelayTicks();
+		int eat  = clock.getEatCooldownTicks();
+		int pot  = clock.getPotCooldownTicks();
 		int spec = state.getEffects().getSpecEnergy();
-		String[] labels = {"ATK 2t", "EAT", "POT", "SPEC " + spec, "5tx7", "T1 4:31", "SGL"};
-		Color[]  colors = {YELLOW,   GREEN, GREEN, WHITE,            GRAY,   WHITE,     GRAY};
+
+		// Build strip items dynamically; timers only shown while running
+		List<String> labelList = new ArrayList<>(6);
+		List<Color>  colorList  = new ArrayList<>(6);
+
+		labelList.add(atk > 0 ? "ATK " + atk + "t" : "ATK rdy");
+		colorList.add(atk > 0 ? YELLOW : GREEN);
+		labelList.add(eat > 0 ? "EAT " + eat + "t" : "EAT");
+		colorList.add(eat > 0 ? ORANGE : GREEN);
+		labelList.add(pot > 0 ? "POT " + pot + "t" : "POT");
+		colorList.add(pot > 0 ? ORANGE : GREEN);
+		labelList.add("SPEC " + spec);
+		colorList.add(spec < 100 ? YELLOW : WHITE);
+
+		ManualTimerState t1 = state.getTimer1();
+		if (t1.isRunning())
+		{
+			int s = (int) (t1.getRemainingMs() / 1000);
+			labelList.add("T1 " + (s / 60) + ":" + String.format("%02d", s % 60));
+			colorList.add(s > 30 ? WHITE : RED);
+		}
+		ManualTimerState t2 = state.getTimer2();
+		if (t2.isRunning())
+		{
+			int s = (int) (t2.getRemainingMs() / 1000);
+			labelList.add("T2 " + (s / 60) + ":" + String.format("%02d", s % 60));
+			colorList.add(s > 30 ? WHITE : RED);
+		}
+
+		String[] labels = labelList.toArray(new String[0]);
+		Color[]  colors = colorList.toArray(new Color[0]);
 
 		int usable = p.width - PAD * 2;
 		int count  = labels.length;
