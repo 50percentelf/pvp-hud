@@ -139,6 +139,32 @@ The opponent stat row (ATK/STR/DEF/RNG/MAG) is currently bottom-pinned via `p.y 
 ### Task 5 — Independent float positions
 Horizontal Float and Vertical Float should remember their positions independently. Switching layouts should restore the correct prior position for each layout. Chat Locked and Inventory Hug remain pinned and are unaffected.
 
+### Streamer Output (deferred — do not implement until P0/P1 HUD correctness work is complete)
+
+Add an optional **Streamer Output** presentation target that renders the PvP HUD into a separate standalone window intended for OBS/window capture, while sharing the exact same `PvpHudState` and combat trackers as the normal in-game HUD. No combat logic may be duplicated in the streamer renderer.
+
+**Display mode config:** `IN_GAME` (default, no change), `STREAMER_ONLY` (suppress the RuneLite in-game overlay entirely but keep all tracking active, render only to the dedicated window), or `BOTH`.
+
+**Streamer window requirements:**
+- Named **PvP HUD — Stream Output** for easy OBS source targeting
+- Independently resizable and scalable; remembers its position and size across sessions
+- Configurable background: solid colour, transparent, or chroma-key colour so streamers can crop/capture cleanly
+- Optional borderless/no-chrome mode (hide window title bar and frame)
+- Must never steal focus during combat
+- Closing the streamer window must not disable the plugin or corrupt HUD state
+
+**Rendering model:** the streamer window must never query `Client` or RuneLite state directly from its render/EDT thread. The existing state model publishes a lightweight immutable render snapshot; the Swing window renders only that snapshot. Repaint frequency is capped (e.g. 30 FPS or change-driven) so the stream window cannot introduce combat frame spikes in the main client.
+
+**Per-module configurability (future):** individual layout modules (opponent stats, OUT/IN hit log, fight totals, buff strip, etc.) should be independently toggleable for Streamer Output — a streamer may want broadcast viewers to see full fight telemetry while their personal in-game HUD remains minimal.
+
+**Out of scope for first implementation:** no HTTP server, WebSocket endpoint, or browser-source API. If browser-source output is ever desired, treat it as a separate security/review task.
+
+**Example split:**
+
+| Player sees (Inventory Hug) | OBS sees (Streamer Output) |
+|---|---|
+| ATK dots / EAT / POT / VENG | Full panel: name, HP, stats, hit log, OUT/IN totals, CHANCE! |
+
 ---
 
 ## Known bugs
