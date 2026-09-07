@@ -9,6 +9,7 @@ import com.pvphud.state.HudLayoutState;
 import com.pvphud.state.ManualTimerState;
 import com.pvphud.state.OpponentState;
 import com.pvphud.state.OpponentStats;
+import com.pvphud.state.ProtectionState;
 import com.pvphud.state.PvpFightSession;
 import com.pvphud.state.SelfState;
 import java.awt.AlphaComposite;
@@ -201,6 +202,12 @@ public class PvpHudOverlay extends Overlay
 		{
 			lastLayout = currentLayout;
 			layout.markDirty();
+			// Clear the pinned location so draggable layouts start free
+			if (currentLayout == HudLayout.HORIZONTAL_FLOAT
+				|| currentLayout == HudLayout.VERTICAL_FLOAT)
+			{
+				setPreferredLocation(null);
+			}
 		}
 
 		Font normal = FontManager.getRunescapeFont();
@@ -274,66 +281,53 @@ public class PvpHudOverlay extends Overlay
 		Widget invWidget = client.getWidget(InterfaceID.Inventory.ITEMS);
 		if (invWidget == null || invWidget.getWidth() == 0 || invWidget.getHeight() == 0) return null;
 
-		Rectangle inv = invWidget.getBounds();
-		int totalW = INVY_LEFT_W + inv.width;
+		Rectangle inv   = invWidget.getBounds();
+		int       railH = INVY_TOP_H + inv.height;
 
+		// Position the strip flush against the left edge of the inventory, extending above it.
+		// The overlay is INVY_LEFT_W wide — it never overlaps the inventory bounds.
 		setPreferredLocation(new Point(inv.x - INVY_LEFT_W, inv.y - INVY_TOP_H));
 
 		g.setColor(new Color(20, 20, 20, config.backgroundOpacity()));
-		g.fillRect(0, 0, totalW, INVY_TOP_H);               // top rail
-		g.fillRect(0, INVY_TOP_H, INVY_LEFT_W, inv.height); // left rail
+		g.fillRect(0, 0, INVY_LEFT_W, railH);
 
 		g.setColor(DIVIDER);
-		g.drawLine(0, INVY_TOP_H - 1, totalW, INVY_TOP_H - 1);
-		g.drawLine(INVY_LEFT_W - 1, INVY_TOP_H, INVY_LEFT_W - 1, INVY_TOP_H + inv.height);
+		g.drawLine(0, INVY_TOP_H - 1, INVY_LEFT_W, INVY_TOP_H - 1); // section separator
+		g.drawLine(INVY_LEFT_W - 1, 0, INVY_LEFT_W - 1, railH);      // right edge border
 
-		drawInventoryTopRail(g, state, normal, small, totalW);
+		drawInventoryTopRail(g, state, small, INVY_LEFT_W);
 		drawInventoryLeftRail(g, state, small, inv.height);
 
-		return new Dimension(totalW, INVY_TOP_H + inv.height);
+		return new Dimension(INVY_LEFT_W, railH);
 	}
 
 	private void drawInventoryTopRail(Graphics2D g, PvpHudState state,
-		Font normal, Font small, int totalW)
+		Font small, int stripW)
 	{
 		OpponentState opp = state.getOpponent();
-		int cy = PAD / 2 + 1;
-
 		g.setFont(small);
-		FontMetrics smFm = g.getFontMetrics();
+		FontMetrics fm = g.getFontMetrics();
+		int barW = stripW - PAD * 2;
+		int cy   = PAD / 2 + 1;
 
 		if (!opp.isTracked())
 		{
 			g.setColor(GRAY);
-			g.drawString("no target", PAD, cy + smFm.getAscent());
+			g.drawString("---", PAD, cy + fm.getAscent());
 			return;
 		}
 
-		// Opponent name (left); veng warning (right) on same line
-		g.setFont(normal);
-		FontMetrics fm = g.getFontMetrics();
-		g.setColor(WHITE);
+		// Opponent name — color-shifted to orange when their Veng is active
+		g.setColor(opp.isVengActive() ? ORANGE : WHITE);
 		String name = opp.getName();
-		int maxNameW = Math.max(40, totalW - PAD * 2
-			- (opp.isVengActive() ? smFm.stringWidth("VENG!") + PAD : 0));
-		while (name.length() > 1 && fm.stringWidth(name) > maxNameW)
+		while (name.length() > 1 && fm.stringWidth(name) > barW)
 			name = name.substring(0, name.length() - 1);
 		g.drawString(name, PAD, cy + fm.getAscent());
-
-		if (opp.isVengActive())
-		{
-			g.setFont(small);
-			g.setColor(ORANGE);
-			drawRightAligned(g, smFm, "VENG!", totalW - PAD, cy + fm.getAscent());
-		}
 		cy += fm.getHeight() + 2;
 
-		// HP bar spanning full top rail width
+		// HP bar
 		int estHp = opp.getEstimatedHp();
 		int maxHp = opp.getMaxHp();
-		int barW  = totalW - PAD * 2;
-		g.setFont(small);
-		smFm = g.getFontMetrics();
 		if (maxHp > 0)
 		{
 			float pct = Math.min(1f, (float) estHp / maxHp);
@@ -344,7 +338,8 @@ public class PvpHudOverlay extends Overlay
 			g.fillRect(PAD, cy, Math.max(1, (int)(barW * pct)), BAR_H);
 			cy += BAR_H + 2;
 			g.setColor(fg);
-			g.drawString("~" + estHp + " HP", PAD, cy + smFm.getAscent());
+			String hpText = "~" + estHp;
+			g.drawString(hpText, PAD, cy + fm.getAscent());
 		}
 		else
 		{
@@ -352,7 +347,7 @@ public class PvpHudOverlay extends Overlay
 			g.fillRect(PAD, cy, barW, BAR_H);
 			cy += BAR_H + 2;
 			g.setColor(GRAY);
-			g.drawString("HP ?", PAD, cy + smFm.getAscent());
+			g.drawString("HP?", PAD, cy + fm.getAscent());
 		}
 	}
 
@@ -380,7 +375,16 @@ public class PvpHudOverlay extends Overlay
 
 		g.setFont(small);
 		FontMetrics fm = g.getFontMetrics();
-		SelfState self = state.getSelf();
+		SelfState     self = state.getSelf();
+		OpponentState opp  = state.getOpponent();
+
+		// Opponent veng indicator — shown in the main rail (top rail is too narrow)
+		if (opp.isTracked() && opp.isVengActive())
+		{
+			g.setColor(ORANGE);
+			drawCentered(g, fm, "V!", cx, cy + fm.getAscent());
+			cy += fm.getHeight() + 1;
+		}
 
 		if (self.isVengActive())
 		{
@@ -718,14 +722,27 @@ public class PvpHudOverlay extends Overlay
 
 			if (row < outEvents.size())
 			{
-				g.setColor(isFirst ? GREEN : GRAY_DIM);
-				drawCentered(g, fm, String.valueOf(outEvents.get(row).getDamage()), outX, cy + fm.getAscent());
+				CombatEvent outEv = outEvents.get(row);
+				Color outColor = isFirst
+					? (outEv.isChance() ? YELLOW : GREEN)
+					: GRAY_DIM;
+				g.setColor(outColor);
+				String outLabel = String.valueOf(outEv.getDamage());
+				if (outEv.isChance()) outLabel += "!";
+				if (outEv.isStack())  outLabel = "[" + outLabel + "]";
+				if (outEv.getPrayerDrain() > 0) outLabel += " -" + outEv.getPrayerDrain() + "p";
+				drawCentered(g, fm, outLabel, outX, cy + fm.getAscent());
 			}
 			if (row < inEvents.size())
 			{
 				CombatEvent inEv = inEvents.get(row);
-				g.setColor(isFirst ? RED : GRAY_DIM);
+				Color inColor = isFirst
+					? (inEv.isChance() ? YELLOW : RED)
+					: GRAY_DIM;
+				g.setColor(inColor);
 				String inLabel = String.valueOf(inEv.getDamage());
+				if (inEv.isChance()) inLabel += "!";
+				if (inEv.isStack())  inLabel = "[" + inLabel + "]";
 				if (inEv.getPrayerDrain() > 0) inLabel += " -" + inEv.getPrayerDrain() + "p";
 				drawCentered(g, fm, inLabel, inX, cy + fm.getAscent());
 			}
@@ -1305,7 +1322,37 @@ public class PvpHudOverlay extends Overlay
 			{
 				int s = (int)(t2.getRemainingMs() / 1000);
 				g.setColor(s > 30 ? WHITE : RED);
-				g.drawString("T2 " + (s / 60) + ":" + String.format("%02d", s % 60), textX, baseline);
+				String lbl = "T2 " + (s / 60) + ":" + String.format("%02d", s % 60);
+				g.drawString(lbl, textX, baseline);
+				textX += fm.stringWidth(lbl) + 6;
+			}
+			ProtectionState prot = state.getProtection();
+			if (prot.isPjSafe() && textX < textRx)
+			{
+				int s = (int) Math.round(prot.getPjSafeTicksRemaining() * 0.6);
+				String lbl = "PJ " + s;
+				g.setColor(s > 20 ? GREEN : s > 10 ? YELLOW : RED);
+				g.drawString(lbl, textX, baseline);
+				textX += fm.stringWidth(lbl) + 6;
+			}
+			if (prot.isImmune() && textX < textRx)
+			{
+				int s = (int) Math.round(prot.getImmuneTicksRemaining() * 0.6);
+				String lbl = "IMM " + s;
+				g.setColor(PRAYER_FG);
+				g.drawString(lbl, textX, baseline);
+				textX += fm.stringWidth(lbl) + 6;
+			}
+			if (prot.isInCombatLogoutLock() && textX < textRx)
+			{
+				g.setColor(ORANGE);
+				g.drawString("LOG", textX, baseline);
+				textX += fm.stringWidth("LOG") + 6;
+			}
+			if (prot.isTargetSwitchLocked() && textX < textRx)
+			{
+				g.setColor(LIGHT_BLUE);
+				g.drawString("LCK", textX, baseline);
 			}
 			return;
 		}
@@ -1364,8 +1411,8 @@ public class PvpHudOverlay extends Overlay
 		int dotSectionW = dp;
 
 		// Text items (spec moved to self panel; strip shows timers + context info only)
-		List<String> labelList = new ArrayList<>(6);
-		List<Color>  colorList  = new ArrayList<>(6);
+		List<String> labelList = new ArrayList<>(10);
+		List<Color>  colorList  = new ArrayList<>(10);
 
 		ManualTimerState t1 = state.getTimer1();
 		if (t1.isRunning())
@@ -1380,6 +1427,30 @@ public class PvpHudOverlay extends Overlay
 			int s = (int) (t2.getRemainingMs() / 1000);
 			labelList.add("T2 " + (s / 60) + ":" + String.format("%02d", s % 60));
 			colorList.add(s > 30 ? WHITE : RED);
+		}
+
+		ProtectionState prot = state.getProtection();
+		if (prot.isPjSafe())
+		{
+			int s = (int) Math.round(prot.getPjSafeTicksRemaining() * 0.6);
+			labelList.add("PJ " + s + "s");
+			colorList.add(s > 20 ? GREEN : s > 10 ? YELLOW : RED);
+		}
+		if (prot.isImmune())
+		{
+			int s = (int) Math.round(prot.getImmuneTicksRemaining() * 0.6);
+			labelList.add("IMM " + s + "s");
+			colorList.add(PRAYER_FG);
+		}
+		if (prot.isInCombatLogoutLock())
+		{
+			labelList.add("LOG");
+			colorList.add(ORANGE);
+		}
+		if (prot.isTargetSwitchLocked())
+		{
+			labelList.add("LCK");
+			colorList.add(LIGHT_BLUE);
 		}
 
 		int wildLevel = state.getContext().getWildernessLevel();

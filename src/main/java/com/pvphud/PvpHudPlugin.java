@@ -4,10 +4,12 @@ import com.google.inject.Provides;
 import com.pvphud.state.ActionClockState;
 import com.pvphud.state.BoostState;
 import com.pvphud.state.CombatEvent;
+import com.pvphud.state.CombatEventType;
 import com.pvphud.state.EffectState;
 import com.pvphud.state.ManualTimerState;
 import com.pvphud.state.OpponentState;
 import com.pvphud.state.PrayerEffect;
+import com.pvphud.state.ProtectionState;
 import com.pvphud.state.PvpFightSession;
 import com.pvphud.state.SelfState;
 import java.io.IOException;
@@ -533,6 +535,8 @@ public class PvpHudPlugin extends Plugin
 		// Run energy: polled each tick (no reliable varbit event fires for it)
 		hudState.getSelf().setRunEnergy(client.getEnergy() / 100);
 
+		hudState.getProtection().tick();
+
 		// Expire stale fight session (no combat for ~30 s)
 		PvpFightSession session = hudState.getCurrentSession();
 		if (session != null && session.isStale(tick)) hudState.endSession();
@@ -602,7 +606,8 @@ public class PvpHudPlugin extends Plugin
 		{
 			// Local player changed target
 			if (!(target instanceof Player)) return;
-			String name = ((Player) target).getName();
+			Player targetPlayer = (Player) target;
+			String name = targetPlayer.getName();
 			if (name == null) return;
 
 			PvpFightSession session = hudState.getCurrentSession();
@@ -611,12 +616,15 @@ public class PvpHudPlugin extends Plugin
 			if (session != null && name.equalsIgnoreCase(session.getOpponentName()))
 			{
 				hudState.getOpponent().setName(name);
+				hudState.getOpponent().setCachedActor(targetPlayer);
 				return;
 			}
 
 			// Genuinely new opponent — start a fresh session
+			hudState.getProtection().onTargetSwitch();
 			hudState.getOpponent().reset();
 			hudState.getOpponent().setName(name);
+			hudState.getOpponent().setCachedActor(targetPlayer);
 			hudState.beginSession(name, client.getTickCount());
 			enqueueHiscoresLookup(name);
 		}
@@ -624,7 +632,8 @@ public class PvpHudPlugin extends Plugin
 		{
 			// Another player targeted the local player — create a session if none exists,
 			// so incoming hits are tracked in the fight panel before the player clicks back.
-			String name = ((Player) source).getName();
+			Player sourcePlayer = (Player) source;
+			String name = sourcePlayer.getName();
 			if (name == null) return;
 
 			PvpFightSession session = hudState.getCurrentSession();
@@ -632,6 +641,7 @@ public class PvpHudPlugin extends Plugin
 			{
 				hudState.getOpponent().reset();
 				hudState.getOpponent().setName(name);
+				hudState.getOpponent().setCachedActor(sourcePlayer);
 				hudState.beginSession(name, client.getTickCount());
 				enqueueHiscoresLookup(name);
 			}
@@ -652,23 +662,29 @@ public class PvpHudPlugin extends Plugin
 			if (dmg <= 0) return;
 
 			hudState.getSelf().setLastIncomingDamageMs(System.currentTimeMillis());
+			hudState.getProtection().onIncomingDamage();
 
 			PvpFightSession session = hudState.getCurrentSession();
 			if (session == null) return;
 
-			// Determine prayer impact from opponent's active overhead
+			// Smite drains floor(dmg / 4) — 25% rounded down
 			PrayerEffect effect   = PrayerEffect.NONE;
 			int prayerDrain       = 0;
 			OpponentState opp     = hudState.getOpponent();
 			if (opp.isSmiteActive())
 			{
 				effect      = PrayerEffect.SMITE;
-				prayerDrain = (dmg + 3) / 4; // ceil(dmg/4)
+				prayerDrain = dmg / 4;
 			}
 
+			int     tick   = client.getTickCount();
+			boolean chance = session.checkIncomingChance(dmg);
+			boolean stack  = session.isIncomingStack(tick);
+
 			session.onIncomingHit(
-				CombatEvent.incoming(dmg, prayerDrain, 0, effect, System.currentTimeMillis()),
-				client.getTickCount());
+				new CombatEvent(CombatEventType.INCOMING_HIT, dmg,
+					prayerDrain, 0, effect, chance, stack, System.currentTimeMillis()),
+				tick);
 		}
 		else if (actor instanceof Player)
 		{
@@ -691,7 +707,6 @@ public class PvpHudPlugin extends Plugin
 	private void handleOutgoingHit(OpponentState opp, int damage)
 	{
 		opp.setLastOutgoingHit(damage);
-		// Consume opponent Vengeance — they had active veng, this hit triggers it
 		if (opp.isVengActive()) opp.setVengActive(false);
 
 		if (opp.getEstimatedHp() > 0)
@@ -700,9 +715,25 @@ public class PvpHudPlugin extends Plugin
 		PvpFightSession session = hudState.getCurrentSession();
 		if (session == null) return;
 
+		// Outgoing Smite: local player's overhead icon determines if Smite is active
+		PrayerEffect outEffect     = PrayerEffect.NONE;
+		int          outPrayerDrain = 0;
+		Player       local         = client.getLocalPlayer();
+		if (local != null && local.getOverheadIcon() == HeadIcon.SMITE && damage > 0)
+		{
+			outEffect      = PrayerEffect.SMITE;
+			outPrayerDrain = damage / 4;
+		}
+
+		int     tick   = client.getTickCount();
+		boolean chance = session.checkOutgoingChance(damage);
+		boolean stack  = session.isOutgoingStack(tick);
+
 		session.onOutgoingHit(
-			CombatEvent.outgoing(damage, System.currentTimeMillis()),
-			client.getTickCount());
+			new CombatEvent(CombatEventType.OUTGOING_HIT, damage,
+				outPrayerDrain, 0, outEffect, chance, stack, System.currentTimeMillis()),
+			tick);
+		hudState.getProtection().onOutgoingDamage();
 	}
 
 	// ── Environment polling ───────────────────────────────────────────────────
@@ -732,50 +763,64 @@ public class PvpHudPlugin extends Plugin
 		OpponentState opp = hudState.getOpponent();
 		if (!opp.isTracked()) return;
 
-		List<Player> players = client.getPlayers();
-		if (players == null) return;
-
-		for (Player p : players)
+		// Use cached Player reference; fall back to a full scan if it is stale
+		Player p = opp.getCachedActor();
+		if (p == null || p.getName() == null || !p.getName().equalsIgnoreCase(opp.getName()))
 		{
-			if (p == null || p.getName() == null || !p.getName().equalsIgnoreCase(opp.getName())) continue;
-
-			opp.setOverheadPrayer(p.getOverheadIcon());
-
-			int ratio = p.getHealthRatio();
-			int scale = p.getHealthScale();
-			if (ratio < 0 || scale <= 0) break;
-
-			// Terminate fight session when opponent HP reaches 0
-			if (ratio == 0)
+			p = null;
+			List<Player> players = client.getPlayers();
+			if (players != null)
 			{
-				hudState.endSession();
-				break;
-			}
-
-			PvpFightSession session = hudState.getCurrentSession();
-			int totalDealt = session != null ? session.getTotalOutgoing() : 0;
-
-			if (opp.getMaxHp() <= 0)
-			{
-				if (ratio < scale && totalDealt > 0)
+				for (Player candidate : players)
 				{
-					double missingFraction = 1.0 - (double) ratio / scale;
-					if (missingFraction > 0.01)
+					if (candidate != null && candidate.getName() != null
+						&& candidate.getName().equalsIgnoreCase(opp.getName()))
 					{
-						int estimated = (int) Math.round(totalDealt / missingFraction);
-						if (estimated >= 60 && estimated <= 200)
-						{
-							opp.setMaxHp(estimated);
-							opp.setEstimatedHp((int) Math.round(estimated * (double) ratio / scale));
-						}
+						p = candidate;
+						opp.setCachedActor(p);
+						break;
 					}
 				}
 			}
-			else
+			if (p == null) return;
+		}
+
+		opp.setOverheadPrayer(p.getOverheadIcon());
+
+		int ratio = p.getHealthRatio();
+		int scale = p.getHealthScale();
+		if (ratio < 0 || scale <= 0) return;
+
+		// Terminate fight session when opponent HP reaches 0
+		if (ratio == 0)
+		{
+			hudState.getProtection().onKill(59, 100);
+			hudState.endSession();
+			return;
+		}
+
+		PvpFightSession session  = hudState.getCurrentSession();
+		int             totalDealt = session != null ? session.getTotalOutgoing() : 0;
+
+		if (opp.getMaxHp() <= 0)
+		{
+			if (ratio < scale && totalDealt > 0)
 			{
-				opp.setEstimatedHp((int) Math.round(opp.getMaxHp() * (double) ratio / scale));
+				double missingFraction = 1.0 - (double) ratio / scale;
+				if (missingFraction > 0.01)
+				{
+					int estimated = (int) Math.round(totalDealt / missingFraction);
+					if (estimated >= 60 && estimated <= 200)
+					{
+						opp.setMaxHp(estimated);
+						opp.setEstimatedHp((int) Math.round(estimated * (double) ratio / scale));
+					}
+				}
 			}
-			break;
+		}
+		else
+		{
+			opp.setEstimatedHp((int) Math.round(opp.getMaxHp() * (double) ratio / scale));
 		}
 	}
 

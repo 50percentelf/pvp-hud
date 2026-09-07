@@ -3,6 +3,7 @@ package com.pvphud.state;
 import lombok.Getter;
 import lombok.Setter;
 import net.runelite.api.HeadIcon;
+import net.runelite.api.Player;
 
 /** Runtime-observable state for the current PvP opponent (left panel). */
 public class OpponentState
@@ -61,6 +62,14 @@ public class OpponentState
 	@Getter @Setter
 	private HeadIcon overheadPrayer;
 
+	/**
+	 * Cached Player reference for the tracked opponent.
+	 * Set when a session starts; used to avoid scanning client.getPlayers() each tick.
+	 * Cleared on reset; re-acquired lazily in pollOpponentHealth if stale.
+	 */
+	@Getter @Setter
+	private Player cachedActor;
+
 	public boolean isSmiteActive()
 	{
 		return overheadPrayer == HeadIcon.SMITE;
@@ -81,6 +90,7 @@ public class OpponentState
 		overheadPrayer        = null;
 		pendingHitDamage      = 0;
 		pendingHitTimestampMs = -1;
+		cachedActor           = null;
 		stats.reset();
 	}
 }
