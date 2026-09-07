@@ -477,7 +477,8 @@ public class PvpHudPlugin extends Plugin
 			if (dmg > 0)
 			{
 				hudState.getCombatEvent().post(
-					new CombatEvent(CombatEventType.INCOMING_HIT, dmg, 0), 2500);
+					new CombatEvent(CombatEventType.INCOMING_HIT, dmg, 0,
+						System.currentTimeMillis()));
 			}
 		}
 	}
@@ -509,7 +510,8 @@ public class PvpHudPlugin extends Plugin
 		opp.setLastOutgoingHit(damage);
 		opp.setTotalDamageDealt(opp.getTotalDamageDealt() + damage);
 		hudState.getCombatEvent().post(
-			new CombatEvent(CombatEventType.OUTGOING_HIT, damage, 0), 2500);
+			new CombatEvent(CombatEventType.OUTGOING_HIT, damage, 0,
+				System.currentTimeMillis()));
 		if (opp.getEstimatedHp() > 0)
 			opp.setEstimatedHp(Math.max(0, opp.getEstimatedHp() - damage));
 	}

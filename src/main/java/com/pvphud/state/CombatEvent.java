@@ -11,4 +11,6 @@ public class CombatEvent
 	int damage;
 	/** Prayer points drained; 0 when not applicable. */
 	int prayerDrain;
+	/** Wall-clock time of the event (System.currentTimeMillis). */
+	long timestampMs;
 }

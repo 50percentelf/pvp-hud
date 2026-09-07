@@ -1,28 +1,39 @@
 package com.pvphud.state;
 
-import lombok.Getter;
+import java.util.ArrayDeque;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.List;
 
-/** Holds the currently displayed center-panel combat event and its expiry. */
+/** Maintains a rolling log of the most recent combat events (last 5). */
 public class CombatEventState
 {
-	@Getter
-	private CombatEvent currentEvent;
-	private long eventExpiryMs = -1;
+	private static final int MAX_LOG = 5;
 
-	public boolean hasActiveEvent()
+	private final ArrayDeque<CombatEvent> log = new ArrayDeque<>(MAX_LOG);
+
+	public void post(CombatEvent event)
 	{
-		return currentEvent != null && System.currentTimeMillis() < eventExpiryMs;
+		if (log.size() >= MAX_LOG)
+		{
+			log.pollLast();
+		}
+		log.addFirst(event);
 	}
 
-	public void post(CombatEvent event, long displayDurationMs)
+	/** Returns events newest-first; never null, may be empty. */
+	public List<CombatEvent> getRecentEvents()
 	{
-		this.currentEvent = event;
-		this.eventExpiryMs = System.currentTimeMillis() + displayDurationMs;
+		return Collections.unmodifiableList(new ArrayList<>(log));
+	}
+
+	public boolean hasEvents()
+	{
+		return !log.isEmpty();
 	}
 
 	public void clear()
 	{
-		currentEvent = null;
-		eventExpiryMs = -1;
+		log.clear();
 	}
 }

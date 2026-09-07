@@ -3,6 +3,7 @@ package com.pvphud;
 import com.pvphud.state.ActionClockState;
 import com.pvphud.state.BoostState;
 import com.pvphud.state.CombatEvent;
+import com.pvphud.state.CombatEventType;
 import com.pvphud.state.EffectState;
 import com.pvphud.state.HudLayoutState;
 import com.pvphud.state.ManualTimerState;
@@ -408,6 +409,8 @@ public class PvpHudOverlay extends Overlay
 
 	// ── Event panel ───────────────────────────────────────────────────────────
 
+	private static final Color GRAY_DIM = new Color(100, 100, 100);
+
 	private void drawEventPanel(Graphics2D g, PvpHudState state, HudLayoutState layout,
 		Font normal, Font small)
 	{
@@ -421,32 +424,37 @@ public class PvpHudOverlay extends Overlay
 		FontMetrics smFm = g.getFontMetrics();
 		g.setColor(GRAY);
 		drawCentered(g, smFm, "FIGHT", cx, cy + smFm.getAscent());
-		cy += smFm.getHeight() + 6;
+		cy += smFm.getHeight() + 4;
 
-		if (!state.getCombatEvent().hasActiveEvent())
+		List<CombatEvent> events = state.getCombatEvent().getRecentEvents();
+		if (events.isEmpty())
 		{
 			g.setColor(GRAY);
 			drawCentered(g, smFm, "---", cx, cy + smFm.getAscent());
 			return;
 		}
 
-		CombatEvent ev = state.getCombatEvent().getCurrentEvent();
+		// Show most recent event large, older events small and dimmed
 		g.setFont(normal);
-		FontMetrics fm = g.getFontMetrics();
+		FontMetrics fmNorm = g.getFontMetrics();
+		g.setFont(small);
+		FontMetrics fmSm = g.getFontMetrics();
 
-		switch (ev.getType())
+		for (int i = 0; i < events.size(); i++)
 		{
-			case OUTGOING_HIT:
-				g.setColor(GREEN);
-				drawCentered(g, fm, "-> " + ev.getDamage(), cx, cy + fm.getAscent());
-				break;
-			case INCOMING_HIT:
-				g.setColor(RED);
-				drawCentered(g, fm, "<- " + ev.getDamage(), cx, cy + fm.getAscent());
-				break;
-			default:
-				g.setColor(GRAY);
-				drawCentered(g, fm, "---", cx, cy + fm.getAscent());
+			CombatEvent ev = events.get(i);
+			boolean isNewest = i == 0;
+			FontMetrics fm = isNewest ? fmNorm : fmSm;
+			g.setFont(isNewest ? normal : small);
+
+			Color base = ev.getType() == CombatEventType.OUTGOING_HIT ? GREEN : RED;
+			g.setColor(isNewest ? base : GRAY_DIM);
+
+			String arrow = ev.getType() == CombatEventType.OUTGOING_HIT ? "→ " : "← ";
+			drawCentered(g, fm, arrow + ev.getDamage(), cx, cy + fm.getAscent());
+			cy += fm.getHeight() + (isNewest ? 3 : 1);
+
+			if (cy + fm.getHeight() > p.y + p.height - PAD) break;
 		}
 	}
 
