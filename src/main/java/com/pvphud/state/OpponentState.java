@@ -4,7 +4,7 @@ import lombok.Getter;
 import lombok.Setter;
 import net.runelite.api.HeadIcon;
 
-/** State for the current PvP opponent (left panel). */
+/** Runtime-observable state for the current PvP opponent (left panel). */
 public class OpponentState
 {
 	/** Opponent's display name; null when no opponent is tracked. */
@@ -13,40 +13,38 @@ public class OpponentState
 
 	/**
 	 * Opponent's estimated current HP. -1 means unknown.
-	 * Updated from HitsplatApplied events and any available HP metadata.
+	 * Updated from HitsplatApplied events and the health-bar ratio.
 	 */
 	@Getter @Setter
 	private int estimatedHp = -1;
 
 	/**
 	 * Opponent's max HP. -1 means unknown.
-	 * Populated asynchronously; never blocks combat initiation.
+	 * Populated via health-bar back-calculation; never blocks combat initiation.
 	 */
 	@Getter @Setter
 	private int maxHp = -1;
 
-	/** Wall-clock deadline for opponent's Vengeance; -1 = no veng. */
-	private long vengExpiryMs = -1;
+	/**
+	 * True while the opponent has active Vengeance (observed via animation 4071).
+	 * Cleared when any non-zero hitsplat lands on the opponent, consuming the veng.
+	 * There is no countdown — Vengeance has no duration; it waits for the next
+	 * qualifying hit to trigger.
+	 */
+	@Getter @Setter
+	private boolean vengActive;
 
-	/** Most recent outgoing hit dealt to the opponent (from XP drop / hitsplat). */
+	/** Most recent outgoing hit dealt to the opponent (shown in corner). */
 	@Getter @Setter
 	private int lastOutgoingHit = -1;
 
-	/** Accumulated damage dealt this fight, used for max HP back-calculation. */
-	@Getter @Setter
-	private int totalDamageDealt = 0;
-
-	/** Ticks remaining on the opponent's freeze (0 = not frozen). */
-	@Getter @Setter
-	private int freezeTicksRemaining = 0;
-
-	/** Damage computed from XP drop, shown as an in-flight indicator before the HP bar updates. */
-	@Getter private int pendingHitDamage;
+	/** Damage computed from XP drop, shown as an in-flight indicator before HP bar updates. */
+	@Getter private int  pendingHitDamage;
 	@Getter private long pendingHitTimestampMs = -1;
 
 	public void setPendingHit(int damage)
 	{
-		pendingHitDamage = damage;
+		pendingHitDamage      = damage;
 		pendingHitTimestampMs = System.currentTimeMillis();
 	}
 
@@ -60,25 +58,9 @@ public class OpponentState
 	@Getter @Setter
 	private HeadIcon overheadPrayer;
 
-	public boolean isVengActive()
-	{
-		return vengExpiryMs > 0 && System.currentTimeMillis() < vengExpiryMs;
-	}
-
 	public boolean isSmiteActive()
 	{
 		return overheadPrayer == HeadIcon.SMITE;
-	}
-
-	/** Mark the opponent's Vengeance as active; expires after 30 s. */
-	public void markVengActive()
-	{
-		vengExpiryMs = System.currentTimeMillis() + 30_000L;
-	}
-
-	public void clearVeng()
-	{
-		vengExpiryMs = -1;
 	}
 
 	public boolean isTracked()
@@ -88,15 +70,13 @@ public class OpponentState
 
 	public void reset()
 	{
-		name = null;
-		estimatedHp = -1;
-		maxHp = -1;
-		vengExpiryMs = -1;
-		lastOutgoingHit = -1;
-		totalDamageDealt = 0;
-		freezeTicksRemaining = 0;
-		overheadPrayer = null;
-		pendingHitDamage = 0;
+		name                  = null;
+		estimatedHp           = -1;
+		maxHp                 = -1;
+		vengActive            = false;
+		lastOutgoingHit       = -1;
+		overheadPrayer        = null;
+		pendingHitDamage      = 0;
 		pendingHitTimestampMs = -1;
 	}
 }

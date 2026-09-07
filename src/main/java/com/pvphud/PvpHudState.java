@@ -2,12 +2,12 @@ package com.pvphud;
 
 import com.pvphud.state.ActionClockState;
 import com.pvphud.state.BoostState;
-import com.pvphud.state.CombatEventState;
 import com.pvphud.state.EffectState;
 import com.pvphud.state.HudLayoutState;
 import com.pvphud.state.ManualTimerState;
 import com.pvphud.state.OpponentState;
 import com.pvphud.state.PvpContextState;
+import com.pvphud.state.PvpFightSession;
 import com.pvphud.state.SelfState;
 import lombok.Getter;
 
@@ -16,39 +16,41 @@ import lombok.Getter;
  *
  * The overlay reads from this object; event handlers in the plugin update it.
  * All sub-states are pre-allocated at startup so combat initiation is cheap.
+ *
+ * Fight-specific data (event log, totals) live in the nullable currentSession.
+ * The session persists across brief InteractingChanged nulls and only ends on
+ * deliberate termination (death, disengagement timeout, logout).
  */
 @Getter
 public class PvpHudState
 {
-	private final PvpContextState context     = new PvpContextState();
-	private final OpponentState   opponent    = new OpponentState();
-	private final SelfState       self        = new SelfState();
+	private final PvpContextState  context     = new PvpContextState();
+	private final OpponentState    opponent    = new OpponentState();
+	private final SelfState        self        = new SelfState();
 	private final ActionClockState actionClock = new ActionClockState();
-	private final BoostState      boosts      = new BoostState();
-	private final EffectState     effects     = new EffectState();
-	private final ManualTimerState timer1     = new ManualTimerState();
-	private final ManualTimerState timer2     = new ManualTimerState();
-	private final CombatEventState combatEvent = new CombatEventState();
-	private final HudLayoutState  layout      = new HudLayoutState();
+	private final BoostState       boosts      = new BoostState();
+	private final EffectState      effects     = new EffectState();
+	private final ManualTimerState timer1      = new ManualTimerState();
+	private final ManualTimerState timer2      = new ManualTimerState();
+	private final HudLayoutState   layout      = new HudLayoutState();
 
-	/**
-	 * Called when PvP combat begins. Resets transient combat state but
-	 * preserves self-state (boosts, effects) which pre-existed combat.
-	 */
-	public void onCombatStart(String opponentName)
+	/** Active fight session; null between fights. */
+	private PvpFightSession currentSession;
+
+	/** Start a new fight session. Any previous session is discarded. */
+	public void beginSession(String opponentName, int tick)
 	{
-		context.setPvpActive(true);
-		opponent.reset();
-		opponent.setName(opponentName);
-		combatEvent.clear();
+		currentSession = new PvpFightSession(opponentName, tick);
 	}
 
-	/** Called when PvP combat ends or the opponent is lost. */
-	public void onCombatEnd()
+	/** Terminate the active session (fight ended). Null-safe. */
+	public void endSession()
 	{
-		context.setPvpActive(false);
-		opponent.reset();
-		combatEvent.clear();
+		if (currentSession != null)
+		{
+			currentSession.terminate();
+			currentSession = null;
+		}
 	}
 
 	/** Full reset on logout, world-hop, or plugin shutdown. */
@@ -60,7 +62,7 @@ public class PvpHudState
 		actionClock.reset();
 		boosts.reset();
 		effects.reset();
-		combatEvent.clear();
 		layout.reset();
+		endSession();
 	}
 }

@@ -24,6 +24,14 @@ public class SelfState
 	@Getter @Setter
 	private boolean venomed;
 
+	/** True while an anti-poison potion is protecting against regular poison (POISON < 0). */
+	@Getter @Setter
+	private boolean antiPoisonActive;
+
+	/** True while an anti-venom potion is protecting against venom (POISON very negative). */
+	@Getter @Setter
+	private boolean antiVenomActive;
+
 	/** SpriteID of the ice spell that froze the player (0 when not frozen). */
 	@Getter @Setter
 	private int freezeSpriteId;
@@ -43,9 +51,6 @@ public class SelfState
 	/** Wall-clock ms of the last incoming hitsplat; -1 = none yet. Used for HP bar shake. */
 	@Getter @Setter private long lastIncomingDamageMs = -1;
 
-	/** Total damage received since current fight started. */
-	@Getter @Setter private int totalIncomingDamage;
-
 	/**
 	 * Self-calibrating drain period: the observed tick interval between
 	 * consecutive 1-point combat-stat drains back toward base. 0 = never
@@ -63,6 +68,8 @@ public class SelfState
 		teleBlockTicksRemaining = 0;
 		poisoned = false;
 		venomed = false;
+		antiPoisonActive = false;
+		antiVenomActive = false;
 		freezeSpriteId = 0;
 		currentHp = 0;
 		maxHp = 0;
@@ -72,6 +79,5 @@ public class SelfState
 		statDrainPeriod = 0;
 		statDrainTicksRemaining = 0;
 		lastIncomingDamageMs = -1;
-		totalIncomingDamage = 0;
 	}
 }

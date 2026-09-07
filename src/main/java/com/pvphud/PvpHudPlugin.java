@@ -4,10 +4,11 @@ import com.google.inject.Provides;
 import com.pvphud.state.ActionClockState;
 import com.pvphud.state.BoostState;
 import com.pvphud.state.CombatEvent;
-import com.pvphud.state.CombatEventType;
 import com.pvphud.state.EffectState;
 import com.pvphud.state.ManualTimerState;
 import com.pvphud.state.OpponentState;
+import com.pvphud.state.PrayerEffect;
+import com.pvphud.state.PvpFightSession;
 import com.pvphud.state.SelfState;
 import javax.inject.Inject;
 import lombok.Getter;
@@ -15,13 +16,11 @@ import lombok.extern.slf4j.Slf4j;
 import net.runelite.api.Actor;
 import net.runelite.api.ActorSpotAnim;
 import net.runelite.api.Client;
-import net.runelite.api.HeadIcon;
-import net.runelite.api.coords.WorldPoint;
 import net.runelite.api.EquipmentInventorySlot;
 import net.runelite.api.GameState;
 import net.runelite.api.GraphicID;
+import net.runelite.api.HeadIcon;
 import net.runelite.api.InventoryID;
-import java.util.List;
 import net.runelite.api.Item;
 import net.runelite.api.ItemContainer;
 import net.runelite.api.Player;
@@ -29,6 +28,7 @@ import net.runelite.api.Skill;
 import net.runelite.api.SpriteID;
 import net.runelite.api.VarPlayer;
 import net.runelite.api.Varbits;
+import net.runelite.api.coords.WorldPoint;
 import net.runelite.api.events.AnimationChanged;
 import net.runelite.api.events.GameStateChanged;
 import net.runelite.api.events.GameTick;
@@ -42,14 +42,15 @@ import net.runelite.client.config.ConfigManager;
 import net.runelite.client.eventbus.Subscribe;
 import net.runelite.client.events.ConfigChanged;
 import net.runelite.client.game.ItemManager;
-import net.runelite.http.api.item.ItemEquipmentStats;
-import net.runelite.http.api.item.ItemStats;
 import net.runelite.client.input.KeyManager;
 import net.runelite.client.plugins.Plugin;
 import net.runelite.client.plugins.PluginDescriptor;
 import net.runelite.client.ui.overlay.OverlayManager;
 import net.runelite.client.ui.overlay.OverlayPosition;
 import net.runelite.client.util.HotkeyListener;
+import net.runelite.http.api.item.ItemEquipmentStats;
+import net.runelite.http.api.item.ItemStats;
+import java.util.List;
 
 @Slf4j
 @PluginDescriptor(
@@ -59,28 +60,30 @@ import net.runelite.client.util.HotkeyListener;
 )
 public class PvpHudPlugin extends Plugin
 {
-	@Inject
-	private Client client;
-
-	@Inject
-	private PvpHudConfig config;
-
-	@Inject
-	private OverlayManager overlayManager;
-
-	@Inject
-	private PvpHudOverlay overlay;
-
-	@Inject
-	private ItemManager itemManager;
-
-	@Inject
-	private KeyManager keyManager;
+	@Inject private Client       client;
+	@Inject private PvpHudConfig config;
+	@Inject private OverlayManager overlayManager;
+	@Inject private PvpHudOverlay  overlay;
+	@Inject private ItemManager    itemManager;
+	@Inject private KeyManager     keyManager;
 
 	@Getter
 	private final PvpHudState hudState = new PvpHudState();
 
+	/** Previous HP XP value — used only to drive the pending-hit animation. */
 	private long prevHpXp;
+
+	/**
+	 * Vengeance cast spot-anim. More reliable than animation ID because the cast
+	 * animation varies with equipped weapon; this graphic is consistent.
+	 */
+	private static final int SPOTANIM_VENGEANCE = 725;
+
+	/**
+	 * Candidate animation IDs for Vengeance cast (Lunar spellbook). Varies by
+	 * weapon type; kept as fallback alongside graphic-based detection.
+	 */
+	private static final int[] ANIM_VENGEANCE_IDS = {4410, 4411, 4671, 4072, 4071};
 
 	private final HotkeyListener timer1Listener = new HotkeyListener(() -> config.timer1Key())
 	{
@@ -103,6 +106,8 @@ public class PvpHudPlugin extends Plugin
 			else t.start(config.timer2Duration() * 1000L);
 		}
 	};
+
+	// ── Plugin lifecycle ─────────────────────────────────────────────────────
 
 	@Override
 	protected void startUp() throws Exception
@@ -131,18 +136,14 @@ public class PvpHudPlugin extends Plugin
 
 	private void applyOverlayPosition()
 	{
-		// All modes use BOTTOM_LEFT so the overlay framework translates the
-		// graphics context correctly. CHAT_LOCKED pins the location each frame
-		// via renderChatLocked; float modes let the user drag freely.
 		overlay.setPosition(OverlayPosition.BOTTOM_LEFT);
 	}
 
+	// ── Self state initialisation ─────────────────────────────────────────────
+
 	private void initSelfState()
 	{
-		if (client.getGameState() != GameState.LOGGED_IN)
-		{
-			return;
-		}
+		if (client.getGameState() != GameState.LOGGED_IN) return;
 
 		BoostState boosts = hudState.getBoosts();
 		boosts.setAttackReal(client.getRealSkillLevel(Skill.ATTACK));
@@ -162,7 +163,9 @@ public class PvpHudPlugin extends Plugin
 		int poisonVal = client.getVarpValue(VarPlayer.POISON);
 		SelfState self = hudState.getSelf();
 		self.setVenomed(poisonVal >= 1_000_000);
-		self.setPoisoned(poisonVal > 0);
+		self.setPoisoned(poisonVal > 0 && poisonVal < 1_000_000);
+		self.setAntiVenomActive(poisonVal <= -500_000);
+		self.setAntiPoisonActive(poisonVal < 0 && poisonVal > -500_000);
 		self.setCurrentHp(client.getBoostedSkillLevel(Skill.HITPOINTS));
 		self.setMaxHp(client.getRealSkillLevel(Skill.HITPOINTS));
 		self.setCurrentPrayer(client.getBoostedSkillLevel(Skill.PRAYER));
@@ -181,21 +184,15 @@ public class PvpHudPlugin extends Plugin
 		prevHpXp = client.getSkillExperience(Skill.HITPOINTS);
 	}
 
+	// ── Config / game-state events ────────────────────────────────────────────
+
 	@Subscribe
 	public void onConfigChanged(ConfigChanged event)
 	{
-		if (!event.getGroup().equals("pvp-hud"))
-		{
-			return;
-		}
+		if (!event.getGroup().equals("pvp-hud")) return;
 		hudState.getContext().setMode(config.hudMode());
 		hudState.getContext().setPvpActive(config.hudVisible());
-		// Only touch overlay position when the layout setting itself changes —
-		// other config toggles must not reset the user's dragged position.
-		if ("hudLayout".equals(event.getKey()))
-		{
-			applyOverlayPosition();
-		}
+		if ("hudLayout".equals(event.getKey())) applyOverlayPosition();
 		hudState.getLayout().markDirty();
 	}
 
@@ -208,6 +205,8 @@ public class PvpHudPlugin extends Plugin
 			hudState.fullReset();
 		}
 	}
+
+	// ── Stat changes ──────────────────────────────────────────────────────────
 
 	@Subscribe
 	public void onStatChanged(StatChanged event)
@@ -266,14 +265,14 @@ public class PvpHudPlugin extends Plugin
 				int prevHp = self.getCurrentHp();
 				self.setCurrentHp(event.getBoostedLevel());
 				self.setMaxHp(event.getLevel());
-				// +1 increase that doesn't exceed max is the natural regen tick
 				if (event.getBoostedLevel() == prevHp + 1
 					&& event.getBoostedLevel() <= event.getLevel())
 				{
 					self.setHpRegenTicksRemaining(100);
 				}
 
-				// Outgoing damage from HP XP delta (all combat styles use same 4/3 HP XP rate)
+				// HP XP delta drives the pending-hit animation only; the actual
+				// combat log entry comes from onHitsplatApplied on the opponent.
 				long newHpXp = event.getXp();
 				if (prevHpXp > 0)
 				{
@@ -281,7 +280,9 @@ public class PvpHudPlugin extends Plugin
 					if (xpDelta > 0)
 					{
 						int damage = (int) Math.round(xpDelta * 3.0 / 4.0);
-						if (damage > 0) handleOutgoingHit(damage);
+						OpponentState opp = hudState.getOpponent();
+						if (damage > 0 && opp.isTracked())
+							opp.setPendingHit(damage);
 					}
 				}
 				prevHpXp = newHpXp;
@@ -296,10 +297,6 @@ public class PvpHudPlugin extends Plugin
 		}
 	}
 
-	/**
-	 * Called whenever a combat stat drains 1 point back toward base. Calibrates
-	 * the drain period from the observed interval between consecutive drains.
-	 */
 	private void recordStatDrain(SelfState self)
 	{
 		int period    = self.getStatDrainPeriod();
@@ -307,19 +304,16 @@ public class PvpHudPlugin extends Plugin
 		if (period > 0)
 		{
 			int elapsed = period - remaining;
-			// Only update estimate if the interval is plausible (10–120 ticks)
-			if (elapsed >= 10 && elapsed <= 120)
-			{
-				self.setStatDrainPeriod(elapsed);
-			}
+			if (elapsed >= 10 && elapsed <= 120) self.setStatDrainPeriod(elapsed);
 		}
 		else
 		{
-			// First drain observed — seed with a 40-tick (~24 s) estimate
 			self.setStatDrainPeriod(40);
 		}
 		self.setStatDrainTicksRemaining(self.getStatDrainPeriod());
 	}
+
+	// ── Varbit / VarPlayer changes ────────────────────────────────────────────
 
 	@Subscribe
 	public void onVarbitChanged(VarbitChanged event)
@@ -362,19 +356,32 @@ public class PvpHudPlugin extends Plugin
 		}
 		else if (varpId == VarPlayer.SPECIAL_ATTACK_PERCENT)
 		{
-			hudState.getEffects().setSpecEnergy(value / 10);
+			int newSpec = value / 10;
+			int oldSpec = hudState.getEffects().getSpecEnergy();
+			hudState.getEffects().setSpecEnergy(newSpec);
+			// Record regen timestamp when spec increases below full (passive regen, not at cap)
+			if (newSpec > oldSpec && newSpec < 100)
+				hudState.getEffects().setLastSpecRegenMs(System.currentTimeMillis());
 		}
 		else if (varpId == VarPlayer.POISON)
 		{
-			hudState.getSelf().setVenomed(value >= 1_000_000);
-			hudState.getSelf().setPoisoned(value > 0);
+			SelfState self = hudState.getSelf();
+			self.setVenomed(value >= 1_000_000);
+			self.setPoisoned(value > 0 && value < 1_000_000);
+			// Negative POISON var = active anti-poison/anti-venom protection.
+			// Values <= -500,000 indicate anti-venom potions (antidote++/anti-venom).
+			self.setAntiVenomActive(value <= -500_000);
+			self.setAntiPoisonActive(value < 0 && value > -500_000);
 		}
 	}
+
+	// ── Self freeze detection ─────────────────────────────────────────────────
 
 	@Subscribe
 	public void onGraphicChanged(GraphicChanged event)
 	{
 		Actor actor = event.getActor();
+
 		if (actor == client.getLocalPlayer())
 		{
 			for (ActorSpotAnim sa : actor.getSpotAnims())
@@ -390,59 +397,57 @@ public class PvpHudPlugin extends Plugin
 		}
 		else if (actor instanceof Player)
 		{
+			// Detect opponent Vengeance cast via its spot-anim (reliable across weapon types).
+			// Opponent freeze is NOT tracked — rejected by RuneLite review policy.
 			OpponentState opp = hudState.getOpponent();
-			if (!opp.isTracked() || !actor.getName().equals(opp.getName())) return;
+			if (!opp.isTracked() || actor.getName() == null
+				|| !actor.getName().equalsIgnoreCase(opp.getName()))
+			{
+				return;
+			}
 			for (ActorSpotAnim sa : actor.getSpotAnims())
 			{
-				int ticks = freezeTicksForGraphic(sa.getId());
-				if (ticks > 0)
+				if (sa.getId() == SPOTANIM_VENGEANCE)
 				{
-					opp.setFreezeTicksRemaining(ticks);
+					opp.setVengActive(true);
 					return;
 				}
 			}
 		}
 	}
 
+	// ── Game tick ─────────────────────────────────────────────────────────────
+
 	@Subscribe
 	public void onGameTick(GameTick event)
 	{
-		SelfState self = hudState.getSelf();
+		int tick = client.getTickCount();
 
+		SelfState self = hudState.getSelf();
 		if (self.getFreezeTicksRemaining() > 0)
 		{
 			self.setFreezeTicksRemaining(self.getFreezeTicksRemaining() - 1);
-			if (self.getFreezeTicksRemaining() == 0)
-			{
-				self.setFreezeSpriteId(0);
-			}
+			if (self.getFreezeTicksRemaining() == 0) self.setFreezeSpriteId(0);
 		}
-
 		if (self.getHpRegenTicksRemaining() > 0)
-		{
 			self.setHpRegenTicksRemaining(self.getHpRegenTicksRemaining() - 1);
-		}
-
 		if (self.getStatDrainTicksRemaining() > 0)
-		{
 			self.setStatDrainTicksRemaining(self.getStatDrainTicksRemaining() - 1);
-		}
 
 		ActionClockState clock = hudState.getActionClock();
-		if (clock.getAttackDelayTicks() > 0)
-			clock.setAttackDelayTicks(clock.getAttackDelayTicks() - 1);
-		if (clock.getEatCooldownTicks() > 0)
-			clock.setEatCooldownTicks(clock.getEatCooldownTicks() - 1);
-		if (clock.getPotCooldownTicks() > 0)
-			clock.setPotCooldownTicks(clock.getPotCooldownTicks() - 1);
+		if (clock.getAttackDelayTicks() > 0) clock.setAttackDelayTicks(clock.getAttackDelayTicks() - 1);
+		if (clock.getEatCooldownTicks() > 0) clock.setEatCooldownTicks(clock.getEatCooldownTicks() - 1);
+		if (clock.getPotCooldownTicks() > 0) clock.setPotCooldownTicks(clock.getPotCooldownTicks() - 1);
 
-		OpponentState opp = hudState.getOpponent();
-		if (opp.getFreezeTicksRemaining() > 0)
-			opp.setFreezeTicksRemaining(opp.getFreezeTicksRemaining() - 1);
+		// Expire stale fight session (no combat for ~30 s)
+		PvpFightSession session = hudState.getCurrentSession();
+		if (session != null && session.isStale(tick)) hudState.endSession();
 
 		updateEnvironment();
 		pollOpponentHealth();
 	}
+
+	// ── Menu clicks ───────────────────────────────────────────────────────────
 
 	@Subscribe
 	public void onMenuOptionClicked(MenuOptionClicked event)
@@ -450,16 +455,12 @@ public class PvpHudPlugin extends Plugin
 		ActionClockState clock = hudState.getActionClock();
 		switch (event.getMenuOption())
 		{
-			case "Eat":
-				clock.setEatCooldownTicks(3);
-				break;
-			case "Drink":
-				clock.setPotCooldownTicks(3);
-				break;
+			case "Eat":   clock.setEatCooldownTicks(3); break;
+			case "Drink": clock.setPotCooldownTicks(3); break;
 		}
 	}
 
-	private static final int ANIM_VENGEANCE = 4071;
+	// ── Animation — attack delay and opponent veng detection ──────────────────
 
 	@Subscribe
 	public void onAnimationChanged(AnimationChanged event)
@@ -474,58 +475,120 @@ public class PvpHudPlugin extends Plugin
 		else if (actor instanceof Player)
 		{
 			OpponentState opp = hudState.getOpponent();
-			if (opp.isTracked()
-				&& actor.getName() != null
-				&& actor.getName().equals(opp.getName())
-				&& actor.getAnimation() == ANIM_VENGEANCE)
+			if (!opp.isTracked() || actor.getName() == null
+				|| !actor.getName().equalsIgnoreCase(opp.getName()))
 			{
-				opp.markVengActive();
+				return;
+			}
+			int anim = actor.getAnimation();
+			for (int id : ANIM_VENGEANCE_IDS)
+			{
+				if (anim == id)
+				{
+					opp.setVengActive(true);
+					break;
+				}
 			}
 		}
 	}
+
+	// ── Interacting changed — fight session lifecycle ─────────────────────────
 
 	@Subscribe
 	public void onInteractingChanged(InteractingChanged event)
 	{
 		if (event.getSource() != client.getLocalPlayer()) return;
 		Actor target = event.getTarget();
+
 		if (target instanceof Player)
 		{
 			String name = ((Player) target).getName();
-			OpponentState opp = hudState.getOpponent();
-			if (name != null && !name.equals(opp.getName()))
+			if (name == null) return;
+
+			PvpFightSession session = hudState.getCurrentSession();
+
+			// Re-targeting the same opponent (e.g. after a brief null) — keep session alive
+			if (session != null && name.equals(session.getOpponentName()))
 			{
-				opp.reset();
-				opp.setName(name);
-				// Reset per-fight self stats when engaging a new opponent
-				SelfState self = hudState.getSelf();
-				self.setTotalIncomingDamage(0);
-				self.setLastIncomingDamageMs(-1);
-				hudState.getCombatEvent().clear();
+				hudState.getOpponent().setName(name);
+				return;
 			}
+
+			// Genuinely new opponent — start a fresh session
+			hudState.getOpponent().reset();
+			hudState.getOpponent().setName(name);
+			hudState.beginSession(name, client.getTickCount());
 		}
+		// Null target: do nothing — session survives brief disengagement
 	}
+
+	// ── Hitsplat events — combat log and HP estimation ────────────────────────
 
 	@Subscribe
 	public void onHitsplatApplied(HitsplatApplied event)
 	{
-		if (event.getActor() == client.getLocalPlayer())
+		Actor actor = event.getActor();
+
+		if (actor == client.getLocalPlayer())
 		{
 			int dmg = event.getHitsplat().getAmount();
-			if (dmg > 0)
+			if (dmg <= 0) return;
+
+			hudState.getSelf().setLastIncomingDamageMs(System.currentTimeMillis());
+
+			PvpFightSession session = hudState.getCurrentSession();
+			if (session == null) return;
+
+			// Determine prayer impact from opponent's active overhead
+			PrayerEffect effect   = PrayerEffect.NONE;
+			int prayerDrain       = 0;
+			OpponentState opp     = hudState.getOpponent();
+			if (opp.isSmiteActive())
 			{
-				SelfState self = hudState.getSelf();
-				self.setLastIncomingDamageMs(System.currentTimeMillis());
-				self.setTotalIncomingDamage(self.getTotalIncomingDamage() + dmg);
-				// Estimate prayer drain from Smite: ceil(damage / 4)
-				int prayerDrain = hudState.getOpponent().isSmiteActive()
-					? (dmg + 3) / 4 : 0;
-				hudState.getCombatEvent().post(
-					new CombatEvent(CombatEventType.INCOMING_HIT, dmg, prayerDrain,
-						System.currentTimeMillis()));
+				effect      = PrayerEffect.SMITE;
+				prayerDrain = (dmg + 3) / 4; // ceil(dmg/4)
 			}
+
+			session.onIncomingHit(
+				CombatEvent.incoming(dmg, prayerDrain, 0, effect, System.currentTimeMillis()),
+				client.getTickCount());
+		}
+		else if (actor instanceof Player)
+		{
+			// Outgoing hit: hitsplat on the tracked opponent
+			OpponentState opp = hudState.getOpponent();
+			if (!opp.isTracked()
+				|| actor.getName() == null
+				|| !actor.getName().equalsIgnoreCase(opp.getName()))
+			{
+				return;
+			}
+
+			int dmg = event.getHitsplat().getAmount();
+			if (dmg <= 0) return;
+
+			handleOutgoingHit(opp, dmg);
 		}
 	}
+
+	private void handleOutgoingHit(OpponentState opp, int damage)
+	{
+		opp.setLastOutgoingHit(damage);
+		// Consume opponent Vengeance — they had active veng, this hit triggers it
+		if (opp.isVengActive()) opp.setVengActive(false);
+
+		if (opp.getEstimatedHp() > 0)
+			opp.setEstimatedHp(Math.max(0, opp.getEstimatedHp() - damage));
+
+		PvpFightSession session = hudState.getCurrentSession();
+		if (session == null) return;
+
+		session.onOutgoingHit(
+			CombatEvent.outgoing(damage, System.currentTimeMillis()),
+			client.getTickCount());
+	}
+
+	// ── Environment polling ───────────────────────────────────────────────────
 
 	private void updateEnvironment()
 	{
@@ -544,21 +607,7 @@ public class PvpHudPlugin extends Plugin
 			}
 		}
 		hudState.getContext().setWildernessLevel(wildLevel);
-		hudState.getContext().setMultiCombat(
-			client.getVarbitValue(Varbits.MULTICOMBAT_AREA) == 1);
-	}
-
-	private void handleOutgoingHit(int damage)
-	{
-		OpponentState opp = hudState.getOpponent();
-		opp.setLastOutgoingHit(damage);
-		opp.setTotalDamageDealt(opp.getTotalDamageDealt() + damage);
-		opp.setPendingHit(damage);
-		hudState.getCombatEvent().post(
-			new CombatEvent(CombatEventType.OUTGOING_HIT, damage, 0,
-				System.currentTimeMillis()));
-		if (opp.getEstimatedHp() > 0)
-			opp.setEstimatedHp(Math.max(0, opp.getEstimatedHp() - damage));
+		hudState.getContext().setMultiCombat(client.getVarbitValue(Varbits.MULTICOMBAT_AREA) == 1);
 	}
 
 	private void pollOpponentHealth()
@@ -568,6 +617,7 @@ public class PvpHudPlugin extends Plugin
 
 		List<Player> players = client.getPlayers();
 		if (players == null) return;
+
 		for (Player p : players)
 		{
 			if (p == null || !p.getName().equals(opp.getName())) continue;
@@ -578,17 +628,24 @@ public class PvpHudPlugin extends Plugin
 			int scale = p.getHealthScale();
 			if (ratio < 0 || scale <= 0) break;
 
+			// Terminate fight session when opponent HP reaches 0
+			if (ratio == 0)
+			{
+				hudState.endSession();
+				break;
+			}
+
+			PvpFightSession session = hudState.getCurrentSession();
+			int totalDealt = session != null ? session.getTotalOutgoing() : 0;
+
 			if (opp.getMaxHp() <= 0)
 			{
-				if (ratio < scale && opp.getTotalDamageDealt() > 0)
+				if (ratio < scale && totalDealt > 0)
 				{
-					// Back-calculate: totalDamage = maxHp * (1 - ratio/scale)
-					// maxHp = totalDamage / (1 - ratio/scale)
 					double missingFraction = 1.0 - (double) ratio / scale;
 					if (missingFraction > 0.01)
 					{
-						int estimated = (int) Math.round(opp.getTotalDamageDealt() / missingFraction);
-						// Clamp to a plausible range (60–200) to avoid wild outliers
+						int estimated = (int) Math.round(totalDealt / missingFraction);
 						if (estimated >= 60 && estimated <= 200)
 						{
 							opp.setMaxHp(estimated);
@@ -596,7 +653,6 @@ public class PvpHudPlugin extends Plugin
 						}
 					}
 				}
-				// ratio == scale: full health, can't estimate max yet
 			}
 			else
 			{
@@ -605,6 +661,8 @@ public class PvpHudPlugin extends Plugin
 			break;
 		}
 	}
+
+	// ── Weapon / freeze helpers ───────────────────────────────────────────────
 
 	private int getWeaponSpeed()
 	{

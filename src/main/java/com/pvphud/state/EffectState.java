@@ -22,6 +22,10 @@ public class EffectState
 	@Getter @Setter
 	private int weaponSpeedTicks;
 
+	/** Wall-clock timestamp of the last spec regen tick (+10%); -1 = not yet observed. */
+	@Getter @Setter
+	private long lastSpecRegenMs = -1;
+
 	// ── Divine potion remaining ticks (varbit counts down each game tick) ──────
 	@Getter @Setter private int divineSupercombatTicks;
 	@Getter @Setter private int divineRangingTicks;
@@ -34,6 +38,7 @@ public class EffectState
 	{
 		specEnergy = 0;
 		specRegenTicksRemaining = 0;
+		lastSpecRegenMs = -1;
 		lightbearer = false;
 		weaponSpeedTicks = 0;
 		divineSupercombatTicks = 0;
