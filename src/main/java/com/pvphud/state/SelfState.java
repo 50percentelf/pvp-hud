@@ -40,6 +40,12 @@ public class SelfState
 	 */
 	@Getter @Setter private int hpRegenTicksRemaining;
 
+	/** Wall-clock ms of the last incoming hitsplat; -1 = none yet. Used for HP bar shake. */
+	@Getter @Setter private long lastIncomingDamageMs = -1;
+
+	/** Total damage received since current fight started. */
+	@Getter @Setter private int totalIncomingDamage;
+
 	/**
 	 * Self-calibrating drain period: the observed tick interval between
 	 * consecutive 1-point combat-stat drains back toward base. 0 = never
@@ -65,5 +71,7 @@ public class SelfState
 		hpRegenTicksRemaining = 0;
 		statDrainPeriod = 0;
 		statDrainTicksRemaining = 0;
+		lastIncomingDamageMs = -1;
+		totalIncomingDamage = 0;
 	}
 }

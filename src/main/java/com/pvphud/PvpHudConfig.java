@@ -81,6 +81,16 @@ public interface PvpHudConfig extends Config
 	}
 
 	@ConfigItem(
+		keyName = "specDisplay",
+		name = "Spec Display",
+		description = "Labeled: 'SPEC 75' in action strip. Number: '75%'. Bar: thin bar drawn on strip background."
+	)
+	default SpecDisplay specDisplay()
+	{
+		return SpecDisplay.LABELED;
+	}
+
+	@ConfigItem(
 		keyName = "timer1Key",
 		name = "Timer 1 Hotkey",
 		description = "Press to start/stop manual countdown timer 1. Shown as T1 in the action strip while running."

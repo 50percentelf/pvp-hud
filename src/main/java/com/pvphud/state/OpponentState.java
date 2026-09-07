@@ -40,6 +40,22 @@ public class OpponentState
 	@Getter @Setter
 	private int freezeTicksRemaining = 0;
 
+	/** Damage computed from XP drop, shown as an in-flight indicator before the HP bar updates. */
+	@Getter private int pendingHitDamage;
+	@Getter private long pendingHitTimestampMs = -1;
+
+	public void setPendingHit(int damage)
+	{
+		pendingHitDamage = damage;
+		pendingHitTimestampMs = System.currentTimeMillis();
+	}
+
+	public boolean hasPendingHit()
+	{
+		return pendingHitTimestampMs > 0
+			&& System.currentTimeMillis() - pendingHitTimestampMs < 900;
+	}
+
 	/** Active overhead prayer (null = none). Updated each game tick. */
 	@Getter @Setter
 	private HeadIcon overheadPrayer;
@@ -80,5 +96,7 @@ public class OpponentState
 		totalDamageDealt = 0;
 		freezeTicksRemaining = 0;
 		overheadPrayer = null;
+		pendingHitDamage = 0;
+		pendingHitTimestampMs = -1;
 	}
 }

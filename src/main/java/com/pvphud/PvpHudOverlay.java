@@ -9,6 +9,8 @@ import com.pvphud.state.HudLayoutState;
 import com.pvphud.state.ManualTimerState;
 import com.pvphud.state.OpponentState;
 import com.pvphud.state.SelfState;
+import java.awt.AlphaComposite;
+import java.awt.Composite;
 import java.awt.Color;
 import java.awt.Dimension;
 import java.awt.Font;
@@ -372,6 +374,7 @@ public class PvpHudOverlay extends Overlay
 		// HP bar (ratio-based from actor health bar)
 		int estHp  = opp.getEstimatedHp();
 		int maxHp  = opp.getMaxHp();
+		int hpBarY = cy; // saved for pending-hit animation
 		if (estHp >= 0 && maxHp > 0)
 		{
 			float pct = Math.min(1f, (float) estHp / maxHp);
@@ -385,6 +388,7 @@ public class PvpHudOverlay extends Overlay
 			smFm = g.getFontMetrics();
 			g.setColor(GRAY);
 			g.drawString("~" + estHp + " HP", x, cy + smFm.getAscent());
+			cy += smFm.getHeight() + 2;
 		}
 		else
 		{
@@ -395,6 +399,29 @@ public class PvpHudOverlay extends Overlay
 			smFm = g.getFontMetrics();
 			g.setColor(GRAY);
 			g.drawString("HP ?", x, cy + smFm.getAscent());
+			cy += smFm.getHeight() + 2;
+		}
+
+		// Pending-hit indicator: damage from XP drop, animates from above the bar down into it
+		if (opp.hasPendingHit())
+		{
+			long elapsed = System.currentTimeMillis() - opp.getPendingHitTimestampMs();
+			float t = Math.min(1f, elapsed / 600f); // 0→1 over 600 ms
+			// Float 14px above the bar, land at bar centre
+			int floatY  = hpBarY - 14;
+			int landY   = hpBarY + BAR_H / 2;
+			int displayY = (int) (floatY + (landY - floatY) * t);
+			// Fade out in the last 300 ms
+			float alpha = t < 0.67f ? 1f : (float) (1 - (t - 0.67) / 0.33);
+
+			Composite prev = g.getComposite();
+			g.setComposite(AlphaComposite.getInstance(AlphaComposite.SRC_OVER, Math.max(0f, alpha)));
+			g.setFont(normal);
+			FontMetrics hitFm = g.getFontMetrics();
+			g.setColor(YELLOW);
+			String hitLabel = "→ " + opp.getPendingHitDamage();
+			drawCentered(g, hitFm, hitLabel, p.x + p.width / 2, displayY + hitFm.getAscent());
+			g.setComposite(prev);
 		}
 
 		// Opponent freeze countdown
@@ -468,47 +495,93 @@ public class PvpHudOverlay extends Overlay
 		Rectangle p = layout.getEventPanel();
 		if (p == null) return;
 
-		int cx = p.x + p.width / 2;
-		int cy = p.y + PAD;
+		int cx  = p.x + p.width / 2;
+		int cy  = p.y + PAD;
+		int mid = p.x + p.width / 2;
 
 		g.setFont(small);
 		FontMetrics smFm = g.getFontMetrics();
 		g.setColor(GRAY);
 		drawCentered(g, smFm, "FIGHT", cx, cy + smFm.getAscent());
-		cy += smFm.getHeight() + 4;
+		cy += smFm.getHeight() + 2;
 
-		List<CombatEvent> events = state.getCombatEvent().getRecentEvents();
-		if (events.isEmpty())
+		// Column headers: OUT | IN
+		int outX = p.x + p.width / 4;      // centre of left column
+		int inX  = p.x + 3 * p.width / 4;  // centre of right column
+		g.setColor(GREEN);
+		drawCentered(g, smFm, "OUT", outX, cy + smFm.getAscent());
+		g.setColor(RED);
+		drawCentered(g, smFm, "IN", inX, cy + smFm.getAscent());
+		// vertical divider
+		g.setColor(VERT_DIV);
+		g.drawLine(mid, cy - 1, mid, p.y + p.height - PAD * 2 - smFm.getHeight());
+		cy += smFm.getHeight() + 2;
+
+		// Split events into out/in lists (newest first)
+		List<CombatEvent> allEvents = state.getCombatEvent().getRecentEvents();
+		List<CombatEvent> outEvents = new ArrayList<>(3);
+		List<CombatEvent> inEvents  = new ArrayList<>(3);
+		for (CombatEvent ev : allEvents)
 		{
-			g.setColor(GRAY);
-			drawCentered(g, smFm, "---", cx, cy + smFm.getAscent());
-			return;
+			if (ev.getType() == CombatEventType.OUTGOING_HIT && outEvents.size() < 3)
+				outEvents.add(ev);
+			else if (ev.getType() == CombatEventType.INCOMING_HIT && inEvents.size() < 3)
+				inEvents.add(ev);
 		}
 
-		// Show most recent event large, older events small and dimmed
 		g.setFont(normal);
 		FontMetrics fmNorm = g.getFontMetrics();
 		g.setFont(small);
 		FontMetrics fmSm = g.getFontMetrics();
 
-		for (int i = 0; i < events.size(); i++)
+		int maxRows = 3;
+		int rowH    = fmNorm.getHeight() + 1;
+		for (int row = 0; row < maxRows; row++)
 		{
-			CombatEvent ev = events.get(i);
-			boolean isNewest = i == 0;
-			FontMetrics fm = isNewest ? fmNorm : fmSm;
-			g.setFont(isNewest ? normal : small);
+			if (cy + rowH > p.y + p.height - PAD * 2 - smFm.getHeight()) break;
+			boolean isFirst = row == 0;
+			FontMetrics fm = isFirst ? fmNorm : fmSm;
+			g.setFont(isFirst ? normal : small);
 
-			Color base = ev.getType() == CombatEventType.OUTGOING_HIT ? GREEN : RED;
-			g.setColor(isNewest ? base : GRAY_DIM);
+			if (row < outEvents.size())
+			{
+				g.setColor(isFirst ? GREEN : GRAY_DIM);
+				drawCentered(g, fm, String.valueOf(outEvents.get(row).getDamage()), outX, cy + fm.getAscent());
+			}
+			if (row < inEvents.size())
+			{
+				CombatEvent inEv = inEvents.get(row);
+				g.setColor(isFirst ? RED : GRAY_DIM);
+				String inLabel = String.valueOf(inEv.getDamage());
+				if (inEv.getPrayerDrain() > 0) inLabel += " -" + inEv.getPrayerDrain() + "p";
+				drawCentered(g, fm, inLabel, inX, cy + fm.getAscent());
+			}
+			cy += isFirst ? fm.getHeight() + 2 : fm.getHeight() + 1;
+		}
 
-			String arrow = ev.getType() == CombatEventType.OUTGOING_HIT ? "→ " : "← ";
-			String label = arrow + ev.getDamage();
-			if (ev.getPrayerDrain() > 0)
-				label += " (-" + ev.getPrayerDrain() + "pr)";
-			drawCentered(g, fm, label, cx, cy + fm.getAscent());
-			cy += fm.getHeight() + (isNewest ? 3 : 1);
+		// Totals row at the bottom
+		int totalDealt    = state.getOpponent().getTotalDamageDealt();
+		int totalReceived = state.getSelf().getTotalIncomingDamage();
+		if (totalDealt > 0 || totalReceived > 0)
+		{
+			// Thin divider above totals
+			int divY = p.y + p.height - PAD - smFm.getHeight() - 3;
+			g.setColor(VERT_DIV);
+			g.drawLine(p.x + PAD, divY, p.x + p.width - PAD, divY);
 
-			if (cy + fm.getHeight() > p.y + p.height - PAD) break;
+			g.setFont(small);
+			smFm = g.getFontMetrics();
+			int totY = p.y + p.height - PAD;
+			if (totalDealt > 0)
+			{
+				g.setColor(GREEN);
+				drawCentered(g, smFm, totalDealt + "D", outX, totY);
+			}
+			if (totalReceived > 0)
+			{
+				g.setColor(RED);
+				drawCentered(g, smFm, totalReceived + "R", inX, totY);
+			}
 		}
 	}
 
@@ -563,11 +636,26 @@ public class PvpHudOverlay extends Overlay
 		boolean showNum = style == SelfBarStyle.BARS_AND_NUMBERS || style == SelfBarStyle.NUMBERS_ONLY;
 
 		int barW = Math.min(panelWidth - PAD * 2, 90);
-		int barX = rx - barW;
+
+		// Shake offset: damped sine wave for 600ms after incoming damage
+		int shakeX = 0;
+		long incomingMs = self.getLastIncomingDamageMs();
+		if (incomingMs > 0)
+		{
+			long elapsed = System.currentTimeMillis() - incomingMs;
+			if (elapsed < 600)
+			{
+				double damping = 1.0 - elapsed / 600.0;
+				shakeX = (int) (Math.sin(elapsed * 0.07) * 4 * damping);
+			}
+		}
+
+		int barX = rx - barW + shakeX;
 
 		if (self.getMaxHp() > 0)
 		{
-			float pct = (float) self.getCurrentHp() / self.getMaxHp();
+			// Cap pct at 1.0 so boosted HP doesn't overflow the bar
+			float pct = Math.min(1f, (float) self.getCurrentHp() / self.getMaxHp());
 			Color fg   = pct > 0.5f ? HP_FG : pct > 0.25f ? YELLOW : RED;
 			if (showBar)
 			{
@@ -589,7 +677,7 @@ public class PvpHudOverlay extends Overlay
 				if (regenTicks > 0 && self.getCurrentHp() < self.getMaxHp())
 				{
 					g.setColor(GRAY);
-					drawRightAligned(g, fm, "regen " + regenTicks + "t", rx, cy + fm.getAscent());
+					drawRightAligned(g, fm, "regen " + ticksToSecs(regenTicks), rx, cy + fm.getAscent());
 					cy += fm.getHeight() + 1;
 				}
 				else
@@ -601,7 +689,7 @@ public class PvpHudOverlay extends Overlay
 
 		if (self.getMaxPrayer() > 0)
 		{
-			float pct = (float) self.getCurrentPrayer() / self.getMaxPrayer();
+			float pct = Math.min(1f, (float) self.getCurrentPrayer() / self.getMaxPrayer());
 			Color fg   = pct > 0.5f ? PRAYER_FG : pct > 0.25f ? YELLOW : RED;
 			if (showBar)
 			{
@@ -906,8 +994,18 @@ public class PvpHudOverlay extends Overlay
 		colorList.add(eat > 0 ? ORANGE : GREEN);
 		labelList.add(pot > 0 ? "POT " + pot + "t" : "POT");
 		colorList.add(pot > 0 ? ORANGE : GREEN);
-		labelList.add("SPEC " + spec);
-		colorList.add(spec < 100 ? YELLOW : WHITE);
+		SpecDisplay specDisplay = config.specDisplay();
+		if (specDisplay == SpecDisplay.LABELED)
+		{
+			labelList.add("SPEC " + spec);
+			colorList.add(spec < 100 ? YELLOW : WHITE);
+		}
+		else if (specDisplay == SpecDisplay.NUMBER)
+		{
+			labelList.add(spec + "%");
+			colorList.add(spec < 100 ? YELLOW : WHITE);
+		}
+		// BAR mode: spec drawn separately below, not as a text label
 
 		ManualTimerState t1 = state.getTimer1();
 		if (t1.isRunning())
@@ -968,6 +1066,15 @@ public class PvpHudOverlay extends Overlay
 			g.setColor(colors[i]);
 			g.drawString(labels[i], x, baseline);
 			x += itemW + gapW;
+		}
+
+		// BAR mode: thin spec bar along the bottom edge of the strip
+		if (config.specDisplay() == SpecDisplay.BAR)
+		{
+			int barY = p.y + p.height - 2;
+			int barW = (int) ((p.width - PAD * 2) * (spec / 100.0));
+			g.setColor(spec >= 100 ? GREEN : spec >= 50 ? YELLOW : ORANGE);
+			g.fillRect(p.x + PAD, barY, barW, 2);
 		}
 	}
 

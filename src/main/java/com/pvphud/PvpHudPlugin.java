@@ -497,6 +497,11 @@ public class PvpHudPlugin extends Plugin
 			{
 				opp.reset();
 				opp.setName(name);
+				// Reset per-fight self stats when engaging a new opponent
+				SelfState self = hudState.getSelf();
+				self.setTotalIncomingDamage(0);
+				self.setLastIncomingDamageMs(-1);
+				hudState.getCombatEvent().clear();
 			}
 		}
 	}
@@ -509,6 +514,9 @@ public class PvpHudPlugin extends Plugin
 			int dmg = event.getHitsplat().getAmount();
 			if (dmg > 0)
 			{
+				SelfState self = hudState.getSelf();
+				self.setLastIncomingDamageMs(System.currentTimeMillis());
+				self.setTotalIncomingDamage(self.getTotalIncomingDamage() + dmg);
 				// Estimate prayer drain from Smite: ceil(damage / 4)
 				int prayerDrain = hudState.getOpponent().isSmiteActive()
 					? (dmg + 3) / 4 : 0;
@@ -545,6 +553,7 @@ public class PvpHudPlugin extends Plugin
 		OpponentState opp = hudState.getOpponent();
 		opp.setLastOutgoingHit(damage);
 		opp.setTotalDamageDealt(opp.getTotalDamageDealt() + damage);
+		opp.setPendingHit(damage);
 		hudState.getCombatEvent().post(
 			new CombatEvent(CombatEventType.OUTGOING_HIT, damage, 0,
 				System.currentTimeMillis()));
