@@ -31,7 +31,7 @@ public class PvpHudOverlay extends Overlay
 {
 	// ── Layout constants ──────────────────────────────────────────────────────
 	private static final int ACTION_STRIP_H = 22;
-	private static final int BOOST_ROW_H    = 18;
+	private static final int BOOST_ROW_H    = 28; // icon (14) + gap (2) + text (~7) + padding
 	private static final int PAD            = 6;
 	private static final int BAR_H          = 5;
 	private static final int VERT_W         = 220;
@@ -87,6 +87,13 @@ public class PvpHudOverlay extends Overlay
 	private volatile BufferedImage poisonIcon;
 	private volatile BufferedImage venomIcon;
 
+	// ── Skill icons for boost row (volatile — written on client thread) ───────
+	private volatile BufferedImage atkSkillIcon;
+	private volatile BufferedImage strSkillIcon;
+	private volatile BufferedImage defSkillIcon;
+	private volatile BufferedImage rngSkillIcon;
+	private volatile BufferedImage magSkillIcon;
+
 	private HudLayout lastLayout;
 
 	// ── Buff descriptor (built each frame, kept small to minimise GC) ─────────
@@ -133,6 +140,12 @@ public class PvpHudOverlay extends Overlay
 		spriteManager.getSpriteAsync(SpriteID.SPELL_ICE_BARRAGE,             0, img -> iceBarrageIcon = img);
 		spriteManager.getSpriteAsync(SpriteID.MINIMAP_ORB_HITPOINTS_POISON,  0, img -> poisonIcon     = img);
 		spriteManager.getSpriteAsync(SpriteID.MINIMAP_ORB_HITPOINTS_VENOM,   0, img -> venomIcon      = img);
+
+		spriteManager.getSpriteAsync(SpriteID.SKILL_ATTACK,   0, img -> atkSkillIcon = img);
+		spriteManager.getSpriteAsync(SpriteID.SKILL_STRENGTH, 0, img -> strSkillIcon = img);
+		spriteManager.getSpriteAsync(SpriteID.SKILL_DEFENCE,  0, img -> defSkillIcon = img);
+		spriteManager.getSpriteAsync(SpriteID.SKILL_RANGED,   0, img -> rngSkillIcon = img);
+		spriteManager.getSpriteAsync(SpriteID.SKILL_MAGIC,    0, img -> magSkillIcon = img);
 	}
 
 	// ── Render entry point ────────────────────────────────────────────────────
@@ -709,8 +722,9 @@ public class PvpHudOverlay extends Overlay
 		if (p == null) return;
 
 		g.setFont(small);
-		FontMetrics fm = g.getFontMetrics();
-		int baseline = p.y + (p.height + fm.getAscent() - fm.getDescent()) / 2;
+		FontMetrics fm  = g.getFontMetrics();
+		int iconY        = p.y + 1;
+		int textBaseline = p.y + ICON_SIZE + 3 + fm.getAscent();
 
 		int col = p.width / 5;
 		int cx1 = p.x + col / 2;
@@ -720,24 +734,34 @@ public class PvpHudOverlay extends Overlay
 		int cx5 = cx4 + col;
 
 		BoostState boosts = state.getBoosts();
-		drawBoostLabel(g, fm, "ATK", boosts.getAttackBoosted(),   boosts.getAttackReal(),   cx1, baseline);
-		drawBoostLabel(g, fm, "STR", boosts.getStrengthBoosted(), boosts.getStrengthReal(), cx2, baseline);
-		drawBoostLabel(g, fm, "DEF", boosts.getDefenceBoosted(),  boosts.getDefenceReal(),  cx3, baseline);
-		drawBoostLabel(g, fm, "RNG", boosts.getRangedBoosted(),   boosts.getRangedReal(),   cx4, baseline);
-		drawBoostLabel(g, fm, "MAG", boosts.getMagicBoosted(),    boosts.getMagicReal(),    cx5, baseline);
+		drawBoostColumn(g, fm, atkSkillIcon, "ATK", boosts.getAttackBoosted(),   boosts.getAttackReal(),   cx1, iconY, textBaseline);
+		drawBoostColumn(g, fm, strSkillIcon, "STR", boosts.getStrengthBoosted(), boosts.getStrengthReal(), cx2, iconY, textBaseline);
+		drawBoostColumn(g, fm, defSkillIcon, "DEF", boosts.getDefenceBoosted(),  boosts.getDefenceReal(),  cx3, iconY, textBaseline);
+		drawBoostColumn(g, fm, rngSkillIcon, "RNG", boosts.getRangedBoosted(),   boosts.getRangedReal(),   cx4, iconY, textBaseline);
+		drawBoostColumn(g, fm, magSkillIcon, "MAG", boosts.getMagicBoosted(),    boosts.getMagicReal(),    cx5, iconY, textBaseline);
 	}
 
-	private void drawBoostLabel(Graphics2D g, FontMetrics fm, String prefix,
-		int boosted, int real, int cx, int baseline)
+	private void drawBoostColumn(Graphics2D g, FontMetrics fm, BufferedImage icon,
+		String prefix, int boosted, int real, int cx, int iconY, int textBaseline)
 	{
+		// Icon (or fallback prefix text) above the value
+		if (icon != null)
+		{
+			g.drawImage(icon, cx - ICON_SIZE / 2, iconY, ICON_SIZE, ICON_SIZE, null);
+		}
+		else
+		{
+			g.setColor(GRAY);
+			drawCentered(g, fm, prefix, cx, iconY + fm.getAscent());
+		}
+
+		// Value below
 		int delta = boosted - real;
 		g.setColor(delta > 0 ? GREEN : delta < 0 ? RED : GRAY);
-		// x/x mode: omit the prefix so the numbers fit inside the narrow column.
-		// The column order (ATK STR DEF RNG MAG) is fixed, so position implies the stat.
 		String label = config.boostXOverX()
 			? boosted + "/" + real
-			: prefix + (delta >= 0 ? "+" : "") + delta;
-		drawCentered(g, fm, label, cx, baseline);
+			: (delta >= 0 ? "+" : "") + delta;
+		drawCentered(g, fm, label, cx, textBaseline);
 	}
 
 	// ── Action strip ──────────────────────────────────────────────────────────
