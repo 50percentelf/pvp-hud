@@ -396,12 +396,25 @@ public class PvpHudOverlay extends Overlay
 			g.drawString("HP ?", x, cy + smFm.getAscent());
 		}
 
+		// Veng warning — shown when opponent has active Vengeance
+		if (opp.isVengActive())
+		{
+			g.setFont(small);
+			smFm = g.getFontMetrics();
+			g.setColor(ORANGE);
+			drawRightAligned(g, smFm, "VENG!", p.x + p.width - PAD,
+				cy + smFm.getAscent());
+			cy += smFm.getHeight() + 2;
+		}
+
 		// Last outgoing hit in corner
 		int lastHit = opp.getLastOutgoingHit();
 		if (lastHit > 0)
 		{
+			g.setFont(small);
+			smFm = g.getFontMetrics();
 			g.setColor(YELLOW);
-			String hitStr = "-> " + lastHit;
+			String hitStr = "→ " + lastHit;
 			g.drawString(hitStr, p.x + p.width - PAD - smFm.stringWidth(hitStr),
 				p.y + p.height - PAD - smFm.getDescent());
 		}

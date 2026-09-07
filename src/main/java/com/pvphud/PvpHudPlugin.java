@@ -441,14 +441,29 @@ public class PvpHudPlugin extends Plugin
 		}
 	}
 
+	private static final int ANIM_VENGEANCE = 4071;
+
 	@Subscribe
 	public void onAnimationChanged(AnimationChanged event)
 	{
-		if (event.getActor() != client.getLocalPlayer()) return;
-		int anim = client.getLocalPlayer().getAnimation();
-		if (anim == -1) return;
-		if (client.getLocalPlayer().getInteracting() == null) return;
-		hudState.getActionClock().setAttackDelayTicks(getWeaponSpeed());
+		Actor actor = event.getActor();
+		if (actor == client.getLocalPlayer())
+		{
+			int anim = client.getLocalPlayer().getAnimation();
+			if (anim != -1 && client.getLocalPlayer().getInteracting() != null)
+				hudState.getActionClock().setAttackDelayTicks(getWeaponSpeed());
+		}
+		else if (actor instanceof Player)
+		{
+			OpponentState opp = hudState.getOpponent();
+			if (opp.isTracked()
+				&& actor.getName() != null
+				&& actor.getName().equals(opp.getName())
+				&& actor.getAnimation() == ANIM_VENGEANCE)
+			{
+				opp.markVengActive();
+			}
+		}
 	}
 
 	@Subscribe

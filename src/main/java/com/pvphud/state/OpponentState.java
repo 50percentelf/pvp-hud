@@ -24,9 +24,8 @@ public class OpponentState
 	@Getter @Setter
 	private int maxHp = -1;
 
-	/** True if the opponent has an active Vengeance. */
-	@Getter @Setter
-	private boolean vengActive;
+	/** Wall-clock deadline for opponent's Vengeance; -1 = no veng. */
+	private long vengExpiryMs = -1;
 
 	/** Most recent outgoing hit dealt to the opponent (from XP drop / hitsplat). */
 	@Getter @Setter
@@ -35,6 +34,22 @@ public class OpponentState
 	/** Accumulated damage dealt this fight, used for max HP back-calculation. */
 	@Getter @Setter
 	private int totalDamageDealt = 0;
+
+	public boolean isVengActive()
+	{
+		return vengExpiryMs > 0 && System.currentTimeMillis() < vengExpiryMs;
+	}
+
+	/** Mark the opponent's Vengeance as active; expires after 30 s. */
+	public void markVengActive()
+	{
+		vengExpiryMs = System.currentTimeMillis() + 30_000L;
+	}
+
+	public void clearVeng()
+	{
+		vengExpiryMs = -1;
+	}
 
 	public boolean isTracked()
 	{
@@ -46,7 +61,7 @@ public class OpponentState
 		name = null;
 		estimatedHp = -1;
 		maxHp = -1;
-		vengActive = false;
+		vengExpiryMs = -1;
 		lastOutgoingHit = -1;
 		totalDamageDealt = 0;
 	}
