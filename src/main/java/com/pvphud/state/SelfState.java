@@ -33,6 +33,23 @@ public class SelfState
 	@Getter @Setter private int currentPrayer;
 	@Getter @Setter private int maxPrayer;
 
+	/**
+	 * Counts down from 100 to 0 each game tick. Reset to 100 whenever a
+	 * natural HP regen tick is detected (HP increased by exactly 1). Used to
+	 * show "regen Xt" in the HUD. 0 = timer not yet calibrated.
+	 */
+	@Getter @Setter private int hpRegenTicksRemaining;
+
+	/**
+	 * Self-calibrating drain period: the observed tick interval between
+	 * consecutive 1-point combat-stat drains back toward base. 0 = never
+	 * observed a drain yet (timer hidden).
+	 */
+	@Getter @Setter private int statDrainPeriod;
+
+	/** Countdown to next expected stat drain tick. */
+	@Getter @Setter private int statDrainTicksRemaining;
+
 	public void reset()
 	{
 		vengActive = false;
@@ -45,5 +62,8 @@ public class SelfState
 		maxHp = 0;
 		currentPrayer = 0;
 		maxPrayer = 0;
+		hpRegenTicksRemaining = 0;
+		statDrainPeriod = 0;
+		statDrainTicksRemaining = 0;
 	}
 }

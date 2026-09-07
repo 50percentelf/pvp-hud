@@ -406,14 +406,15 @@ public class PvpHudOverlay extends Overlay
 
 		cy = drawHpPrayerBars(g, smFm, self, rx, cy, p.width);
 
+		BoostState boosts = state.getBoosts();
 		BuffStyle style = config.buffStyle();
 		if (style == BuffStyle.TEXT)
 		{
-			drawBuffsText(g, normal, small, self, fx, rx, cy);
+			drawBuffsText(g, normal, small, self, fx, boosts, rx, cy);
 		}
 		else
 		{
-			List<Buff> buffs = buildBuffList(self, fx);
+			List<Buff> buffs = buildBuffList(self, fx, boosts);
 			if (buffs.isEmpty()) return;
 			if (style == BuffStyle.VERTICAL_BAR)
 				drawBuffsVertBar(g, small, buffs, rx, cy);
@@ -453,7 +454,20 @@ public class PvpHudOverlay extends Overlay
 				g.setColor(fg);
 				drawRightAligned(g, fm, "HP " + self.getCurrentHp() + "/" + self.getMaxHp(),
 					rx, cy + fm.getAscent());
-				cy += fm.getHeight() + 2;
+				cy += fm.getHeight() + 1;
+
+				// Natural HP regen countdown: shown only while HP is below max
+				int regenTicks = self.getHpRegenTicksRemaining();
+				if (regenTicks > 0 && self.getCurrentHp() < self.getMaxHp())
+				{
+					g.setColor(GRAY);
+					drawRightAligned(g, fm, "regen " + regenTicks + "t", rx, cy + fm.getAscent());
+					cy += fm.getHeight() + 1;
+				}
+				else
+				{
+					cy += 1;
+				}
 			}
 		}
 
@@ -484,7 +498,7 @@ public class PvpHudOverlay extends Overlay
 	// ── Text buff display (original behaviour) ────────────────────────────────
 
 	private void drawBuffsText(Graphics2D g, Font normal, Font small,
-		SelfState self, EffectState fx, int rx, int cy)
+		SelfState self, EffectState fx, BoostState boosts, int rx, int cy)
 	{
 		g.setFont(normal);
 		FontMetrics fm = g.getFontMetrics();
@@ -525,11 +539,20 @@ public class PvpHudOverlay extends Overlay
 		{
 			g.setColor(TOXIC_GREEN);
 			drawRightAligned(g, fm, "VENOM", rx, cy + fm.getAscent());
+			cy += fm.getHeight() + 1;
 		}
 		else if (self.isPoisoned())
 		{
 			g.setColor(TOXIC_GREEN);
 			drawRightAligned(g, fm, "POISON", rx, cy + fm.getAscent());
+			cy += fm.getHeight() + 1;
+		}
+
+		int drainTicks = self.getStatDrainTicksRemaining();
+		if (drainTicks > 0 && self.getStatDrainPeriod() > 0 && boosts.hasAnyBoost())
+		{
+			g.setColor(YELLOW);
+			drawRightAligned(g, fm, "drain " + drainTicks + "t", rx, cy + fm.getAscent());
 		}
 	}
 
@@ -545,7 +568,7 @@ public class PvpHudOverlay extends Overlay
 
 	// ── Buff list builder (shared by VERTICAL_BAR and ICON_TRAY) ─────────────
 
-	private List<Buff> buildBuffList(SelfState self, EffectState fx)
+	private List<Buff> buildBuffList(SelfState self, EffectState fx, BoostState boosts)
 	{
 		buffScratch.clear();
 		int slot = 0;
@@ -577,6 +600,10 @@ public class PvpHudOverlay extends Overlay
 			slot = addBuff(buffScratch, buffPool, slot, venomIcon, "VEN", TOXIC_GREEN);
 		else if (self.isPoisoned())
 			slot = addBuff(buffScratch, buffPool, slot, poisonIcon, "PSN", TOXIC_GREEN);
+
+		int drainTicks = self.getStatDrainTicksRemaining();
+		if (drainTicks > 0 && self.getStatDrainPeriod() > 0 && boosts.hasAnyBoost())
+			slot = addBuff(buffScratch, buffPool, slot, null, "drain " + drainTicks + "t", YELLOW);
 
 		return buffScratch;
 	}

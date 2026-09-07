@@ -158,45 +158,99 @@ public class PvpHudPlugin extends Plugin
 	public void onStatChanged(StatChanged event)
 	{
 		BoostState boosts = hudState.getBoosts();
+		SelfState  self   = hudState.getSelf();
 		switch (event.getSkill())
 		{
 			case ATTACK:
+			{
+				int prev = boosts.getAttackBoosted();
 				boosts.setAttackReal(event.getLevel());
 				boosts.setAttackBoosted(event.getBoostedLevel());
+				if (event.getBoostedLevel() < prev && event.getBoostedLevel() >= event.getLevel())
+					recordStatDrain(self);
 				break;
+			}
 			case STRENGTH:
+			{
+				int prev = boosts.getStrengthBoosted();
 				boosts.setStrengthReal(event.getLevel());
 				boosts.setStrengthBoosted(event.getBoostedLevel());
+				if (event.getBoostedLevel() < prev && event.getBoostedLevel() >= event.getLevel())
+					recordStatDrain(self);
 				break;
+			}
 			case DEFENCE:
+			{
+				int prev = boosts.getDefenceBoosted();
 				boosts.setDefenceReal(event.getLevel());
 				boosts.setDefenceBoosted(event.getBoostedLevel());
+				if (event.getBoostedLevel() < prev && event.getBoostedLevel() >= event.getLevel())
+					recordStatDrain(self);
 				break;
+			}
 			case RANGED:
+			{
+				int prev = boosts.getRangedBoosted();
 				boosts.setRangedReal(event.getLevel());
 				boosts.setRangedBoosted(event.getBoostedLevel());
+				if (event.getBoostedLevel() < prev && event.getBoostedLevel() >= event.getLevel())
+					recordStatDrain(self);
 				break;
+			}
 			case MAGIC:
+			{
+				int prev = boosts.getMagicBoosted();
 				boosts.setMagicReal(event.getLevel());
 				boosts.setMagicBoosted(event.getBoostedLevel());
+				if (event.getBoostedLevel() < prev && event.getBoostedLevel() >= event.getLevel())
+					recordStatDrain(self);
 				break;
+			}
 			case HITPOINTS:
 			{
-				SelfState self = hudState.getSelf();
+				int prevHp = self.getCurrentHp();
 				self.setCurrentHp(event.getBoostedLevel());
 				self.setMaxHp(event.getLevel());
+				// +1 increase that doesn't exceed max is the natural regen tick
+				if (event.getBoostedLevel() == prevHp + 1
+					&& event.getBoostedLevel() <= event.getLevel())
+				{
+					self.setHpRegenTicksRemaining(100);
+				}
 				break;
 			}
 			case PRAYER:
-			{
-				SelfState self = hudState.getSelf();
 				self.setCurrentPrayer(event.getBoostedLevel());
 				self.setMaxPrayer(event.getLevel());
 				break;
-			}
 			default:
 				break;
 		}
+	}
+
+	/**
+	 * Called whenever a combat stat drains 1 point back toward base. Calibrates
+	 * the drain period from the observed interval between consecutive drains.
+	 */
+	private void recordStatDrain(SelfState self)
+	{
+		int period    = self.getStatDrainPeriod();
+		int remaining = self.getStatDrainTicksRemaining();
+		if (period > 0)
+		{
+			int elapsed = period - remaining;
+			// Only update estimate if the interval is plausible (10–120 ticks)
+			if (elapsed >= 10 && elapsed <= 120)
+			{
+				self.setStatDrainPeriod(elapsed);
+			}
+		}
+		else
+		{
+			// First drain observed — seed with a 40-tick (~24 s) estimate
+			self.setStatDrainPeriod(40);
+		}
+		self.setStatDrainTicksRemaining(self.getStatDrainPeriod());
 	}
 
 	@Subscribe
@@ -273,6 +327,7 @@ public class PvpHudPlugin extends Plugin
 	public void onGameTick(GameTick event)
 	{
 		SelfState self = hudState.getSelf();
+
 		if (self.getFreezeTicksRemaining() > 0)
 		{
 			self.setFreezeTicksRemaining(self.getFreezeTicksRemaining() - 1);
@@ -280,6 +335,16 @@ public class PvpHudPlugin extends Plugin
 			{
 				self.setFreezeSpriteId(0);
 			}
+		}
+
+		if (self.getHpRegenTicksRemaining() > 0)
+		{
+			self.setHpRegenTicksRemaining(self.getHpRegenTicksRemaining() - 1);
+		}
+
+		if (self.getStatDrainTicksRemaining() > 0)
+		{
+			self.setStatDrainTicksRemaining(self.getStatDrainTicksRemaining() - 1);
 		}
 	}
 
