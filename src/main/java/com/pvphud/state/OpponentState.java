@@ -39,6 +39,10 @@ public class OpponentState
 	@Getter @Setter
 	private int freezeTicksRemaining = 0;
 
+	/** True when the opponent has Smite as their active overhead prayer. */
+	@Getter @Setter
+	private boolean smiteActive;
+
 	public boolean isVengActive()
 	{
 		return vengExpiryMs > 0 && System.currentTimeMillis() < vengExpiryMs;
@@ -69,5 +73,6 @@ public class OpponentState
 		lastOutgoingHit = -1;
 		totalDamageDealt = 0;
 		freezeTicksRemaining = 0;
+		smiteActive = false;
 	}
 }

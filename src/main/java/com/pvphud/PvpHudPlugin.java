@@ -15,6 +15,7 @@ import lombok.extern.slf4j.Slf4j;
 import net.runelite.api.Actor;
 import net.runelite.api.ActorSpotAnim;
 import net.runelite.api.Client;
+import net.runelite.api.HeadIcon;
 import net.runelite.api.coords.WorldPoint;
 import net.runelite.api.EquipmentInventorySlot;
 import net.runelite.api.GameState;
@@ -508,8 +509,11 @@ public class PvpHudPlugin extends Plugin
 			int dmg = event.getHitsplat().getAmount();
 			if (dmg > 0)
 			{
+				// Estimate prayer drain from Smite: ceil(damage / 4)
+				int prayerDrain = hudState.getOpponent().isSmiteActive()
+					? (dmg + 3) / 4 : 0;
 				hudState.getCombatEvent().post(
-					new CombatEvent(CombatEventType.INCOMING_HIT, dmg, 0,
+					new CombatEvent(CombatEventType.INCOMING_HIT, dmg, prayerDrain,
 						System.currentTimeMillis()));
 			}
 		}
@@ -558,6 +562,9 @@ public class PvpHudPlugin extends Plugin
 		for (Player p : players)
 		{
 			if (p == null || !p.getName().equals(opp.getName())) continue;
+
+			opp.setSmiteActive(p.getOverheadIcon() == HeadIcon.SMITE);
+
 			int ratio = p.getHealthRatio();
 			int scale = p.getHealthScale();
 			if (ratio < 0 || scale <= 0) break;

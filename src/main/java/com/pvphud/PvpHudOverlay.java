@@ -419,6 +419,17 @@ public class PvpHudOverlay extends Overlay
 			cy += smFm.getHeight() + 2;
 		}
 
+		// Smite indicator
+		if (opp.isSmiteActive())
+		{
+			g.setFont(small);
+			smFm = g.getFontMetrics();
+			g.setColor(PRAYER_FG);
+			drawRightAligned(g, smFm, "SMITE", p.x + p.width - PAD,
+				cy + smFm.getAscent());
+			cy += smFm.getHeight() + 2;
+		}
+
 		// Last outgoing hit in corner
 		int lastHit = opp.getLastOutgoingHit();
 		if (lastHit > 0)
@@ -476,7 +487,10 @@ public class PvpHudOverlay extends Overlay
 			g.setColor(isNewest ? base : GRAY_DIM);
 
 			String arrow = ev.getType() == CombatEventType.OUTGOING_HIT ? "→ " : "← ";
-			drawCentered(g, fm, arrow + ev.getDamage(), cx, cy + fm.getAscent());
+			String label = arrow + ev.getDamage();
+			if (ev.getPrayerDrain() > 0)
+				label += " (-" + ev.getPrayerDrain() + "pr)";
+			drawCentered(g, fm, label, cx, cy + fm.getAscent());
 			cy += fm.getHeight() + (isNewest ? 3 : 1);
 
 			if (cy + fm.getHeight() > p.y + p.height - PAD) break;
