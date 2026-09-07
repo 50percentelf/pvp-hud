@@ -35,6 +35,10 @@ public class OpponentState
 	@Getter @Setter
 	private int totalDamageDealt = 0;
 
+	/** Ticks remaining on the opponent's freeze (0 = not frozen). */
+	@Getter @Setter
+	private int freezeTicksRemaining = 0;
+
 	public boolean isVengActive()
 	{
 		return vengExpiryMs > 0 && System.currentTimeMillis() < vengExpiryMs;
@@ -64,5 +68,6 @@ public class OpponentState
 		vengExpiryMs = -1;
 		lastOutgoingHit = -1;
 		totalDamageDealt = 0;
+		freezeTicksRemaining = 0;
 	}
 }

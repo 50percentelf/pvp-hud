@@ -373,19 +373,32 @@ public class PvpHudPlugin extends Plugin
 	@Subscribe
 	public void onGraphicChanged(GraphicChanged event)
 	{
-		if (event.getActor() != client.getLocalPlayer())
+		Actor actor = event.getActor();
+		if (actor == client.getLocalPlayer())
 		{
-			return;
-		}
-
-		for (ActorSpotAnim sa : event.getActor().getSpotAnims())
-		{
-			int ticks = freezeTicksForGraphic(sa.getId());
-			if (ticks > 0)
+			for (ActorSpotAnim sa : actor.getSpotAnims())
 			{
-				hudState.getSelf().setFreezeTicksRemaining(ticks);
-				hudState.getSelf().setFreezeSpriteId(freezeSpriteIdForGraphic(sa.getId()));
-				return;
+				int ticks = freezeTicksForGraphic(sa.getId());
+				if (ticks > 0)
+				{
+					hudState.getSelf().setFreezeTicksRemaining(ticks);
+					hudState.getSelf().setFreezeSpriteId(freezeSpriteIdForGraphic(sa.getId()));
+					return;
+				}
+			}
+		}
+		else if (actor instanceof Player)
+		{
+			OpponentState opp = hudState.getOpponent();
+			if (!opp.isTracked() || !actor.getName().equals(opp.getName())) return;
+			for (ActorSpotAnim sa : actor.getSpotAnims())
+			{
+				int ticks = freezeTicksForGraphic(sa.getId());
+				if (ticks > 0)
+				{
+					opp.setFreezeTicksRemaining(ticks);
+					return;
+				}
 			}
 		}
 	}
@@ -421,6 +434,10 @@ public class PvpHudPlugin extends Plugin
 			clock.setEatCooldownTicks(clock.getEatCooldownTicks() - 1);
 		if (clock.getPotCooldownTicks() > 0)
 			clock.setPotCooldownTicks(clock.getPotCooldownTicks() - 1);
+
+		OpponentState opp = hudState.getOpponent();
+		if (opp.getFreezeTicksRemaining() > 0)
+			opp.setFreezeTicksRemaining(opp.getFreezeTicksRemaining() - 1);
 
 		updateEnvironment();
 		pollOpponentHealth();

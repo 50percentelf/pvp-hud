@@ -396,6 +396,18 @@ public class PvpHudOverlay extends Overlay
 			g.drawString("HP ?", x, cy + smFm.getAscent());
 		}
 
+		// Opponent freeze countdown
+		int oppFreeze = opp.getFreezeTicksRemaining();
+		if (oppFreeze > 0)
+		{
+			g.setFont(small);
+			smFm = g.getFontMetrics();
+			g.setColor(LIGHT_BLUE);
+			drawRightAligned(g, smFm, "ICE " + oppFreeze + "t", p.x + p.width - PAD,
+				cy + smFm.getAscent());
+			cy += smFm.getHeight() + 2;
+		}
+
 		// Veng warning — shown when opponent has active Vengeance
 		if (opp.isVengActive())
 		{
