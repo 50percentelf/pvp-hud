@@ -32,6 +32,10 @@ public class OpponentState
 	@Getter @Setter
 	private int lastOutgoingHit = -1;
 
+	/** Accumulated damage dealt this fight, used for max HP back-calculation. */
+	@Getter @Setter
+	private int totalDamageDealt = 0;
+
 	public boolean isTracked()
 	{
 		return name != null;
@@ -44,5 +48,6 @@ public class OpponentState
 		maxHp = -1;
 		vengActive = false;
 		lastOutgoingHit = -1;
+		totalDamageDealt = 0;
 	}
 }

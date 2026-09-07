@@ -862,6 +862,18 @@ public class PvpHudOverlay extends Overlay
 			colorList.add(s > 30 ? WHITE : RED);
 		}
 
+		int wildLevel = state.getContext().getWildernessLevel();
+		if (wildLevel > 0)
+		{
+			labelList.add("W" + wildLevel);
+			colorList.add(YELLOW);
+		}
+		if (state.getContext().isMultiCombat())
+		{
+			labelList.add("MULTI");
+			colorList.add(ORANGE);
+		}
+
 		String[] labels = labelList.toArray(new String[0]);
 		Color[]  colors = colorList.toArray(new Color[0]);
 

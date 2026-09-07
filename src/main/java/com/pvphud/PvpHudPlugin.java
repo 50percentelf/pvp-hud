@@ -15,6 +15,7 @@ import lombok.extern.slf4j.Slf4j;
 import net.runelite.api.Actor;
 import net.runelite.api.ActorSpotAnim;
 import net.runelite.api.Client;
+import net.runelite.api.coords.WorldPoint;
 import net.runelite.api.EquipmentInventorySlot;
 import net.runelite.api.GameState;
 import net.runelite.api.GraphicID;
@@ -421,6 +422,7 @@ public class PvpHudPlugin extends Plugin
 		if (clock.getPotCooldownTicks() > 0)
 			clock.setPotCooldownTicks(clock.getPotCooldownTicks() - 1);
 
+		updateEnvironment();
 		pollOpponentHealth();
 	}
 
@@ -480,10 +482,32 @@ public class PvpHudPlugin extends Plugin
 		}
 	}
 
+	private void updateEnvironment()
+	{
+		int wildLevel = 0;
+		if (client.getVarbitValue(Varbits.IN_WILDERNESS) == 1)
+		{
+			Player local = client.getLocalPlayer();
+			if (local != null)
+			{
+				WorldPoint loc = local.getWorldLocation();
+				if (loc.getPlane() == 0)
+				{
+					wildLevel = (loc.getY() - 3520) / 8 + 1;
+					wildLevel = Math.max(1, Math.min(56, wildLevel));
+				}
+			}
+		}
+		hudState.getContext().setWildernessLevel(wildLevel);
+		hudState.getContext().setMultiCombat(
+			client.getVarbitValue(Varbits.MULTICOMBAT_AREA) == 1);
+	}
+
 	private void handleOutgoingHit(int damage)
 	{
 		OpponentState opp = hudState.getOpponent();
 		opp.setLastOutgoingHit(damage);
+		opp.setTotalDamageDealt(opp.getTotalDamageDealt() + damage);
 		hudState.getCombatEvent().post(
 			new CombatEvent(CombatEventType.OUTGOING_HIT, damage, 0), 2500);
 		if (opp.getEstimatedHp() > 0)
@@ -504,23 +528,27 @@ public class PvpHudPlugin extends Plugin
 			int scale = p.getHealthScale();
 			if (ratio < 0 || scale <= 0) break;
 
-			// If opponent was just acquired at full health, use XP damage to derive max HP.
-			// Otherwise use health-bar % + accumulated damage to refine the estimate.
-			if (opp.getMaxHp() <= 0 && ratio == scale)
+			if (opp.getMaxHp() <= 0)
 			{
-				// Full health — can't estimate max yet; wait for first damage observation.
-				break;
+				if (ratio < scale && opp.getTotalDamageDealt() > 0)
+				{
+					// Back-calculate: totalDamage = maxHp * (1 - ratio/scale)
+					// maxHp = totalDamage / (1 - ratio/scale)
+					double missingFraction = 1.0 - (double) ratio / scale;
+					if (missingFraction > 0.01)
+					{
+						int estimated = (int) Math.round(opp.getTotalDamageDealt() / missingFraction);
+						// Clamp to a plausible range (60–200) to avoid wild outliers
+						if (estimated >= 60 && estimated <= 200)
+						{
+							opp.setMaxHp(estimated);
+							opp.setEstimatedHp((int) Math.round(estimated * (double) ratio / scale));
+						}
+					}
+				}
+				// ratio == scale: full health, can't estimate max yet
 			}
-			if (opp.getMaxHp() <= 0 && opp.getLastOutgoingHit() > 0)
-			{
-				// We dealt damage; health bar now shows < 100 %. Back-calculate max HP.
-				double pct = (double) ratio / scale;
-				// totalDamage ≈ maxHp * (1 - pct)
-				// Use last outgoing hit as proxy for total damage if estimatedHp not set.
-				// A more accurate approach accumulates multiple hits.
-				break;
-			}
-			if (opp.getMaxHp() > 0)
+			else
 			{
 				opp.setEstimatedHp((int) Math.round(opp.getMaxHp() * (double) ratio / scale));
 			}

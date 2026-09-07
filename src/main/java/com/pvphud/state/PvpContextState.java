@@ -21,10 +21,20 @@ public class PvpContextState
 	@Getter @Setter
 	private boolean chatVisible;
 
+	/** Current wilderness level (0 = not in wilderness). */
+	@Getter @Setter
+	private int wildernessLevel;
+
+	/** True when standing in a multi-combat zone. */
+	@Getter @Setter
+	private boolean multiCombat;
+
 	public void reset()
 	{
 		pvpActive = false;
 		inPvpZone = false;
 		chatVisible = false;
+		wildernessLevel = 0;
+		multiCombat = false;
 	}
 }
