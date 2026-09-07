@@ -165,7 +165,7 @@ public class PvpHudPlugin extends Plugin
 
 	private void applyOverlayPosition()
 	{
-		overlay.setPosition(OverlayPosition.BOTTOM_LEFT);
+		overlay.setPosition(OverlayPosition.DYNAMIC);
 	}
 
 	// ── Self state initialisation ─────────────────────────────────────────────
