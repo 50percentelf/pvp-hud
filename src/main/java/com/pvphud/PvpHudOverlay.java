@@ -127,8 +127,9 @@ public class PvpHudOverlay extends Overlay
 	private volatile BufferedImage rngSkillIcon;
 	private volatile BufferedImage magSkillIcon;
 
-	private HudLayout lastLayout;
-	private Widget    cachedInventoryPane = null;
+	private HudLayout    lastLayout;
+	private Widget       cachedInventoryPane = null;
+	private LayoutProfile activeProfile      = null;
 
 	/** Last known drag position for each float layout — restored on layout switch. */
 	private Point horizFloatPos = null;
@@ -209,6 +210,7 @@ public class PvpHudOverlay extends Overlay
 
 		HudLayout currentLayout = config.hudLayout();
 		HudLayoutState layout   = state.getLayout();
+		activeProfile = LayoutProfile.forLayout(currentLayout, config);
 
 		if (currentLayout != lastLayout)
 		{
@@ -283,7 +285,7 @@ public class PvpHudOverlay extends Overlay
 		int h = stored != null ? stored.height : 200;
 		Rectangle bounds = new Rectangle(0, 0, w, h);
 
-		if (layout.isDirty()) computeHorizLayout(layout, bounds, config.reserveBoostDockWhenHidden());
+		if (layout.isDirty()) computeHorizLayout(layout, bounds, activeProfile.reserveBoostDockWhenHidden);
 
 		drawAll(g, state, layout, bounds, normal, small, false);
 		return new Dimension(w, h);
@@ -293,7 +295,7 @@ public class PvpHudOverlay extends Overlay
 		HudLayoutState layout, Font normal, Font small)
 	{
 		Rectangle bounds = new Rectangle(0, 0, VERT_W, VERT_H);
-		if (layout.isDirty()) computeVertLayout(layout, bounds, config.reserveBoostDockWhenHidden());
+		if (layout.isDirty()) computeVertLayout(layout, bounds, activeProfile.reserveBoostDockWhenHidden);
 
 		drawAll(g, state, layout, bounds, normal, small, true);
 		return new Dimension(VERT_W, VERT_H);
@@ -335,7 +337,7 @@ public class PvpHudOverlay extends Overlay
 		HugGeometry hug = computeHug(items, pane, INVY_LEFT_W, INVY_TOP_H);
 		setPreferredLocation(hug.anchor);
 
-		Color bg = new Color(20, 20, 20, config.backgroundOpacity());
+		Color bg = new Color(20, 20, 20, activeProfile.backgroundOpacity);
 		g.setColor(bg);
 
 		// ── Top arm: horizontal strip spanning the full overlay width ─────────
@@ -595,11 +597,11 @@ public class PvpHudOverlay extends Overlay
 
 		// ── Self resource bars (icon left, bar right, number below bar) ────────
 		cy = drawInventoryBar(g, fm, cx, lx, cy, railW, hpSkillIcon,
-			self.getCurrentHp(), self.getMaxHp(), HP_FG, HP_BG, config.hpBarStyle());
+			self.getCurrentHp(), self.getMaxHp(), HP_FG, HP_BG, activeProfile.hpBarStyle);
 		cy = drawInventoryBar(g, fm, cx, lx, cy, railW, praySkillIcon,
-			self.getCurrentPrayer(), self.getMaxPrayer(), PRAYER_FG, PRAYER_BG, config.prayerBarStyle());
+			self.getCurrentPrayer(), self.getMaxPrayer(), PRAYER_FG, PRAYER_BG, activeProfile.prayerBarStyle);
 
-		BarDisplayStyle runStyle = config.runBarStyle();
+		BarDisplayStyle runStyle = activeProfile.runBarStyle;
 		if (barVisible(runStyle))
 		{
 			int run = self.getRunEnergy();
@@ -619,7 +621,7 @@ public class PvpHudOverlay extends Overlay
 			}
 		}
 
-		BarDisplayStyle specStyle = config.specBarStyle();
+		BarDisplayStyle specStyle = activeProfile.specBarStyle;
 		if (barVisible(specStyle))
 		{
 			int spec = fx.getSpecEnergy();
@@ -800,7 +802,7 @@ public class PvpHudOverlay extends Overlay
 
 	private void computeHorizLayout(HudLayoutState layout, Rectangle b, boolean reserveDock)
 	{
-		boolean showBoost = config.showBoostRow();
+		boolean showBoost = activeProfile.showBoostRow;
 		int boostH = (showBoost || reserveDock) ? BOOST_ROW_H : 0;
 		int mainH  = b.height - ACTION_STRIP_H - boostH;
 		int third  = b.width / 3;
@@ -817,7 +819,7 @@ public class PvpHudOverlay extends Overlay
 
 	private void computeVertLayout(HudLayoutState layout, Rectangle b, boolean reserveDock)
 	{
-		boolean showBoost = config.showBoostRow();
+		boolean showBoost = activeProfile.showBoostRow;
 		int boostH = (showBoost || reserveDock) ? BOOST_ROW_H : 0;
 		int mainH  = b.height - ACTION_STRIP_H - boostH;
 		int secH   = mainH / 3;
@@ -841,8 +843,8 @@ public class PvpHudOverlay extends Overlay
 		Rectangle opp      = layout.getOpponentPanel();
 		Rectangle ev       = layout.getEventPanel();
 
-		g.setColor(new Color(20, 20, 20, config.backgroundOpacity()));
-		boolean showBoost = config.showBoostRow();
+		g.setColor(new Color(20, 20, 20, activeProfile.backgroundOpacity));
+		boolean showBoost = activeProfile.showBoostRow;
 		if (!showBoost && boostRow != null)
 		{
 			// reserveDock mode: leave the boost row band transparent for other overlays.
@@ -1201,7 +1203,7 @@ public class PvpHudOverlay extends Overlay
 		// Both start from the same cy so they coexist side-by-side within the panel.
 		drawHpPrayerBars(g, smFm, self, fx, rx, cy, p.width);
 
-		BuffStyle style = config.buffStyle();
+		BuffStyle style = activeProfile.buffStyle;
 		if (style == BuffStyle.TEXT)
 		{
 			drawBuffsText(g, normal, small, self, fx, boosts, lx, cy);
@@ -1253,7 +1255,7 @@ public class PvpHudOverlay extends Overlay
 		int barX = effectiveRx - barW;
 
 		// ── HP ──────────────────────────────────────────────────────────────────
-		BarDisplayStyle hpStyle = config.hpBarStyle();
+		BarDisplayStyle hpStyle = activeProfile.hpBarStyle;
 		if (self.getMaxHp() > 0 && barVisible(hpStyle))
 		{
 			float pct = Math.min(1f, (float) self.getCurrentHp() / self.getMaxHp());
@@ -1277,7 +1279,7 @@ public class PvpHudOverlay extends Overlay
 		}
 
 		// ── Prayer ───────────────────────────────────────────────────────────────
-		BarDisplayStyle prStyle = config.prayerBarStyle();
+		BarDisplayStyle prStyle = activeProfile.prayerBarStyle;
 		if (self.getMaxPrayer() > 0 && barVisible(prStyle))
 		{
 			float pct = Math.min(1f, (float) self.getCurrentPrayer() / self.getMaxPrayer());
@@ -1300,7 +1302,7 @@ public class PvpHudOverlay extends Overlay
 		}
 
 		// ── Run energy ───────────────────────────────────────────────────────────
-		BarDisplayStyle runStyle = config.runBarStyle();
+		BarDisplayStyle runStyle = activeProfile.runBarStyle;
 		if (barVisible(runStyle))
 		{
 			int run = self.getRunEnergy();
@@ -1322,7 +1324,7 @@ public class PvpHudOverlay extends Overlay
 		}
 
 		// ── Spec ─────────────────────────────────────────────────────────────────
-		BarDisplayStyle specStyle = config.specBarStyle();
+		BarDisplayStyle specStyle = activeProfile.specBarStyle;
 		if (barVisible(specStyle))
 		{
 			int spec = fx.getSpecEnergy();
@@ -1605,7 +1607,7 @@ public class PvpHudOverlay extends Overlay
 
 	private void drawBoostRow(Graphics2D g, PvpHudState state, HudLayoutState layout, Font small)
 	{
-		if (!config.showBoostRow()) return;
+		if (!activeProfile.showBoostRow) return;
 		Rectangle p = layout.getBoostRow();
 		if (p == null) return;
 
@@ -1661,7 +1663,7 @@ public class PvpHudOverlay extends Overlay
 		// Value below
 		int delta = boosted - real;
 		g.setColor(delta > 0 ? GREEN : delta < 0 ? RED : GRAY);
-		String label = config.boostXOverX()
+		String label = activeProfile.boostXOverX
 			? boosted + "/" + real
 			: (delta >= 0 ? "+" : "") + delta;
 		drawCentered(g, fm, label, cx, textBaseline);
