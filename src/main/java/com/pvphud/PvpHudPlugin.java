@@ -8,6 +8,7 @@ import com.pvphud.state.CombatEventType;
 import com.pvphud.state.EffectState;
 import com.pvphud.state.ManualTimerState;
 import com.pvphud.state.OpponentState;
+import com.pvphud.state.PoisonState;
 import com.pvphud.state.PrayerEffect;
 import com.pvphud.state.ProtectionState;
 import com.pvphud.state.PvpFightSession;
@@ -225,25 +226,7 @@ public class PvpHudPlugin extends Plugin
 		int poisonVal = client.getVarpValue(VarPlayer.POISON);
 		SelfState   self  = hudState.getSelf();
 		EffectState efxI  = hudState.getEffects();
-		self.setVenomed(poisonVal >= 1_000_000);
-		self.setPoisoned(poisonVal > 0 && poisonVal < 1_000_000);
-		if (poisonVal < 0 && poisonVal > -500_000)
-		{
-			self.setAntiVenomActive(false);
-			self.setAntiPoisonActive(true);
-			efxI.setAntiPoisonTicks(Math.abs(poisonVal) * 30);
-		}
-		else if (poisonVal <= -500_000)
-		{
-			self.setAntiVenomActive(true);
-			self.setAntiPoisonActive(false);
-			efxI.setAntiVenomTicks((Math.abs(poisonVal) - 500_000) * 30);
-		}
-		else
-		{
-			self.setAntiVenomActive(false);
-			self.setAntiPoisonActive(false);
-		}
+		applyPoisonVarp(poisonVal);
 		self.setCurrentHp(client.getBoostedSkillLevel(Skill.HITPOINTS));
 		self.setMaxHp(client.getRealSkillLevel(Skill.HITPOINTS));
 		self.setCurrentPrayer(client.getBoostedSkillLevel(Skill.PRAYER));
@@ -259,7 +242,7 @@ public class PvpHudPlugin extends Plugin
 		fx.setDivineMagicTicks(client.getVarbitValue(Varbits.DIVINE_MAGIC));
 		fx.setDivineBastionTicks(client.getVarbitValue(Varbits.DIVINE_BASTION));
 		fx.setDivineBattlemageTicks(client.getVarbitValue(Varbits.DIVINE_BATTLEMAGE));
-		fx.setMenaphiteRemedyTicks(client.getVarbitValue(Varbits.MENAPHITE_REMEDY));
+		fx.getMenaphite().setTotalTicksRemaining(client.getVarbitValue(Varbits.MENAPHITE_REMEDY));
 		// Stamina effect is self-tracked (STAMINA_EFFECT is binary, not a countdown).
 		// At startup we can't know remaining time, so we don't initialize the timer.
 
@@ -384,18 +367,7 @@ public class PvpHudPlugin extends Plugin
 
 	private void recordStatDrain(SelfState self)
 	{
-		int period    = self.getStatDrainPeriod();
-		int remaining = self.getStatDrainTicksRemaining();
-		if (period > 0)
-		{
-			int elapsed = period - remaining;
-			if (elapsed >= 10 && elapsed <= 120) self.setStatDrainPeriod(elapsed);
-		}
-		else
-		{
-			self.setStatDrainPeriod(40);
-		}
-		self.setStatDrainTicksRemaining(self.getStatDrainPeriod());
+		self.getBoostDecay().sync();
 	}
 
 	// ── Varbit / VarPlayer changes ────────────────────────────────────────────
@@ -437,7 +409,7 @@ public class PvpHudPlugin extends Plugin
 		}
 		else if (varbitId == Varbits.MENAPHITE_REMEDY)
 		{
-			hudState.getEffects().setMenaphiteRemedyTicks(value);
+			hudState.getEffects().getMenaphite().setTotalTicksRemaining(value);
 		}
 		else if (varbitId == Varbits.STAMINA_EFFECT)
 		{
@@ -459,37 +431,7 @@ public class PvpHudPlugin extends Plugin
 		}
 		else if (varpId == VarPlayer.POISON)
 		{
-			SelfState   self = hudState.getSelf();
-			EffectState efx  = hudState.getEffects();
-			self.setVenomed(value >= 1_000_000);
-			self.setPoisoned(value > 0 && value < 1_000_000);
-			// Negative POISON var = active anti-poison/anti-venom protection.
-			// Values <= -500,000 indicate anti-venom (antidote++/anti-venom potion).
-			// The magnitude of the varp encodes remaining protection:
-			//   anti-poison:  |value| * 30 ticks
-			//   anti-venom:   (|value| - 500_000) * 30 ticks
-			// Each game tick, the POISON varp ticks by +1 toward 0.
-			if (value < 0 && value > -500_000)
-			{
-				self.setAntiVenomActive(false);
-				self.setAntiPoisonActive(true);
-				efx.setAntiPoisonTicks(Math.abs(value) * 30);
-				efx.setAntiVenomTicks(0);
-			}
-			else if (value <= -500_000)
-			{
-				self.setAntiVenomActive(true);
-				self.setAntiPoisonActive(false);
-				efx.setAntiVenomTicks((Math.abs(value) - 500_000) * 30);
-				efx.setAntiPoisonTicks(0);
-			}
-			else
-			{
-				self.setAntiVenomActive(false);
-				self.setAntiPoisonActive(false);
-				efx.setAntiPoisonTicks(0);
-				efx.setAntiVenomTicks(0);
-			}
+			applyPoisonVarp(value);
 		}
 	}
 
@@ -549,16 +491,13 @@ public class PvpHudPlugin extends Plugin
 		SelfState self = hudState.getSelf();
 		if (self.getHpRegenTicksRemaining() > 0)
 			self.setHpRegenTicksRemaining(self.getHpRegenTicksRemaining() - 1);
-		if (self.getStatDrainTicksRemaining() > 0)
-			self.setStatDrainTicksRemaining(self.getStatDrainTicksRemaining() - 1);
+		self.getBoostDecay().tick();
+		self.getDebuffRestore().tick();
 
 		EffectState fxTick = hudState.getEffects();
 		if (fxTick.getStaminaEffectTicks() > 0)
 			fxTick.setStaminaEffectTicks(fxTick.getStaminaEffectTicks() - 1);
-		if (fxTick.getAntiPoisonTicks() > 0)
-			fxTick.setAntiPoisonTicks(fxTick.getAntiPoisonTicks() - 1);
-		if (fxTick.getAntiVenomTicks() > 0)
-			fxTick.setAntiVenomTicks(fxTick.getAntiVenomTicks() - 1);
+		hudState.getPoison().tick();
 
 		ActionClockState clock = hudState.getActionClock();
 		if (clock.getAttackDelayTicks() > 0) clock.setAttackDelayTicks(clock.getAttackDelayTicks() - 1);
@@ -1057,6 +996,41 @@ public class PvpHudPlugin extends Plugin
 	{
 		// TODO: detect LMS via region check or varbit
 		return false;
+	}
+
+	// ── Poison / venom / immunity ─────────────────────────────────────────────────
+
+	/**
+	 * Applies the POISON VarPlayer value to PoisonState.
+	 * Negative values encode active protection; positive = active poison/venom.
+	 * Task 6 will replace the approximated tick derivation with the correct encoding.
+	 */
+	private void applyPoisonVarp(int value)
+	{
+		PoisonState ps = hudState.getPoison();
+		ps.setVenomed(value >= 1_000_000);
+		ps.setPoisoned(value > 0 && value < 1_000_000);
+		if (value < 0 && value > -500_000)
+		{
+			ps.setAntiVenomActive(false);
+			ps.setAntiPoisonActive(true);
+			ps.setAntiPoisonTicks(Math.abs(value) * 30);
+			ps.setAntiVenomTicks(0);
+		}
+		else if (value <= -500_000)
+		{
+			ps.setAntiVenomActive(true);
+			ps.setAntiPoisonActive(false);
+			ps.setAntiVenomTicks((Math.abs(value) - 500_000) * 30);
+			ps.setAntiPoisonTicks(0);
+		}
+		else
+		{
+			ps.setAntiVenomActive(false);
+			ps.setAntiPoisonActive(false);
+			ps.setAntiPoisonTicks(0);
+			ps.setAntiVenomTicks(0);
+		}
 	}
 
 	// ── Hiscores lookup ───────────────────────────────────────────────────────────

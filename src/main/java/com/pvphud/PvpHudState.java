@@ -6,6 +6,7 @@ import com.pvphud.state.EffectState;
 import com.pvphud.state.HudLayoutState;
 import com.pvphud.state.ManualTimerState;
 import com.pvphud.state.OpponentState;
+import com.pvphud.state.PoisonState;
 import com.pvphud.state.ProtectionState;
 import com.pvphud.state.PvpContextState;
 import com.pvphud.state.PvpFightSession;
@@ -31,6 +32,7 @@ public class PvpHudState
 	private final ActionClockState actionClock = new ActionClockState();
 	private final BoostState       boosts      = new BoostState();
 	private final EffectState      effects     = new EffectState();
+	private final PoisonState      poison      = new PoisonState();
 	private final ManualTimerState timer1      = new ManualTimerState();
 	private final ManualTimerState timer2      = new ManualTimerState();
 	private final HudLayoutState   layout      = new HudLayoutState();
@@ -74,6 +76,7 @@ public class PvpHudState
 		actionClock.reset();
 		boosts.reset();
 		effects.reset();
+		poison.reset();
 		layout.reset();
 		protection.reset();
 		endSession();

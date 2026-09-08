@@ -9,6 +9,7 @@ import com.pvphud.state.HudLayoutState;
 import com.pvphud.state.ManualTimerState;
 import com.pvphud.state.OpponentState;
 import com.pvphud.state.OpponentStats;
+import com.pvphud.state.PoisonState;
 import com.pvphud.state.ProtectionState;
 import com.pvphud.state.PvpFightSession;
 import com.pvphud.state.SelfState;
@@ -135,17 +136,8 @@ public class PvpHudOverlay extends Overlay
 	private Point horizFloatPos = null;
 	private Point vertFloatPos  = null;
 
-	// ── Buff descriptor (built each frame, kept small to minimise GC) ─────────
-	private static final class Buff
-	{
-		BufferedImage icon;
-		String        label;
-		Color         color;
-	}
-
-	// Pre-allocated buff list — reused each frame
-	private final List<Buff> buffScratch = new ArrayList<>(12);
-	private final Buff[]     buffPool    = new Buff[12];
+	// Scratch list for building active-effect views each frame (cleared on reuse)
+	private final List<ActiveEffectView> effectScratch = new ArrayList<>(16);
 
 	@Inject
 	PvpHudOverlay(Client client, PvpHudPlugin plugin, PvpHudConfig config,
@@ -158,7 +150,6 @@ public class PvpHudOverlay extends Overlay
 		this.spriteManager = spriteManager;
 		setLayer(OverlayLayer.ABOVE_WIDGETS);
 		setPosition(OverlayPosition.DYNAMIC);
-		for (int i = 0; i < buffPool.length; i++) buffPool[i] = new Buff();
 	}
 
 	/** Called from plugin startUp so images are queued as early as possible. */
@@ -593,6 +584,7 @@ public class PvpHudOverlay extends Overlay
 		SelfState     self   = state.getSelf();
 		EffectState   fx     = state.getEffects();
 		BoostState    boosts = state.getBoosts();
+		PoisonState   poison = state.getPoison();
 		OpponentState opp    = state.getOpponent();
 
 		// ── Self resource bars (icon left, bar right, number below bar) ────────
@@ -643,7 +635,7 @@ public class PvpHudOverlay extends Overlay
 
 		// ── Opponent veng (icon + label, same visual style as self buffs below) ─
 		boolean hasOppVeng  = opp.isTracked() && opp.isVengActive();
-		List<Buff> selfBuffs = buildBuffList(self, fx, boosts);
+		List<ActiveEffectView> selfBuffs = buildActiveEffects(self, fx, poison, boosts);
 		boolean hasBuffs    = hasOppVeng || !selfBuffs.isEmpty();
 
 		if (hasBuffs)
@@ -665,7 +657,7 @@ public class PvpHudOverlay extends Overlay
 			}
 
 			// Self buffs — use the same icon+label vertical-bar style as the other layouts.
-			drawBuffsVertBar(g, small, selfBuffs, lx, cy);
+			drawEffectsVertBar(g, small, selfBuffs, lx, cy);
 			cy += selfBuffs.size() * lineH;
 		}
 
@@ -1203,26 +1195,22 @@ public class PvpHudOverlay extends Overlay
 		SelfState   self   = state.getSelf();
 		EffectState fx     = state.getEffects();
 		BoostState  boosts = state.getBoosts();
+		PoisonState poison = state.getPoison();
 
 		// Right side: resource bars (HP, Prayer, Run, Spec). Left side: buff indicators.
 		// Both start from the same cy so they coexist side-by-side within the panel.
 		drawHpPrayerBars(g, smFm, self, fx, rx, cy, p.width);
 
-		BuffStyle style = activeProfile.buffStyle;
-		if (style == BuffStyle.TEXT)
+		List<ActiveEffectView> effects = buildActiveEffects(self, fx, poison, boosts);
+		if (!effects.isEmpty())
 		{
-			drawBuffsText(g, normal, small, self, fx, boosts, lx, cy);
-		}
-		else
-		{
-			List<Buff> buffs = buildBuffList(self, fx, boosts);
-			if (!buffs.isEmpty())
-			{
-				if (style == BuffStyle.VERTICAL_BAR)
-					drawBuffsVertBar(g, small, buffs, lx, cy);
-				else
-					drawBuffsIconTray(g, small, buffs, lx, cy);
-			}
+			BuffStyle style = activeProfile.buffStyle;
+			if (style == BuffStyle.VERTICAL_BAR)
+				drawEffectsVertBar(g, small, effects, lx, cy);
+			else if (style == BuffStyle.ICON_TRAY)
+				drawEffectsIconTray(g, small, effects, lx, cy);
+			else
+				drawEffectsText(g, normal, effects, lx, cy);
 		}
 	}
 
@@ -1352,192 +1340,86 @@ public class PvpHudOverlay extends Overlay
 		return cy;
 	}
 
-	// ── Text buff display (original behaviour) ────────────────────────────────
-
-	private void drawBuffsText(Graphics2D g, Font normal, Font small,
-		SelfState self, EffectState fx, BoostState boosts, int lx, int cy)
-	{
-		g.setFont(normal);
-		FontMetrics fm = g.getFontMetrics();
-
-		if (self.isVengActive())
-		{
-			g.setColor(GREEN);
-			g.drawString("VENG RDY", lx, cy + fm.getAscent());
-			cy += fm.getHeight() + 1;
-		}
-
-		int freezeTicks = self.getFreezeTicksRemaining(client.getTickCount());
-		if (freezeTicks > 0 && config.showFreezeTimer())
-		{
-			g.setColor(LIGHT_BLUE);
-			g.drawString("ICE " + ticksToSecs(freezeTicks), lx, cy + fm.getAscent());
-			cy += fm.getHeight() + 1;
-		}
-
-		int tbTicks = self.getTeleBlockTicksRemaining();
-		if (tbTicks > 0)
-		{
-			int s = tbTicks * 600 / 1000;
-			g.setColor(ORANGE);
-			g.drawString("TB " + (s / 60) + ":" + String.format("%02d", s % 60),
-				lx, cy + fm.getAscent());
-			cy += fm.getHeight() + 1;
-		}
-
-		if (config.showDivineTimers())
-		{
-			cy = drawDivineTimerText(g, fm, "DSC", fx.getDivineSupercombatTicks(), lx, cy);
-			cy = drawDivineTimerText(g, fm, "DRG", fx.getDivineRangingTicks(),     lx, cy);
-			cy = drawDivineTimerText(g, fm, "DMG", fx.getDivineMagicTicks(),       lx, cy);
-			cy = drawDivineTimerText(g, fm, "BAS", fx.getDivineBastionTicks(),     lx, cy);
-			cy = drawDivineTimerText(g, fm, "BTM", fx.getDivineBattlemageTicks(),  lx, cy);
-			cy = drawDivineTimerText(g, fm, "MEN", fx.getMenaphiteRemedyTicks(),   lx, cy);
-		}
-
-		int staminaTicks = fx.getStaminaEffectTicks();
-		if (staminaTicks > 0)
-		{
-			int secs = staminaTicks * 600 / 1000;
-			g.setColor(secs > 60 ? GREEN : secs > 30 ? YELLOW : RED);
-			g.drawString("STAM " + (secs / 60) + ":" + String.format("%02d", secs % 60),
-				lx, cy + fm.getAscent());
-			cy += fm.getHeight() + 1;
-		}
-
-		if (self.isVenomed())
-		{
-			g.setColor(TOXIC_GREEN);
-			g.drawString("VENOM", lx, cy + fm.getAscent());
-			cy += fm.getHeight() + 1;
-		}
-		else if (self.isPoisoned())
-		{
-			g.setColor(TOXIC_GREEN);
-			g.drawString("POISON", lx, cy + fm.getAscent());
-			cy += fm.getHeight() + 1;
-		}
-		if (self.isAntiVenomActive())
-		{
-			cy = drawDivineTimerText(g, fm, "ANTI-V", fx.getAntiVenomTicks(), lx, cy);
-		}
-		else if (self.isAntiPoisonActive())
-		{
-			cy = drawDivineTimerText(g, fm, "ANTI-P", fx.getAntiPoisonTicks(), lx, cy);
-		}
-
-		int drainTicks = self.getStatDrainTicksRemaining();
-		if (drainTicks > 0 && self.getStatDrainPeriod() > 0 && boosts.hasAnyBoost())
-		{
-			g.setColor(YELLOW);
-			g.drawString("drain " + drainTicks + "t", lx, cy + fm.getAscent());
-		}
-	}
+	// ── Active effect builder (single source of truth for all buff styles) ──────
 
 	/**
-	 * Draws a timer label. When ticks > 0 shows "LABEL M:SS" with colour-coded time.
-	 * When ticks == 0 the effect is active but the countdown is unavailable — shows
-	 * just the label in green so the buff is still visible.
+	 * Builds the list of currently active effects to display in the buff strip.
+	 * All three presentation styles (TEXT, VERTICAL_BAR, ICON_TRAY) consume this list.
+	 * Labels are self-describing so TEXT mode is intelligible without icons.
 	 */
-	private int drawDivineTimerText(Graphics2D g, FontMetrics fm, String label, int ticks, int lx, int cy)
+	private List<ActiveEffectView> buildActiveEffects(SelfState self, EffectState fx,
+		PoisonState poison, BoostState boosts)
 	{
-		if (ticks > 0)
-		{
-			int s = ticks * 600 / 1000;
-			g.setColor(s > 60 ? GREEN : s > 30 ? YELLOW : RED);
-			g.drawString(label + " " + (s / 60) + ":" + String.format("%02d", s % 60),
-				lx, cy + fm.getAscent());
-		}
-		else
-		{
-			g.setColor(GREEN);
-			g.drawString(label, lx, cy + fm.getAscent());
-		}
-		return cy + fm.getHeight() + 1;
-	}
-
-	// ── Buff list builder (shared by VERTICAL_BAR and ICON_TRAY) ─────────────
-
-	private List<Buff> buildBuffList(SelfState self, EffectState fx, BoostState boosts)
-	{
-		buffScratch.clear();
-		int slot = 0;
+		effectScratch.clear();
 
 		if (self.isVengActive())
-			slot = addBuff(buffScratch, buffPool, slot, vengIcon, "VENG", GREEN);
+			effectScratch.add(new ActiveEffectView(vengIcon, "VENG RDY", GREEN));
 
 		int freeze = self.getFreezeTicksRemaining(client.getTickCount());
 		if (freeze > 0 && config.showFreezeTimer())
-			slot = addBuff(buffScratch, buffPool, slot, iceIconFor(self.getFreezeSpriteId()),
-				ticksToSecs(freeze), LIGHT_BLUE);
+			effectScratch.add(new ActiveEffectView(
+				iceIconFor(self.getFreezeSpriteId()), "ICE " + ticksToSecs(freeze), LIGHT_BLUE));
 
 		int tb = self.getTeleBlockTicksRemaining();
 		if (tb > 0)
-		{
-			int s = tb * 600 / 1000;
-			slot = addBuff(buffScratch, buffPool, slot, tbIcon,
-				(s / 60) + ":" + String.format("%02d", s % 60), ORANGE);
-		}
+			effectScratch.add(new ActiveEffectView(tbIcon, "TB " + ticksToMSS(tb), ORANGE));
 
 		if (config.showDivineTimers())
 		{
-			slot = addDivineBuff(buffScratch, buffPool, slot, dscIcon, fx.getDivineSupercombatTicks());
-			slot = addDivineBuff(buffScratch, buffPool, slot, drgIcon, fx.getDivineRangingTicks());
-			slot = addDivineBuff(buffScratch, buffPool, slot, dmgIcon, fx.getDivineMagicTicks());
-			slot = addDivineBuff(buffScratch, buffPool, slot, basIcon, fx.getDivineBastionTicks());
-			slot = addDivineBuff(buffScratch, buffPool, slot, btmIcon, fx.getDivineBattlemageTicks());
-			slot = addDivineBuff(buffScratch, buffPool, slot, menIcon, fx.getMenaphiteRemedyTicks());
+			addTimedEffect("DSC", fx.getDivineSupercombatTicks(), dscIcon);
+			addTimedEffect("DRG", fx.getDivineRangingTicks(),     drgIcon);
+			addTimedEffect("DMG", fx.getDivineMagicTicks(),       dmgIcon);
+			addTimedEffect("BAS", fx.getDivineBastionTicks(),     basIcon);
+			addTimedEffect("BTM", fx.getDivineBattlemageTicks(),  btmIcon);
+			if (fx.getMenaphite().isActive())
+				addTimedEffect("MEN", fx.getMenaphite().getTotalTicksRemaining(), menIcon);
 		}
 
-		slot = addDivineBuff(buffScratch, buffPool, slot, staminaIcon, fx.getStaminaEffectTicks());
+		if (fx.getStaminaEffectTicks() > 0)
+			addTimedEffect("STAM", fx.getStaminaEffectTicks(), staminaIcon);
 
-		if (self.isVenomed())
-			slot = addBuff(buffScratch, buffPool, slot, venomIcon, "VEN", TOXIC_GREEN);
-		else if (self.isPoisoned())
-			slot = addBuff(buffScratch, buffPool, slot, poisonIcon, "PSN", TOXIC_GREEN);
+		if (poison.isVenomed())
+			effectScratch.add(new ActiveEffectView(venomIcon,  "VENOM",  TOXIC_GREEN));
+		else if (poison.isPoisoned())
+			effectScratch.add(new ActiveEffectView(poisonIcon, "POISON", TOXIC_GREEN));
 
-		if (self.isAntiVenomActive())
-			slot = addDivineBuffFallback(buffScratch, buffPool, slot, antiVenomItemIcon,
-				fx.getAntiVenomTicks(), "ANTI-V");
-		else if (self.isAntiPoisonActive())
-			slot = addDivineBuffFallback(buffScratch, buffPool, slot, antiPoisonItemIcon,
-				fx.getAntiPoisonTicks(), "ANTI-P");
+		if (poison.isAntiVenomActive())
+			addTimedEffectFallback("ANTI-V", poison.getAntiVenomTicks(),  antiVenomItemIcon);
+		else if (poison.isAntiPoisonActive())
+			addTimedEffectFallback("ANTI-P", poison.getAntiPoisonTicks(), antiPoisonItemIcon);
 
-		int drainTicks = self.getStatDrainTicksRemaining();
-		if (drainTicks > 0 && self.getStatDrainPeriod() > 0 && boosts.hasAnyBoost())
-			slot = addBuff(buffScratch, buffPool, slot, null, "drain " + drainTicks + "t", YELLOW);
+		int drainTicks = self.getBoostDecay().getTicksRemaining();
+		if (drainTicks > 0 && self.getBoostDecay().isCalibrated() && boosts.hasAnyBoost())
+			effectScratch.add(new ActiveEffectView(null, "drain " + drainTicks + "t", YELLOW));
 
-		return buffScratch;
+		return effectScratch;
 	}
 
-	private static int addBuff(List<Buff> list, Buff[] pool, int slot,
-		BufferedImage icon, String label, Color color)
+	private void addTimedEffect(String label, int ticks, BufferedImage icon)
 	{
-		if (slot >= pool.length) return slot;
-		Buff b = pool[slot];
-		b.icon  = icon;
-		b.label = label;
-		b.color = color;
-		list.add(b);
-		return slot + 1;
+		if (ticks <= 0) return;
+		effectScratch.add(new ActiveEffectView(icon, label + " " + ticksToMSS(ticks), timerColor(ticks)));
 	}
 
-	private static int addDivineBuff(List<Buff> list, Buff[] pool, int slot,
-		BufferedImage icon, int ticks)
+	/** Like addTimedEffect but falls back to a static label when ticks == 0 (active, no countdown). */
+	private void addTimedEffectFallback(String label, int ticks, BufferedImage icon)
 	{
-		if (ticks <= 0) return slot;
+		if (ticks > 0)
+			effectScratch.add(new ActiveEffectView(icon, label + " " + ticksToMSS(ticks), timerColor(ticks)));
+		else
+			effectScratch.add(new ActiveEffectView(icon, label, GREEN));
+	}
+
+	private static Color timerColor(int ticks)
+	{
 		int s = ticks * 600 / 1000;
-		Color c = s > 60 ? GREEN : s > 30 ? YELLOW : RED;
-		return addBuff(list, pool, slot, icon,
-			(s / 60) + ":" + String.format("%02d", s % 60), c);
+		return s > 60 ? GREEN : s > 30 ? YELLOW : RED;
 	}
 
-	/** Like addDivineBuff but shows the fallback label in green when ticks == 0 (active, no countdown). */
-	private static int addDivineBuffFallback(List<Buff> list, Buff[] pool, int slot,
-		BufferedImage icon, int ticks, String fallbackLabel)
+	private static String ticksToMSS(int ticks)
 	{
-		if (ticks > 0) return addDivineBuff(list, pool, slot, icon, ticks);
-		return addBuff(list, pool, slot, icon, fallbackLabel, GREEN);
+		int s = ticks * 600 / 1000;
+		return (s / 60) + ":" + String.format("%02d", s % 60);
 	}
 
 	private BufferedImage iceIconFor(int spriteId)
@@ -1552,59 +1434,64 @@ public class PvpHudOverlay extends Overlay
 		}
 	}
 
+	// ── TEXT: one label per line, colour-coded ────────────────────────────────
+
+	private void drawEffectsText(Graphics2D g, Font font, List<ActiveEffectView> effects, int lx, int cy)
+	{
+		g.setFont(font);
+		FontMetrics fm = g.getFontMetrics();
+		for (ActiveEffectView e : effects)
+		{
+			g.setColor(e.color);
+			g.drawString(e.label, lx, cy + fm.getAscent());
+			cy += fm.getHeight() + 1;
+		}
+	}
+
 	// ── VERTICAL_BAR: icon then label, left-aligned in the buff column ──────────
 
-	private void drawBuffsVertBar(Graphics2D g, Font small, List<Buff> buffs, int lx, int cy)
+	private void drawEffectsVertBar(Graphics2D g, Font small, List<ActiveEffectView> effects, int lx, int cy)
 	{
 		g.setFont(small);
 		FontMetrics fm = g.getFontMetrics();
 		int lineH = Math.max(fm.getHeight(), ICON_SIZE) + 1;
 
-		for (Buff b : buffs)
+		for (ActiveEffectView e : effects)
 		{
 			int iconY = cy + (lineH - 1 - ICON_SIZE) / 2;
-			if (b.icon != null)
-			{
-				g.drawImage(b.icon, lx, iconY, ICON_SIZE, ICON_SIZE, null);
-			}
-			int textX = b.icon != null ? lx + ICON_SIZE + ICON_GAP : lx;
-			g.setColor(b.color);
-			g.drawString(b.label, textX, cy + fm.getAscent());
+			if (e.icon != null)
+				g.drawImage(e.icon, lx, iconY, ICON_SIZE, ICON_SIZE, null);
+			int textX = e.icon != null ? lx + ICON_SIZE + ICON_GAP : lx;
+			g.setColor(e.color);
+			g.drawString(e.label, textX, cy + fm.getAscent());
 			cy += lineH;
 		}
 	}
 
 	// ── ICON_TRAY: horizontal strip of icons with labels below ────────────────
 
-	private void drawBuffsIconTray(Graphics2D g, Font small, List<Buff> buffs, int lx, int cy)
+	private void drawEffectsIconTray(Graphics2D g, Font small, List<ActiveEffectView> effects, int lx, int cy)
 	{
 		g.setFont(small);
 		FontMetrics fm = g.getFontMetrics();
+		int slotW = ICON_SIZE + ICON_GAP;
 
-		int slotW  = ICON_SIZE + ICON_GAP;
-		int count  = buffs.size();
-		int trayX  = lx; // left-aligned in the buff column
-
-		for (int i = 0; i < count; i++)
+		for (int i = 0; i < effects.size(); i++)
 		{
-			Buff b  = buffs.get(i);
-			int ix  = trayX + i * slotW;
+			ActiveEffectView e = effects.get(i);
+			int ix = lx + i * slotW;
 
-			if (b.icon != null)
-			{
-				g.drawImage(b.icon, ix, cy, ICON_SIZE, ICON_SIZE, null);
-			}
+			if (e.icon != null)
+				g.drawImage(e.icon, ix, cy, ICON_SIZE, ICON_SIZE, null);
 			else
 			{
-				// Placeholder rectangle when sprite not yet loaded
-				g.setColor(b.color);
+				g.setColor(e.color);
 				g.fillRect(ix, cy, ICON_SIZE, ICON_SIZE);
 			}
 
-			// Label centred under the icon
-			g.setColor(b.color);
-			int labelX = ix + (ICON_SIZE - fm.stringWidth(b.label)) / 2;
-			g.drawString(b.label, labelX, cy + ICON_SIZE + 1 + fm.getAscent());
+			g.setColor(e.color);
+			int labelX = ix + (ICON_SIZE - fm.stringWidth(e.label)) / 2;
+			g.drawString(e.label, labelX, cy + ICON_SIZE + 1 + fm.getAscent());
 		}
 	}
 
