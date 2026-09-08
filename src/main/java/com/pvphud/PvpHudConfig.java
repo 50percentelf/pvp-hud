@@ -615,4 +615,27 @@ public interface PvpHudConfig extends Config
 	{
 		return BarDisplayStyle.BARS_AND_NUMBERS;
 	}
+
+	// ── Experimental / Pending RuneLite Ruling ───────────────────────────────
+	// These features are intentionally NOT available. No config items appear
+	// here because neither feature can be enabled. Both require RuneLite team
+	// guidance before implementation can proceed.
+	//
+	// Streamer Output: renders the HUD into a separate OBS/window-capture
+	//   window sharing the same PvpHudState; no duplicate combat logic.
+	//   Awaiting RuneLite ruling on standalone Swing window output.
+	//
+	// Opponent Attack Cycle: live countdown to the opponent's next possible
+	//   attack, derived from an observed animation with no prediction or
+	//   prayer recommendation. Awaiting RuneLite ruling on combat timing aids.
+
+	@ConfigSection(
+		name = "Experimental — Pending RuneLite Ruling",
+		description = "Streamer Output and Opponent Attack Cycle are NOT implemented. "
+			+ "Both are awaiting RuneLite review before development can proceed. "
+			+ "No options here are toggleable — this section is informational only.",
+		position = 50,
+		closedByDefault = true
+	)
+	String pendingRulingSection = "pendingRuling";
 }
