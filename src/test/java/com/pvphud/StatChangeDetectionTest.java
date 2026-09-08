@@ -28,7 +28,7 @@ public class StatChangeDetectionTest
 	@Test
 	public void boostDecay_lastStep_toBase_detectsDecay()
 	{
-		// Boosted from 100 → 99 (exactly to base). prev > base, so still counts.
+		// Boosted from 100 → 99 (exactly to base). current >= base, so still counts.
 		assertTrue(isNaturalBoostDecay(100, 99, 99));
 	}
 
@@ -47,9 +47,9 @@ public class StatChangeDetectionTest
 	}
 
 	@Test
-	public void boostDecay_alreadyAtBase_ignored()
+	public void boostDecay_dropsBelow_base_ignored()
 	{
-		// prev == base: not boosted, natural decay can't be running above base.
+		// current (98) < base (99): combat drain into debuff territory, not boost decay.
 		assertFalse(isNaturalBoostDecay(99, 98, 99));
 	}
 
@@ -72,14 +72,14 @@ public class StatChangeDetectionTest
 	@Test
 	public void debuffRestore_lastStep_toBase_detectsRestore()
 	{
-		// 98 → 99 (returning to base). prev < base, so still counts.
+		// 98 → 99 (returning to base). current <= base, so still counts.
 		assertTrue(isNaturalDebuffRestore(98, 99, 99));
 	}
 
 	@Test
-	public void debuffRestore_alreadyAtBase_ignored()
+	public void debuffRestore_crossesBase_ignored()
 	{
-		// prev == base: not debuffed.
+		// current (100) > base (99): stat went above base (potion or regen), not a restore tick.
 		assertFalse(isNaturalDebuffRestore(99, 100, 99));
 	}
 

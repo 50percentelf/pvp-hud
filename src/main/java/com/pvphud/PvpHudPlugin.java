@@ -379,16 +379,16 @@ public class PvpHudPlugin extends Plugin
 			self.getDebuffRestore().sync();
 	}
 
-	/** Natural boost decay: exactly -1 step while still above base. */
+	/** Natural boost decay: exactly -1 step, landing at or above base. */
 	static boolean isNaturalBoostDecay(int prev, int current, int base)
 	{
-		return current == prev - 1 && prev > base;
+		return current == prev - 1 && current >= base;
 	}
 
-	/** Natural debuff restoration: exactly +1 step while still below base. */
+	/** Natural debuff restoration: exactly +1 step, landing at or below base. */
 	static boolean isNaturalDebuffRestore(int prev, int current, int base)
 	{
-		return current == prev + 1 && prev < base;
+		return current == prev + 1 && current <= base;
 	}
 
 	// ── Varbit / VarPlayer changes ────────────────────────────────────────────
