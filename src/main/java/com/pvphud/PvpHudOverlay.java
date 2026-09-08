@@ -456,28 +456,27 @@ public class PvpHudOverlay extends Overlay
 		}
 
 		// ── Pane: 3-row opponent panel ───────────────────────────────────────
-		//   Row 0 (stats): [ATK:99] [STR:99] [DEF:99] [RNG:99] [MAG:99]  ← fills bar width
-		//   Row 1 (name):  [opponent name]                | [PRAYER ICON]
-		//   Row 2 (hp):    [====HP bar 43/99============] |  (spans rows 1+2)
+		//   Row 0 (stats): [ATK:99] [STR:99] [DEF:99] [RNG:99] [MAG:99]
+		//   Row 1 (name):  [opponent name]
+		//   Row 2 (hp):    [====HP bar 43/99====]
+		//   Right col:     [PRAYER — same height as all 3 rows]
 		final int HUD_BAR_H = 10;
 		final int GAP       = 3;
-		int nameH  = fm.getHeight();
-		int x0     = INVY_LEFT_W + PAD;
-		int rx     = totalW - PAD;
-		int paneW  = rx - x0;
-		int praySz = ICON_SIZE;  // standard prayer icon size
+		final int sIconSz   = 11;          // stat icon size; fixed to break circular dependency
+		int nameH     = fm.getHeight();
+		int totalRowH = sIconSz + GAP + nameH + GAP + HUD_BAR_H;  // full content block height
 
-		OpponentState opp = state.getOpponent();
-		HeadIcon prayer   = opp.getOverheadPrayer();
+		int x0 = INVY_LEFT_W + PAD;
+		int rx = totalW - PAD;
+
+		OpponentState opp     = state.getOpponent();
+		HeadIcon      prayer  = opp.getOverheadPrayer();
+		// Prayer icon spans the full content height — same visual size as an overhead icon.
+		int praySz  = totalRowH;
 		int prayX   = rx - praySz;
 		int barEndX = prayer != null ? prayX - 3 : rx;
 		int barSz   = barEndX - x0;
 
-		// Stat cells: 5 evenly-spaced cells spanning [x0, barEndX], icons bigger than before.
-		int cellW   = barSz / 5;
-		int sIconSz = Math.min(13, Math.max(9, cellW / 2));  // 9–13px, scales with cell
-
-		int totalRowH = sIconSz + GAP + nameH + GAP + HUD_BAR_H;
 		int y0 = (INVY_TOP_H - totalRowH) / 2;  // stats row top
 		int y1 = y0 + sIconSz + GAP;             // name row top
 		int y2 = y1 + nameH + GAP;               // HP bar row top
@@ -501,10 +500,10 @@ public class PvpHudOverlay extends Overlay
 			String s = statLvls[i] >= 0 ? String.valueOf(statLvls[i]) : "?";
 			numW[i] = fm.stringWidth(s);
 		}
+		int cellW = barSz / 5;
 		int sNumY = y0 + fm.getAscent();
 		for (int i = 0; i < 5; i++)
 		{
-			// Centre the (icon + number) block within its cell.
 			int contentW = sIconSz + 1 + numW[i];
 			int cellX    = x0 + i * cellW + (cellW - contentW) / 2;
 			if (statIcons[i] != null)
@@ -522,7 +521,7 @@ public class PvpHudOverlay extends Overlay
 		g.setColor(opp.isVengActive() ? ORANGE : WHITE);
 		g.drawString(name, x0, y1 + fm.getAscent());
 
-		// ── Row 2: HP bar (shortened), text overlaid ──────────────────────────
+		// ── Row 2: HP bar, text overlaid ─────────────────────────────────────
 		int estHp = opp.getEstimatedHp();
 		int maxHp = opp.getMaxHp();
 		if (maxHp > 0)
@@ -550,18 +549,16 @@ public class PvpHudOverlay extends Overlay
 			g.drawString(hpStr, hpX, hpY);
 		}
 
-		// ── Prayer icon: right column, centred across rows 1+2 ──────────────
+		// ── Prayer icon: right column, spans the full content height ─────────
 		if (prayer != null)
 		{
-			int spanH  = (y2 + HUD_BAR_H) - y1;
-			int prayY  = y1 + (spanH - ICON_SIZE) / 2;
 			BufferedImage pIcon = prayerIconFor(prayer);
 			if (pIcon != null)
-				g.drawImage(pIcon, prayX, prayY, ICON_SIZE, ICON_SIZE, null);
+				g.drawImage(pIcon, prayX, y0, praySz, praySz, null);
 			else
 			{
 				g.setColor(prayerColorFor(prayer));
-				g.drawString(prayerShortFor(prayer), prayX, prayY + fm.getAscent());
+				g.drawString(prayerShortFor(prayer), prayX, y0 + fm.getAscent());
 			}
 		}
 	}
@@ -1020,27 +1017,23 @@ public class PvpHudOverlay extends Overlay
 			}
 		}
 
-		// Opponent base stats (hiscores, async) — pinned to panel bottom, adaptive
+		// Opponent base stats (hiscores, async) — first-class row after prayer section
 		g.setFont(small);
 		smFm = g.getFontMetrics();
-		int statsRowH = ICON_SIZE + 2 + smFm.getHeight() + 3;
-		int statsY    = p.y + p.height - PAD - statsRowH;
-		if (statsY >= cy + 2)
-		{
-			OpponentStats stats = opp.getStats();
-			int col = p.width / 5;
-			int c1  = p.x + col / 2;
-			int c2  = c1 + col;
-			int c3  = c2 + col;
-			int c4  = c3 + col;
-			int c5  = c4 + col;
-			int textY  = statsY + ICON_SIZE + 2 + smFm.getAscent();
-			drawStatColumn(g, smFm, atkSkillIcon, "ATK", stats.getAttack(),   c1, statsY, textY);
-			drawStatColumn(g, smFm, strSkillIcon, "STR", stats.getStrength(), c2, statsY, textY);
-			drawStatColumn(g, smFm, defSkillIcon, "DEF", stats.getDefence(),  c3, statsY, textY);
-			drawStatColumn(g, smFm, rngSkillIcon, "RNG", stats.getRanged(),   c4, statsY, textY);
-			drawStatColumn(g, smFm, magSkillIcon, "MAG", stats.getMagic(),    c5, statsY, textY);
-		}
+		cy += 2;
+		OpponentStats stats = opp.getStats();
+		int col    = p.width / 5;
+		int c1     = p.x + col / 2;
+		int c2     = c1 + col;
+		int c3     = c2 + col;
+		int c4     = c3 + col;
+		int c5     = c4 + col;
+		int textY  = cy + ICON_SIZE + 2 + smFm.getAscent();
+		drawStatColumn(g, smFm, atkSkillIcon, "ATK", stats.getAttack(),   c1, cy, textY);
+		drawStatColumn(g, smFm, strSkillIcon, "STR", stats.getStrength(), c2, cy, textY);
+		drawStatColumn(g, smFm, defSkillIcon, "DEF", stats.getDefence(),  c3, cy, textY);
+		drawStatColumn(g, smFm, rngSkillIcon, "RNG", stats.getRanged(),   c4, cy, textY);
+		drawStatColumn(g, smFm, magSkillIcon, "MAG", stats.getMagic(),    c5, cy, textY);
 	}
 
 	// ── Event panel ───────────────────────────────────────────────────────────
