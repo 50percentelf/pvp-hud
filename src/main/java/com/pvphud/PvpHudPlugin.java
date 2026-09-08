@@ -31,6 +31,7 @@ import net.runelite.api.InventoryID;
 import net.runelite.api.Item;
 import net.runelite.api.ItemContainer;
 import net.runelite.api.Player;
+import net.runelite.api.Prayer;
 import net.runelite.api.Skill;
 import net.runelite.api.SpriteID;
 import net.runelite.api.VarPlayer;
@@ -285,47 +286,52 @@ public class PvpHudPlugin extends Plugin
 		{
 			case ATTACK:
 			{
-				int prev = boosts.getAttackBoosted();
-				boosts.setAttackReal(event.getLevel());
-				boosts.setAttackBoosted(event.getBoostedLevel());
-				if (event.getBoostedLevel() < prev && event.getBoostedLevel() >= event.getLevel())
-					recordStatDrain(self);
+				int prev    = boosts.getAttackBoosted();
+				int current = event.getBoostedLevel();
+				int base    = event.getLevel();
+				boosts.setAttackReal(base);
+				boosts.setAttackBoosted(current);
+				handleStatCycle(self, prev, current, base);
 				break;
 			}
 			case STRENGTH:
 			{
-				int prev = boosts.getStrengthBoosted();
-				boosts.setStrengthReal(event.getLevel());
-				boosts.setStrengthBoosted(event.getBoostedLevel());
-				if (event.getBoostedLevel() < prev && event.getBoostedLevel() >= event.getLevel())
-					recordStatDrain(self);
+				int prev    = boosts.getStrengthBoosted();
+				int current = event.getBoostedLevel();
+				int base    = event.getLevel();
+				boosts.setStrengthReal(base);
+				boosts.setStrengthBoosted(current);
+				handleStatCycle(self, prev, current, base);
 				break;
 			}
 			case DEFENCE:
 			{
-				int prev = boosts.getDefenceBoosted();
-				boosts.setDefenceReal(event.getLevel());
-				boosts.setDefenceBoosted(event.getBoostedLevel());
-				if (event.getBoostedLevel() < prev && event.getBoostedLevel() >= event.getLevel())
-					recordStatDrain(self);
+				int prev    = boosts.getDefenceBoosted();
+				int current = event.getBoostedLevel();
+				int base    = event.getLevel();
+				boosts.setDefenceReal(base);
+				boosts.setDefenceBoosted(current);
+				handleStatCycle(self, prev, current, base);
 				break;
 			}
 			case RANGED:
 			{
-				int prev = boosts.getRangedBoosted();
-				boosts.setRangedReal(event.getLevel());
-				boosts.setRangedBoosted(event.getBoostedLevel());
-				if (event.getBoostedLevel() < prev && event.getBoostedLevel() >= event.getLevel())
-					recordStatDrain(self);
+				int prev    = boosts.getRangedBoosted();
+				int current = event.getBoostedLevel();
+				int base    = event.getLevel();
+				boosts.setRangedReal(base);
+				boosts.setRangedBoosted(current);
+				handleStatCycle(self, prev, current, base);
 				break;
 			}
 			case MAGIC:
 			{
-				int prev = boosts.getMagicBoosted();
-				boosts.setMagicReal(event.getLevel());
-				boosts.setMagicBoosted(event.getBoostedLevel());
-				if (event.getBoostedLevel() < prev && event.getBoostedLevel() >= event.getLevel())
-					recordStatDrain(self);
+				int prev    = boosts.getMagicBoosted();
+				int current = event.getBoostedLevel();
+				int base    = event.getLevel();
+				boosts.setMagicReal(base);
+				boosts.setMagicBoosted(current);
+				handleStatCycle(self, prev, current, base);
 				break;
 			}
 			case HITPOINTS:
@@ -365,9 +371,24 @@ public class PvpHudPlugin extends Plugin
 		}
 	}
 
-	private void recordStatDrain(SelfState self)
+	private void handleStatCycle(SelfState self, int prev, int current, int base)
 	{
-		self.getBoostDecay().sync();
+		if (isNaturalBoostDecay(prev, current, base))
+			self.getBoostDecay().sync(client.isPrayerActive(Prayer.PRESERVE) ? 150 : 100);
+		else if (isNaturalDebuffRestore(prev, current, base))
+			self.getDebuffRestore().sync();
+	}
+
+	/** Natural boost decay: exactly -1 step while still above base. */
+	static boolean isNaturalBoostDecay(int prev, int current, int base)
+	{
+		return current == prev - 1 && prev > base;
+	}
+
+	/** Natural debuff restoration: exactly +1 step while still below base. */
+	static boolean isNaturalDebuffRestore(int prev, int current, int base)
+	{
+		return current == prev + 1 && prev < base;
 	}
 
 	// ── Varbit / VarPlayer changes ────────────────────────────────────────────

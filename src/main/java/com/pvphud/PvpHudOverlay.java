@@ -1398,6 +1398,10 @@ public class PvpHudOverlay extends Overlay
 		if (drainTicks > 0 && self.getBoostDecay().isCalibrated() && boosts.hasAnyBoost())
 			effectScratch.add(new ActiveEffectView(null, "drain " + drainTicks + "t", YELLOW));
 
+		int rstTicks = self.getDebuffRestore().getTicksRemaining();
+		if (rstTicks > 0 && self.getDebuffRestore().isCalibrated() && boosts.hasAnyDebuff())
+			effectScratch.add(new ActiveEffectView(null, "rst " + rstTicks + "t", YELLOW));
+
 		return effectScratch;
 	}
 

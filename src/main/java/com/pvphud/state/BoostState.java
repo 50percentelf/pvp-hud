@@ -21,12 +21,20 @@ public class BoostState
 	public int getRangedDelta()   { return rangedBoosted   - rangedReal;   }
 	public int getMagicDelta()    { return magicBoosted    - magicReal;    }
 
-	/** True if any tracked stat differs from base. */
+	/** True if any tracked stat differs from base (boosted or debuffed). */
 	public boolean hasAnyBoost()
 	{
 		return getAttackDelta() != 0 || getStrengthDelta() != 0
 			|| getDefenceDelta() != 0 || getRangedDelta() != 0
 			|| getMagicDelta() != 0;
+	}
+
+	/** True if any tracked stat is currently below its base level. */
+	public boolean hasAnyDebuff()
+	{
+		return getAttackDelta() < 0 || getStrengthDelta() < 0
+			|| getDefenceDelta() < 0 || getRangedDelta() < 0
+			|| getMagicDelta() < 0;
 	}
 
 	public void reset()

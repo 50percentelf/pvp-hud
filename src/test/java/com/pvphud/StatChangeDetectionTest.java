@@ -1,0 +1,99 @@
+package com.pvphud;
+
+import org.junit.Test;
+import static org.junit.Assert.*;
+import static com.pvphud.PvpHudPlugin.isNaturalBoostDecay;
+import static com.pvphud.PvpHudPlugin.isNaturalDebuffRestore;
+
+/**
+ * Tests for the two static detection helpers in PvpHudPlugin that distinguish
+ * natural stat-cycle ticks from potions, combat drains, and brews.
+ *
+ * Scenario legend:
+ *   prev    = boosted level before this StatChanged event
+ *   current = boosted level after (event.getBoostedLevel())
+ *   base    = real level (event.getLevel())
+ */
+public class StatChangeDetectionTest
+{
+	// ── isNaturalBoostDecay ───────────────────────────────────────────────────
+
+	@Test
+	public void boostDecay_naturalMinusOne_detectsDecay()
+	{
+		// Boosted from 104 → 103, still above base 99.
+		assertTrue(isNaturalBoostDecay(104, 103, 99));
+	}
+
+	@Test
+	public void boostDecay_lastStep_toBase_detectsDecay()
+	{
+		// Boosted from 100 → 99 (exactly to base). prev > base, so still counts.
+		assertTrue(isNaturalBoostDecay(100, 99, 99));
+	}
+
+	@Test
+	public void boostDecay_potionBoost_ignored()
+	{
+		// Drinking a pot: 99 → 104 (large positive jump).
+		assertFalse(isNaturalBoostDecay(99, 104, 99));
+	}
+
+	@Test
+	public void boostDecay_largeDrop_combatDrain_ignored()
+	{
+		// Opponent uses stat-draining attack: 104 → 80 (drop > 1).
+		assertFalse(isNaturalBoostDecay(104, 80, 99));
+	}
+
+	@Test
+	public void boostDecay_alreadyAtBase_ignored()
+	{
+		// prev == base: not boosted, natural decay can't be running above base.
+		assertFalse(isNaturalBoostDecay(99, 98, 99));
+	}
+
+	@Test
+	public void boostDecay_dropBelowBase_ignored()
+	{
+		// Going into debuff territory: 99 → 97 (two steps, combat drain).
+		assertFalse(isNaturalBoostDecay(99, 97, 99));
+	}
+
+	// ── isNaturalDebuffRestore ────────────────────────────────────────────────
+
+	@Test
+	public void debuffRestore_naturalPlusOne_detectsRestore()
+	{
+		// Debuffed from 90 → 91, still below base 99.
+		assertTrue(isNaturalDebuffRestore(90, 91, 99));
+	}
+
+	@Test
+	public void debuffRestore_lastStep_toBase_detectsRestore()
+	{
+		// 98 → 99 (returning to base). prev < base, so still counts.
+		assertTrue(isNaturalDebuffRestore(98, 99, 99));
+	}
+
+	@Test
+	public void debuffRestore_alreadyAtBase_ignored()
+	{
+		// prev == base: not debuffed.
+		assertFalse(isNaturalDebuffRestore(99, 100, 99));
+	}
+
+	@Test
+	public void debuffRestore_brewLargeRestore_ignored()
+	{
+		// Saradomin brew restores multiple levels at once: 80 → 95 (large jump).
+		assertFalse(isNaturalDebuffRestore(80, 95, 99));
+	}
+
+	@Test
+	public void debuffRestore_statDrainBelow_ignored()
+	{
+		// Drain makes it worse: 90 → 85 (not a restore at all).
+		assertFalse(isNaturalDebuffRestore(90, 85, 99));
+	}
+}

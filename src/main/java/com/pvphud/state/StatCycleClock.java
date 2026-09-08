@@ -13,7 +13,8 @@ package com.pvphud.state;
  */
 public class StatCycleClock
 {
-	private static final int DEFAULT_PERIOD = 40;
+	/** Default period before first calibration: 100 ticks (60 s, the standard OSRS stat cycle). */
+	static final int DEFAULT_PERIOD = 100;
 
 	private int period;         // calibrated interval in ticks (0 = never observed)
 	private int ticksRemaining; // countdown to the next expected stat change
@@ -26,17 +27,29 @@ public class StatCycleClock
 	 * Call when a natural stat-change tick is observed.
 	 * Calibrates the period from the elapsed tick count since the previous sync
 	 * and resets the countdown to the newly calibrated period.
+	 * Uses {@link #DEFAULT_PERIOD} (100 t) before the first calibration.
 	 */
 	public void sync()
+	{
+		sync(DEFAULT_PERIOD);
+	}
+
+	/**
+	 * Variant of {@link #sync()} that accepts an explicit {@code defaultPeriod}
+	 * used only before the first calibration.  Pass 150 when Preserve is active.
+	 */
+	public void sync(int defaultPeriod)
 	{
 		if (period > 0)
 		{
 			int elapsed = period - ticksRemaining;
-			if (elapsed >= 10 && elapsed <= 120) period = elapsed;
+			// Accept elapsed in [10, 200]: rejects spurious duplicate events (< 10)
+			// and missed observations / extreme lag (> 200).
+			if (elapsed >= 10 && elapsed <= 200) period = elapsed;
 		}
 		else
 		{
-			period = DEFAULT_PERIOD;
+			period = defaultPeriod;
 		}
 		ticksRemaining = period;
 	}

@@ -20,17 +20,27 @@ public class StatCycleClockTest
 		StatCycleClock c = new StatCycleClock();
 		c.sync();
 		assertTrue(c.isCalibrated());
-		assertEquals(40, c.getPeriod());
-		assertEquals(40, c.getTicksRemaining());
+		assertEquals(100, c.getPeriod());
+		assertEquals(100, c.getTicksRemaining());
+	}
+
+	@Test
+	public void firstSync_withPreservePeriod()
+	{
+		StatCycleClock c = new StatCycleClock();
+		c.sync(150);
+		assertTrue(c.isCalibrated());
+		assertEquals(150, c.getPeriod());
+		assertEquals(150, c.getTicksRemaining());
 	}
 
 	@Test
 	public void tick_decrementsRemaining()
 	{
 		StatCycleClock c = new StatCycleClock();
-		c.sync(); // period = 40, remaining = 40
+		c.sync(); // period = 100, remaining = 100
 		c.tick();
-		assertEquals(39, c.getTicksRemaining());
+		assertEquals(99, c.getTicksRemaining());
 	}
 
 	@Test
@@ -45,32 +55,33 @@ public class StatCycleClockTest
 	public void subsequentSync_calibratesFromElapsed()
 	{
 		StatCycleClock c = new StatCycleClock();
-		c.sync(); // period = 40, remaining = 40
-		for (int i = 0; i < 35; i++) c.tick(); // 5 remaining → elapsed = 35
-		c.sync(); // elapsed = 40 - 5 = 35; in range [10,120] → period = 35
-		assertEquals(35, c.getPeriod());
-		assertEquals(35, c.getTicksRemaining());
+		c.sync(); // period = 100, remaining = 100
+		for (int i = 0; i < 65; i++) c.tick(); // 35 remaining → elapsed = 65
+		c.sync(); // elapsed = 65; in range [10,200] → period = 65
+		assertEquals(65, c.getPeriod());
+		assertEquals(65, c.getTicksRemaining());
 	}
 
 	@Test
 	public void subsequentSync_ignoresElapsedBelowMinimum()
 	{
 		StatCycleClock c = new StatCycleClock();
-		c.sync(); // period = 40, remaining = 40
-		c.tick(); c.tick(); // 38 remaining → elapsed = 2 (too small)
-		c.sync(); // elapsed 2 < 10 → period unchanged at 40
-		assertEquals(40, c.getPeriod());
+		c.sync(); // period = 100, remaining = 100
+		c.tick(); c.tick(); // 98 remaining → elapsed = 2 (< 10, too small)
+		c.sync(); // elapsed 2 < 10 → period unchanged at 100
+		assertEquals(100, c.getPeriod());
 	}
 
 	@Test
 	public void subsequentSync_ignoresElapsedAboveMaximum()
 	{
+		// Use a very large defaultPeriod to exercise the > 200 guard.
 		StatCycleClock c = new StatCycleClock();
-		c.sync(); // period = 40, remaining = 40
-		for (int i = 0; i < 40; i++) c.tick(); // drained to 0 → elapsed > 120
-		c.sync(); // elapsed > 120 → period unchanged, ticksRemaining reset to 40
-		assertEquals(40, c.getPeriod());
-		assertEquals(40, c.getTicksRemaining());
+		c.sync(250); // period = 250, remaining = 250
+		for (int i = 0; i < 250; i++) c.tick(); // drained to 0 → elapsed = 250 > 200
+		c.sync(); // elapsed 250 > 200 → period unchanged at 250
+		assertEquals(250, c.getPeriod());
+		assertEquals(250, c.getTicksRemaining());
 	}
 
 	@Test
