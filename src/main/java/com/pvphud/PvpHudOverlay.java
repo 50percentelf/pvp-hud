@@ -212,24 +212,27 @@ public class PvpHudOverlay extends Overlay
 
 		if (currentLayout != lastLayout)
 		{
-			// Save the drag position of the layout we're leaving.
-			if (lastLayout == HudLayout.HORIZONTAL_FLOAT)
-				horizFloatPos = getPreferredLocation();
-			else if (lastLayout == HudLayout.VERTICAL_FLOAT)
-				vertFloatPos = getPreferredLocation();
-
 			lastLayout = currentLayout;
 			layout.markDirty();
 
-			// Restore the saved position when entering a float layout.
-			if (currentLayout == HudLayout.HORIZONTAL_FLOAT)
+			// Restore the last known position for this float layout.
+			// Only call setPreferredLocation when we have a saved point — never pass null,
+			// which would wipe RuneLite's own stored position on first use.
+			if (currentLayout == HudLayout.HORIZONTAL_FLOAT && horizFloatPos != null)
 				setPreferredLocation(horizFloatPos);
-			else if (currentLayout == HudLayout.VERTICAL_FLOAT)
+			else if (currentLayout == HudLayout.VERTICAL_FLOAT && vertFloatPos != null)
 				setPreferredLocation(vertFloatPos);
 
 			if (currentLayout != HudLayout.INVENTORY_HUG)
 				cachedInventoryPane = null;
 		}
+
+		// Keep each float layout's position snapshot fresh every frame.
+		// This replaces the on-switch save which could race against RuneLite's render pass.
+		if (currentLayout == HudLayout.HORIZONTAL_FLOAT)
+			horizFloatPos = getPreferredLocation();
+		else if (currentLayout == HudLayout.VERTICAL_FLOAT)
+			vertFloatPos = getPreferredLocation();
 
 		Font normal = FontManager.getRunescapeFont();
 		Font small  = FontManager.getRunescapeSmallFont();
