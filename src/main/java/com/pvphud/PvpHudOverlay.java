@@ -130,6 +130,10 @@ public class PvpHudOverlay extends Overlay
 	private HudLayout lastLayout;
 	private Widget    cachedInventoryPane = null;
 
+	/** Last known drag position for each float layout — restored on layout switch. */
+	private Point horizFloatPos = null;
+	private Point vertFloatPos  = null;
+
 	// ── Buff descriptor (built each frame, kept small to minimise GC) ─────────
 	private static final class Buff
 	{
@@ -208,17 +212,23 @@ public class PvpHudOverlay extends Overlay
 
 		if (currentLayout != lastLayout)
 		{
+			// Save the drag position of the layout we're leaving.
+			if (lastLayout == HudLayout.HORIZONTAL_FLOAT)
+				horizFloatPos = getPreferredLocation();
+			else if (lastLayout == HudLayout.VERTICAL_FLOAT)
+				vertFloatPos = getPreferredLocation();
+
 			lastLayout = currentLayout;
 			layout.markDirty();
-			if (currentLayout == HudLayout.HORIZONTAL_FLOAT
-				|| currentLayout == HudLayout.VERTICAL_FLOAT)
-			{
-				setPreferredLocation(null);
-			}
+
+			// Restore the saved position when entering a float layout.
+			if (currentLayout == HudLayout.HORIZONTAL_FLOAT)
+				setPreferredLocation(horizFloatPos);
+			else if (currentLayout == HudLayout.VERTICAL_FLOAT)
+				setPreferredLocation(vertFloatPos);
+
 			if (currentLayout != HudLayout.INVENTORY_HUG)
-			{
 				cachedInventoryPane = null;
-			}
 		}
 
 		Font normal = FontManager.getRunescapeFont();
