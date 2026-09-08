@@ -8,6 +8,7 @@ import com.pvphud.state.CombatEventType;
 import com.pvphud.state.EffectState;
 import com.pvphud.state.ManualTimerState;
 import com.pvphud.state.OpponentState;
+import com.pvphud.state.PeriodicEffect;
 import com.pvphud.state.PoisonState;
 import com.pvphud.state.PrayerEffect;
 import com.pvphud.state.ProtectionState;
@@ -101,9 +102,6 @@ public class PvpHudPlugin extends Plugin
 	private String pendingOpponentName  = null;
 	private Player pendingOpponentActor = null;
 
-	/** Previous HP XP value — used only to drive the pending-hit animation. */
-	private long prevHpXp;
-
 	/**
 	 * Most recent freeze-spell graphic seen on the local player this session.
 	 * Set in onGraphicChanged, consumed in onChatMessage when "You have been frozen!"
@@ -111,6 +109,9 @@ public class PvpHudPlugin extends Plugin
 	 */
 	private int lastFreezeGraphicId   = -1;
 	private int lastFreezeGraphicTick = -1;
+
+	/** Last known Menaphite Remedy varbit value; -1 = not yet observed. */
+	private int prevMenaphiteVarbit = -1;
 
 	// SPOTANIM_VENGEANCE and ANIM_VENGEANCE_IDS removed — Vengeance tracking deferred post-v0.1.
 
@@ -233,11 +234,12 @@ public class PvpHudPlugin extends Plugin
 		fx.setDivineMagicTicks(client.getVarbitValue(Varbits.DIVINE_MAGIC));
 		fx.setDivineBastionTicks(client.getVarbitValue(Varbits.DIVINE_BASTION));
 		fx.setDivineBattlemageTicks(client.getVarbitValue(Varbits.DIVINE_BATTLEMAGE));
-		fx.getMenaphite().setTotalTicksRemaining(client.getVarbitValue(Varbits.MENAPHITE_REMEDY));
+		int menVal = client.getVarbitValue(Varbits.MENAPHITE_REMEDY);
+		fx.getMenaphite().setTotalTicksRemaining(menVal * 25);
+		prevMenaphiteVarbit = menVal;
+		// nextProcTicks stays 0 — we don't know where in the 25-tick cycle we joined.
 		// Stamina effect is self-tracked (STAMINA_EFFECT is binary, not a countdown).
 		// At startup we can't know remaining time, so we don't initialize the timer.
-
-		prevHpXp = client.getSkillExperience(Skill.HITPOINTS);
 	}
 
 	// ── Config / game-state events ────────────────────────────────────────────
@@ -261,6 +263,7 @@ public class PvpHudPlugin extends Plugin
 			lookedUp.clear();
 			pendingOpponentName  = null;
 			pendingOpponentActor = null;
+			prevMenaphiteVarbit  = -1;
 			hudState.fullReset();
 		}
 	}
@@ -329,27 +332,19 @@ public class PvpHudPlugin extends Plugin
 				int prevHp = self.getCurrentHp();
 				self.setCurrentHp(event.getBoostedLevel());
 				self.setMaxHp(event.getLevel());
-				if (event.getBoostedLevel() == prevHp + 1
+				if (event.getBoostedLevel() == 0 && prevHp > 0)
+				{
+					// Local player died — terminate the fight immediately.
+					hudState.endSession();
+					hudState.getOpponent().reset();
+					pendingOpponentName  = null;
+					pendingOpponentActor = null;
+				}
+				else if (event.getBoostedLevel() == prevHp + 1
 					&& event.getBoostedLevel() <= event.getLevel())
 				{
 					self.setHpRegenTicksRemaining(100);
 				}
-
-				// HP XP delta drives the pending-hit animation only; the actual
-				// combat log entry comes from onHitsplatApplied on the opponent.
-				long newHpXp = event.getXp();
-				if (prevHpXp > 0)
-				{
-					long xpDelta = newHpXp - prevHpXp;
-					if (xpDelta > 0)
-					{
-						int damage = (int) Math.round(xpDelta * 3.0 / 4.0);
-						OpponentState opp = hudState.getOpponent();
-						if (damage > 0 && opp.isTracked())
-							opp.setPendingHit(damage);
-					}
-				}
-				prevHpXp = newHpXp;
 				break;
 			}
 			case PRAYER:
@@ -416,7 +411,19 @@ public class PvpHudPlugin extends Plugin
 		}
 		else if (varbitId == Varbits.MENAPHITE_REMEDY)
 		{
-			hudState.getEffects().getMenaphite().setTotalTicksRemaining(value);
+			PeriodicEffect men = hudState.getEffects().getMenaphite();
+			if (value == 0)
+			{
+				men.setTotalTicksRemaining(0);
+				men.setNextProcTicks(0);
+			}
+			else
+			{
+				men.setTotalTicksRemaining(value * 25);
+				if (prevMenaphiteVarbit > 0 && value < prevMenaphiteVarbit)
+					men.setNextProcTicks(25); // proc just fired; next restore in 25 ticks
+			}
+			prevMenaphiteVarbit = value;
 		}
 		else if (varbitId == Varbits.STAMINA_EFFECT)
 		{
@@ -486,6 +493,7 @@ public class PvpHudPlugin extends Plugin
 		EffectState fxTick = hudState.getEffects();
 		if (fxTick.getStaminaEffectTicks() > 0)
 			fxTick.setStaminaEffectTicks(fxTick.getStaminaEffectTicks() - 1);
+		fxTick.getMenaphite().tick();
 		hudState.getPoison().tick();
 
 		ActionClockState clock = hudState.getActionClock();
@@ -500,7 +508,11 @@ public class PvpHudPlugin extends Plugin
 
 		// Expire stale fight session (no combat for ~30 s)
 		PvpFightSession session = hudState.getCurrentSession();
-		if (session != null && session.isStale(tick)) hudState.endSession();
+		if (session != null && session.isStale(tick))
+		{
+			hudState.endSession();
+			hudState.getOpponent().reset();
+		}
 
 		updateEnvironment();
 		pollOpponentHealth();
@@ -793,6 +805,7 @@ public class PvpHudPlugin extends Plugin
 			hudState.getProtection().onAttackExchanged(getPjTimerTicks());
 			if (isInLms()) hudState.getProtection().onKillInLms();
 			hudState.endSession();
+			hudState.getOpponent().reset();
 			return;
 		}
 
