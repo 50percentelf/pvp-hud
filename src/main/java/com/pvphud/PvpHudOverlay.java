@@ -13,8 +13,6 @@ import com.pvphud.state.PoisonState;
 import com.pvphud.state.ProtectionState;
 import com.pvphud.state.PvpFightSession;
 import com.pvphud.state.SelfState;
-import java.awt.AlphaComposite;
-import java.awt.Composite;
 import java.awt.Color;
 import java.awt.Dimension;
 import java.awt.Font;
@@ -678,9 +676,7 @@ public class PvpHudOverlay extends Overlay
 			g.drawLine(lx, cy, INVY_LEFT_W - lx, cy);
 			cy += 3;
 
-			int lineH = Math.max(fm.getHeight(), ICON_SIZE) + 1;
-			drawEffectsVertBar(g, selfBuffs, lx, cy);
-			cy += selfBuffs.size() * lineH;
+			cy = drawEffects2Col(g, selfBuffs, lx, cy);
 		}
 
 		// ── Action labels (text-only — no standard icon exists for these) ──────
@@ -964,7 +960,6 @@ public class PvpHudOverlay extends Overlay
 		// HP bar + HP text
 		int estHp  = opp.getEstimatedHp();
 		int maxHp  = opp.getMaxHp();
-		int hpBarY = cy;
 		g.setFont(small);
 		smFm = g.getFontMetrics();
 		if (estHp >= 0 && maxHp > 0)
@@ -988,26 +983,6 @@ public class PvpHudOverlay extends Overlay
 			g.setColor(GRAY);
 			g.drawString("HP ?", x, cy + smFm.getAscent());
 			cy += smFm.getHeight() + 2;
-		}
-
-		// Pending-hit animation: floats above the HP bar then fades
-		if (opp.hasPendingHit())
-		{
-			long elapsed = System.currentTimeMillis() - opp.getPendingHitTimestampMs();
-			float t = Math.min(1f, elapsed / 600f);
-			int floatY   = hpBarY - 14;
-			int landY    = hpBarY + BAR_H / 2;
-			int displayY = (int)(floatY + (landY - floatY) * t);
-			float alpha  = t < 0.67f ? 1f : (float)(1 - (t - 0.67) / 0.33);
-
-			Composite prev = g.getComposite();
-			g.setComposite(AlphaComposite.getInstance(AlphaComposite.SRC_OVER, Math.max(0f, alpha)));
-			g.setFont(normal);
-			FontMetrics hitFm = g.getFontMetrics();
-			g.setColor(YELLOW);
-			String hitLabel = "→ " + opp.getPendingHitDamage();
-			drawCentered(g, hitFm, hitLabel, p.x + p.width / 2, displayY + hitFm.getAscent());
-			g.setComposite(prev);
 		}
 
 		// Overhead prayer: large icon + label, below the HP bar
@@ -1391,7 +1366,10 @@ public class PvpHudOverlay extends Overlay
 			addTimedEffect("BAS", fx.getDivineBastionTicks(),     basIcon);
 			addTimedEffect("BTM", fx.getDivineBattlemageTicks(),  btmIcon);
 			if (fx.getMenaphite().isActive())
+			{
 				addTimedEffect("MEN", fx.getMenaphite().getTotalTicksRemaining(), menIcon);
+				addTimedEffect("NXT", fx.getMenaphite().getNextProcTicks(), menIcon);
+			}
 		}
 
 		if (fx.getStaminaEffectTicks() > 0)
@@ -1496,6 +1474,49 @@ public class PvpHudOverlay extends Overlay
 			}
 			cy += lineH;
 		}
+	}
+
+	// ── 2-COLUMN GRID: icon above timer, two entries per row (Inventory Hug) ──
+
+	private int drawEffects2Col(Graphics2D g, List<ActiveEffectView> effects, int lx, int cy)
+	{
+		FontMetrics fm   = g.getFontMetrics();
+		final int colW   = (INVY_LEFT_W - 2 * PAD) / 2; // 30px per column
+		final int iconGap = 2;
+		final int cellH  = ICON_SIZE + iconGap + fm.getHeight() + 2;
+		int col = 0;
+		for (ActiveEffectView e : effects)
+		{
+			if (e.icon == null)
+			{
+				// Flush a lone icon entry before rendering a full-width text row.
+				if (col == 1)
+				{
+					cy += cellH;
+					col = 0;
+				}
+				g.setColor(e.color);
+				drawCentered(g, fm, e.label, lx + colW, cy + fm.getAscent());
+				cy += fm.getHeight() + 2;
+				continue;
+			}
+			int x     = lx + col * colW;
+			int iconX = x + (colW - ICON_SIZE) / 2;
+			g.drawImage(e.icon, iconX, cy, ICON_SIZE, ICON_SIZE, null);
+			if (!e.label.isEmpty())
+			{
+				g.setColor(e.color);
+				drawCentered(g, fm, e.label, x + colW / 2, cy + ICON_SIZE + iconGap + fm.getAscent());
+			}
+			col++;
+			if (col == 2)
+			{
+				col = 0;
+				cy += cellH;
+			}
+		}
+		if (col == 1) cy += cellH; // flush trailing odd entry
+		return cy;
 	}
 
 	// ── ICON_TRAY: horizontal strip, icon + optional timer below ─────────────
