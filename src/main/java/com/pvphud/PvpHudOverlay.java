@@ -1007,7 +1007,7 @@ public class PvpHudOverlay extends Overlay
 		HeadIcon prayer = opp.getOverheadPrayer();
 		if (prayer != null)
 		{
-			final int PRAY_SZ = 24;
+			int PRAY_SZ = config.opponentPrayerIconSize();
 			g.setFont(small);
 			smFm = g.getFontMetrics();
 			BufferedImage pIcon  = prayerIconFor(prayer);

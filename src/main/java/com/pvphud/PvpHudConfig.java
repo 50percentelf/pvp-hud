@@ -93,12 +93,25 @@ public interface PvpHudConfig extends Config
 		return true;
 	}
 
+	@Range(min = 16, max = 40)
+	@ConfigItem(
+		keyName = "opponentPrayerIconSize",
+		name = "Opponent Prayer Icon Size",
+		description = "Size of the opponent overhead prayer icon in the opponent panel (pixels).",
+		section = generalSection,
+		position = 6
+	)
+	default int opponentPrayerIconSize()
+	{
+		return 24;
+	}
+
 	@ConfigItem(
 		keyName = "hudToggleKey",
 		name = "Toggle HUD Hotkey",
 		description = "Hotkey to toggle the PvP HUD on and off.",
 		section = generalSection,
-		position = 6
+		position = 7
 	)
 	default Keybind hudToggleKey()
 	{
@@ -110,7 +123,7 @@ public interface PvpHudConfig extends Config
 		name = "Timer 1 Hotkey",
 		description = "Press to start/stop manual countdown timer 1. Shown as T1 in the action strip.",
 		section = generalSection,
-		position = 7
+		position = 8
 	)
 	default Keybind timer1Key()
 	{
@@ -122,7 +135,7 @@ public interface PvpHudConfig extends Config
 		name = "Timer 1 Duration (s)",
 		description = "How long timer 1 counts down in seconds.",
 		section = generalSection,
-		position = 8
+		position = 9
 	)
 	default int timer1Duration()
 	{
@@ -134,7 +147,7 @@ public interface PvpHudConfig extends Config
 		name = "Timer 2 Hotkey",
 		description = "Press to start/stop manual countdown timer 2. Shown as T2 in the action strip.",
 		section = generalSection,
-		position = 9
+		position = 10
 	)
 	default Keybind timer2Key()
 	{
@@ -146,7 +159,7 @@ public interface PvpHudConfig extends Config
 		name = "Timer 2 Duration (s)",
 		description = "How long timer 2 counts down in seconds.",
 		section = generalSection,
-		position = 10
+		position = 11
 	)
 	default int timer2Duration()
 	{
