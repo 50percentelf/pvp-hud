@@ -310,16 +310,16 @@ public class PvpHudOverlay extends Overlay
 			&& invWidget.getWidth() > 0
 			&& invWidget.getHeight() > 0;
 
-		// When the inventory tab is visible, update the cached pane reference.
-		// The pane is the ancestor widget that includes the tab row above the item grid.
-		// We cache it so the HUD stays anchored when the user switches to equipment/
-		// prayer/magic/etc. tabs (which hide the ITEMS widget but not the container).
-		if (inventoryActive)
+		// Always try to locate the side-panel container, regardless of which tab is active.
+		// The parent container widget stays visible on all tabs; only the ITEMS child is hidden.
+		// Fallback to the items widget itself only when the inventory tab is actually open,
+		// because a hidden items widget may have stale/zero-height bounds.
+		if (invWidget != null)
 		{
 			Widget found = findInventoryPane(invWidget);
-			if (found != null)
+			if (found != null && !found.isHidden() && found.getWidth() > 0)
 				cachedInventoryPane = found;
-			else if (cachedInventoryPane == null)
+			else if (cachedInventoryPane == null && inventoryActive)
 				cachedInventoryPane = invWidget;
 		}
 
