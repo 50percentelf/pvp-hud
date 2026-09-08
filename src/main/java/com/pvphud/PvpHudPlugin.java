@@ -93,6 +93,16 @@ public class PvpHudPlugin extends Plugin
 	/** Names already queued for a hiscores lookup this session (case-lowered). */
 	private final Set<String> lookedUp = new HashSet<>();
 
+	/**
+	 * Candidate opponent waiting for combat confirmation.
+	 * Set by InteractingChanged; cleared when confirmed into a session or when
+	 * the local player retargets a non-player. A session is only started when
+	 * one of: Attack menu option used, outgoing hitsplat on this candidate, or
+	 * incoming hitsplat while this candidate is interacting with the local player.
+	 */
+	private String pendingOpponentName  = null;
+	private Player pendingOpponentActor = null;
+
 	/** Previous HP XP value — used only to drive the pending-hit animation. */
 	private long prevHpXp;
 
@@ -153,6 +163,8 @@ public class PvpHudPlugin extends Plugin
 	protected void startUp() throws Exception
 	{
 		lookedUp.clear();
+		pendingOpponentName  = null;
+		pendingOpponentActor = null;
 		hudState.fullReset();
 		hudState.getContext().setMode(config.hudMode());
 		hudState.getContext().setPvpActive(config.hudVisible());
@@ -277,6 +289,8 @@ public class PvpHudPlugin extends Plugin
 			|| event.getGameState() == GameState.HOPPING)
 		{
 			lookedUp.clear();
+			pendingOpponentName  = null;
+			pendingOpponentActor = null;
 			hudState.fullReset();
 		}
 	}
@@ -578,6 +592,17 @@ public class PvpHudPlugin extends Plugin
 		{
 			case "Eat":   clock.setEatCooldownTicks(3); break;
 			case "Drink": clock.setPotCooldownTicks(3); break;
+			case "Attack":
+			{
+				// Confirm combat immediately on an explicit Attack click on a player.
+				Actor menuActor = event.getMenuEntry().getActor();
+				if (menuActor instanceof Player)
+				{
+					Player p = (Player) menuActor;
+					if (p.getName() != null) confirmCombatCandidate(p.getName(), p);
+				}
+				break;
+			}
 		}
 	}
 
@@ -617,7 +642,7 @@ public class PvpHudPlugin extends Plugin
 		}
 	}
 
-	// ── Interacting changed — fight session lifecycle ─────────────────────────
+	// ── Interacting changed — combat candidate tracking ──────────────────────
 
 	@Subscribe
 	public void onInteractingChanged(InteractingChanged event)
@@ -627,15 +652,26 @@ public class PvpHudPlugin extends Plugin
 
 		if (source == client.getLocalPlayer())
 		{
-			// Local player changed target
-			if (!(target instanceof Player)) return;
+			if (!(target instanceof Player))
+			{
+				// Targeting a non-player (NPC, nothing) — drop the pending candidate.
+				// Do NOT clear the candidate on null target so the session survives brief
+				// disengagement (e.g. movement flickers between attacks).
+				if (target != null)
+				{
+					pendingOpponentName  = null;
+					pendingOpponentActor = null;
+				}
+				return;
+			}
+
 			Player targetPlayer = (Player) target;
 			String name = targetPlayer.getName();
 			if (name == null) return;
 
 			PvpFightSession session = hudState.getCurrentSession();
 
-			// Re-targeting the same opponent (e.g. after a brief null) — keep session alive
+			// Re-targeting the current session opponent — keep session alive.
 			if (session != null && name.equalsIgnoreCase(session.getOpponentName()))
 			{
 				hudState.getOpponent().setName(name);
@@ -643,32 +679,43 @@ public class PvpHudPlugin extends Plugin
 				return;
 			}
 
-			// Genuinely new opponent — start a fresh session
-			hudState.getOpponent().reset();
-			hudState.getOpponent().setName(name);
-			hudState.getOpponent().setCachedActor(targetPlayer);
-			hudState.beginSession(name, client.getTickCount());
-			enqueueHiscoresLookup(name);
+			// New target — record as candidate; wait for combat confirmation.
+			pendingOpponentName  = name;
+			pendingOpponentActor = targetPlayer;
 		}
 		else if (source instanceof Player && target == client.getLocalPlayer())
 		{
-			// Another player targeted the local player — create a session if none exists,
-			// so incoming hits are tracked in the fight panel before the player clicks back.
+			// Another player targeted us — record as candidate only if no session exists.
+			// Combat is confirmed when a hitsplat from them lands on us.
+			if (hudState.getCurrentSession() != null) return;
 			Player sourcePlayer = (Player) source;
 			String name = sourcePlayer.getName();
 			if (name == null) return;
-
-			PvpFightSession session = hudState.getCurrentSession();
-			if (session == null)
-			{
-				hudState.getOpponent().reset();
-				hudState.getOpponent().setName(name);
-				hudState.getOpponent().setCachedActor(sourcePlayer);
-				hudState.beginSession(name, client.getTickCount());
-				enqueueHiscoresLookup(name);
-			}
+			pendingOpponentName  = name;
+			pendingOpponentActor = sourcePlayer;
 		}
-		// Null target from local player: do nothing — session survives brief disengagement
+	}
+
+	/**
+	 * Starts (or refreshes) a fight session for the given player.
+	 * Safe to call multiple times for the same opponent.
+	 */
+	private void confirmCombatCandidate(String name, Player actor)
+	{
+		PvpFightSession session = hudState.getCurrentSession();
+		if (session != null && name.equalsIgnoreCase(session.getOpponentName()))
+		{
+			hudState.getOpponent().setName(name);
+			hudState.getOpponent().setCachedActor(actor);
+			return;
+		}
+		hudState.getOpponent().reset();
+		hudState.getOpponent().setName(name);
+		hudState.getOpponent().setCachedActor(actor);
+		hudState.beginSession(name, client.getTickCount());
+		enqueueHiscoresLookup(name);
+		pendingOpponentName  = null;
+		pendingOpponentActor = null;
 	}
 
 	// ── Hitsplat events — combat log and HP estimation ────────────────────────
@@ -681,6 +728,15 @@ public class PvpHudPlugin extends Plugin
 		if (actor == client.getLocalPlayer())
 		{
 			int dmg = event.getHitsplat().getAmount();
+
+			// Incoming hitsplat confirms the pending candidate if they are currently
+			// interacting with the local player (i.e., they are the attacker).
+			if (pendingOpponentName != null && hudState.getCurrentSession() == null
+				&& pendingOpponentActor != null
+				&& pendingOpponentActor.getInteracting() == client.getLocalPlayer())
+			{
+				confirmCombatCandidate(pendingOpponentName, pendingOpponentActor);
+			}
 
 			// PJ safe, logout lock, and under-attack timers refresh on ANY incoming
 			// attack — including 0-damage splashes (OSRS uses attacks, not damage).
@@ -713,11 +769,19 @@ public class PvpHudPlugin extends Plugin
 		}
 		else if (actor instanceof Player)
 		{
+			String actorName = actor.getName();
+			if (actorName == null) return;
+
+			// Outgoing hitsplat on the pending candidate confirms the session.
+			if (pendingOpponentName != null && actorName.equalsIgnoreCase(pendingOpponentName))
+			{
+				Player pending = pendingOpponentActor != null ? pendingOpponentActor : (Player) actor;
+				confirmCombatCandidate(pendingOpponentName, pending);
+			}
+
 			// Outgoing hit: hitsplat on the tracked opponent
 			OpponentState opp = hudState.getOpponent();
-			if (!opp.isTracked()
-				|| actor.getName() == null
-				|| !actor.getName().equalsIgnoreCase(opp.getName()))
+			if (!opp.isTracked() || !actorName.equalsIgnoreCase(opp.getName()))
 			{
 				return;
 			}
