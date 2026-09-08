@@ -486,8 +486,7 @@ public class PvpHudOverlay extends Overlay
 
 		OpponentState opp     = state.getOpponent();
 		HeadIcon      prayer  = opp.getOverheadPrayer();
-		// Prayer icon spans the full content height — same visual size as an overhead icon.
-		int praySz  = totalRowH;
+		int praySz  = Math.min(totalRowH, config.opponentPrayerIconSize());
 		int prayX   = rx - praySz;
 		int barEndX = prayer != null ? prayX - 3 : rx;
 		int barSz   = barEndX - x0;
@@ -564,16 +563,17 @@ public class PvpHudOverlay extends Overlay
 			g.drawString(hpStr, hpX, hpY);
 		}
 
-		// ── Prayer icon: right column, spans the full content height ─────────
+		// ── Prayer icon: right column, vertically centred in the content block ──
 		if (prayer != null)
 		{
+			int prayIconY = y0 + (totalRowH - praySz) / 2;
 			BufferedImage pIcon = prayerIconFor(prayer);
 			if (pIcon != null)
-				g.drawImage(pIcon, prayX, y0, praySz, praySz, null);
+				g.drawImage(pIcon, prayX, prayIconY, praySz, praySz, null);
 			else
 			{
 				g.setColor(prayerColorFor(prayer));
-				g.drawString(prayerShortFor(prayer), prayX, y0 + fm.getAscent());
+				g.drawString(prayerShortFor(prayer), prayX, prayIconY + fm.getAscent());
 			}
 		}
 	}
