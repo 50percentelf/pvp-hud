@@ -51,7 +51,7 @@ public class PvpHudOverlay extends Overlay
 
 	/** INVENTORY_HUG: top rail height and left rail width (px). */
 	private static final int INVY_TOP_H  = 72;
-	private static final int INVY_LEFT_W = 54;
+	private static final int INVY_LEFT_W = 72;
 
 
 	/** Icon size for VERTICAL_BAR and ICON_TRAY buff styles (pixels). */
@@ -101,9 +101,10 @@ public class PvpHudOverlay extends Overlay
 	private BufferedImage antiPoisonItemIcon; // anti-poison potion (immunity display)
 	private BufferedImage antiVenomItemIcon;  // anti-venom potion (immunity display)
 
-	// ── Cached skill icons for inventory-hug bars (HP / Prayer) ─────────────
+	// ── Cached skill icons for inventory-hug bars (HP / Prayer / Run) ──────
 	private volatile BufferedImage hpSkillIcon;
 	private volatile BufferedImage praySkillIcon;
+	private volatile BufferedImage runEnergyIcon;
 
 	// ── Cached icons (spell sprites — loaded async, volatile for EDT visibility)
 	private volatile BufferedImage vengIcon;
@@ -186,6 +187,7 @@ public class PvpHudOverlay extends Overlay
 		spriteManager.getSpriteAsync(SpriteID.SKILL_MAGIC,      0, img -> magSkillIcon  = img);
 		spriteManager.getSpriteAsync(SpriteID.SKILL_HITPOINTS,  0, img -> hpSkillIcon   = img);
 		spriteManager.getSpriteAsync(SpriteID.SKILL_PRAYER,     0, img -> praySkillIcon = img);
+		spriteManager.getSpriteAsync(SpriteID.SKILL_AGILITY,    0, img -> runEnergyIcon = img);
 	}
 
 	// ── Render entry point ────────────────────────────────────────────────────
@@ -518,13 +520,19 @@ public class PvpHudOverlay extends Overlay
 				cellX + sIconSz + 1, sNumY);
 		}
 
-		// ── Row 1: opponent name ──────────────────────────────────────────────
-		int nameMaxW = barEndX - x0;
+		// ── Row 1: opponent name + optional VENG! label ──────────────────────
+		String vengLabel = opp.isVengActive() ? "VENG!" : null;
+		int nameMaxW = barEndX - x0 - (vengLabel != null ? fm.stringWidth(vengLabel) + PAD : 0);
 		String name = opp.getName();
 		while (name.length() > 1 && fm.stringWidth(name) > nameMaxW)
 			name = name.substring(0, name.length() - 1);
 		g.setColor(opp.isVengActive() ? ORANGE : WHITE);
 		g.drawString(name, x0, y1 + fm.getAscent());
+		if (vengLabel != null)
+		{
+			g.setColor(ORANGE);
+			drawRightAligned(g, fm, vengLabel, barEndX, y1 + fm.getAscent());
+		}
 
 		// ── Row 2: HP bar, text overlaid ─────────────────────────────────────
 		int estHp = opp.getEstimatedHp();
@@ -599,10 +607,15 @@ public class PvpHudOverlay extends Overlay
 			int run = self.getRunEnergy();
 			if (showBar(runStyle))
 			{
+				final int ICN = 9;
+				int barX  = runEnergyIcon != null ? lx + ICN + 2 : lx;
+				int barSz = railW - (runEnergyIcon != null ? ICN + 2 : 0);
+				if (runEnergyIcon != null)
+					g.drawImage(runEnergyIcon, lx, cy + (BAR_H - ICN) / 2, ICN, ICN, null);
 				g.setColor(RUN_BG);
-				g.fillRect(lx, cy, railW, BAR_H);
+				g.fillRect(barX, cy, barSz, BAR_H);
 				g.setColor(RUN_FG);
-				g.fillRect(lx, cy, Math.max(1, (int)(railW * run / 100.0)), BAR_H);
+				g.fillRect(barX, cy, Math.max(1, (int)(barSz * run / 100.0)), BAR_H);
 				cy += BAR_H + 1;
 			}
 			if (showNum(runStyle))
@@ -630,6 +643,37 @@ public class PvpHudOverlay extends Overlay
 				g.setColor(YELLOW);
 				drawCentered(g, fm, spec + "%", cx, cy + fm.getAscent());
 				cy += fm.getHeight() + 1;
+			}
+		}
+
+		// ── Self boost stats ───────────────────────────────────────────────────
+		if (activeProfile.showBoostRow)
+		{
+			g.setColor(DIVIDER);
+			g.drawLine(lx, cy, INVY_LEFT_W - lx, cy);
+			cy += 3;
+
+			final int ICN = 9;
+			int rowH = Math.max(ICN, fm.getHeight()) + 1;
+			int[] boosted = { boosts.getAttackBoosted(), boosts.getStrengthBoosted(),
+			                  boosts.getDefenceBoosted(), boosts.getRangedBoosted(),
+			                  boosts.getMagicBoosted() };
+			int[] real    = { boosts.getAttackReal(), boosts.getStrengthReal(),
+			                  boosts.getDefenceReal(), boosts.getRangedReal(),
+			                  boosts.getMagicReal() };
+			BufferedImage[] bIcons = { atkSkillIcon, strSkillIcon, defSkillIcon,
+			                           rngSkillIcon, magSkillIcon };
+			for (int i = 0; i < 5; i++)
+			{
+				int delta = boosted[i] - real[i];
+				g.setColor(delta > 0 ? GREEN : delta < 0 ? RED : GRAY);
+				String label = activeProfile.boostXOverX
+					? boosted[i] + "/" + real[i]
+					: (delta >= 0 ? "+" : "") + delta;
+				if (bIcons[i] != null)
+					g.drawImage(bIcons[i], lx, cy + (rowH - ICN) / 2, ICN, ICN, null);
+				g.drawString(label, lx + ICN + 2, cy + fm.getAscent());
+				cy += rowH;
 			}
 		}
 
