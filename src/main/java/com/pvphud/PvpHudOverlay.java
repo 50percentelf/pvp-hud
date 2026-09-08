@@ -203,11 +203,14 @@ public class PvpHudOverlay extends Overlay
 		{
 			lastLayout = currentLayout;
 			layout.markDirty();
-			// Clear the pinned location so draggable layouts start free
 			if (currentLayout == HudLayout.HORIZONTAL_FLOAT
 				|| currentLayout == HudLayout.VERTICAL_FLOAT)
 			{
 				setPreferredLocation(null);
+			}
+			if (currentLayout != HudLayout.INVENTORY_HUG)
+			{
+				cachedInventoryPane = null;
 			}
 		}
 
@@ -399,28 +402,82 @@ public class PvpHudOverlay extends Overlay
 	private void drawInventoryTopRail(Graphics2D g, PvpHudState state,
 		Font small, int totalW)
 	{
-		OpponentState opp = state.getOpponent();
 		g.setFont(small);
 		FontMetrics fm = g.getFontMetrics();
-		int barW = totalW - PAD * 2;
+
+		// ── Corner (above left rail): attack clock + eat/pot dots ─────────────
+		// Fixed 10 dots in a 2×5 grid — count never changes with weapon.
+		ActionClockState clock = state.getActionClock();
+		int atk = clock.getAttackDelayTicks();
+		{
+			final int DOT_SZ  = 4;
+			final int DOT_GAP = 2;
+			final int PER_ROW = 5;
+			int rowW  = PER_ROW * DOT_SZ + (PER_ROW - 1) * DOT_GAP; // 28 px
+			int dotX  = (INVY_LEFT_W - rowW) / 2;                    // centred in 54 px
+			// Two rows of dots + gap + E/P row: 10 + 4 + fontH ≈ 23 px total.
+			// Centre that block in the 50-px top arm height.
+			int dotY  = (INVY_TOP_H - (2 * DOT_SZ + DOT_GAP + 4 + fm.getHeight())) / 2;
+			for (int i = 0; i < 10; i++)
+			{
+				int row = i / PER_ROW;
+				int col = i % PER_ROW;
+				g.setColor(i < atk ? RED : DIVIDER);
+				g.fillRect(dotX + col * (DOT_SZ + DOT_GAP), dotY + row * (DOT_SZ + DOT_GAP),
+					DOT_SZ, DOT_SZ);
+			}
+			int epY = dotY + 2 * DOT_SZ + DOT_GAP + 4;
+			int eat = clock.getEatCooldownTicks();
+			int pot = clock.getPotCooldownTicks();
+			int px  = PAD;
+			g.setColor(eat > 0 ? ORANGE : DIVIDER);
+			g.drawString("E", px, epY + fm.getAscent());
+			px += fm.stringWidth("E") + 2;
+			for (int i = 0; i < 3; i++)
+			{
+				g.setColor(i < eat ? ORANGE : DIVIDER);
+				g.fillRect(px + i * (DOT_SZ + DOT_GAP), epY + (fm.getHeight() - DOT_SZ) / 2, DOT_SZ, DOT_SZ);
+			}
+			px += 3 * (DOT_SZ + DOT_GAP) + 3;
+			g.setColor(pot > 0 ? POTION_BLUE : DIVIDER);
+			g.drawString("P", px, epY + fm.getAscent());
+			px += fm.stringWidth("P") + 2;
+			for (int i = 0; i < 3; i++)
+			{
+				g.setColor(i < pot ? POTION_BLUE : DIVIDER);
+				g.fillRect(px + i * (DOT_SZ + DOT_GAP), epY + (fm.getHeight() - DOT_SZ) / 2, DOT_SZ, DOT_SZ);
+			}
+		}
+
+		// ── Pane portion (above inventory): opponent info ─────────────────────
+		int x0   = INVY_LEFT_W + PAD;
+		int rx   = totalW - PAD;
+		int barW = rx - x0;
 		int cy   = PAD / 2 + 1;
 
+		OpponentState opp = state.getOpponent();
 		if (!opp.isTracked())
 		{
 			g.setColor(GRAY);
-			g.drawString("---", PAD, cy + fm.getAscent());
+			g.drawString("---", x0, cy + fm.getAscent());
 			return;
 		}
 
-		// Opponent name — color-shifted to orange when their Veng is active
+		// Name + VENG! right-aligned if active
 		g.setColor(opp.isVengActive() ? ORANGE : WHITE);
 		String name = opp.getName();
-		while (name.length() > 1 && fm.stringWidth(name) > barW)
+		int maxNameW = barW - (opp.isVengActive() ? fm.stringWidth("VENG!") + PAD : 0);
+		while (name.length() > 1 && fm.stringWidth(name) > maxNameW)
 			name = name.substring(0, name.length() - 1);
-		g.drawString(name, PAD, cy + fm.getAscent());
-		cy += fm.getHeight() + 2;
+		g.drawString(name, x0, cy + fm.getAscent());
+		if (opp.isVengActive())
+		{
+			g.setColor(ORANGE);
+			drawRightAligned(g, fm, "VENG!", rx, cy + fm.getAscent());
+		}
+		cy += fm.getHeight() + 1;
 
-		// HP bar
+		// HP bar + ~HP + overhead prayer abbreviated on the right
 		int estHp = opp.getEstimatedHp();
 		int maxHp = opp.getMaxHp();
 		if (maxHp > 0)
@@ -428,81 +485,279 @@ public class PvpHudOverlay extends Overlay
 			float pct = Math.min(1f, (float) estHp / maxHp);
 			Color fg = pct > 0.5f ? HP_FG : pct > 0.25f ? YELLOW : RED;
 			g.setColor(HP_BG);
-			g.fillRect(PAD, cy, barW, BAR_H);
+			g.fillRect(x0, cy, barW, BAR_H);
 			g.setColor(fg);
-			g.fillRect(PAD, cy, Math.max(1, (int)(barW * pct)), BAR_H);
+			g.fillRect(x0, cy, Math.max(1, (int)(barW * pct)), BAR_H);
 			cy += BAR_H + 2;
 			g.setColor(fg);
-			String hpText = "~" + estHp;
-			g.drawString(hpText, PAD, cy + fm.getAscent());
+			g.drawString("~" + estHp, x0, cy + fm.getAscent());
+			HeadIcon prayer = opp.getOverheadPrayer();
+			if (prayer != null)
+			{
+				String pLabel = prayerShortFor(prayer);
+				if (pLabel != null)
+				{
+					g.setColor(prayerColorFor(prayer));
+					drawRightAligned(g, fm, pLabel, rx, cy + fm.getAscent());
+				}
+			}
 		}
 		else
 		{
 			g.setColor(HP_BG);
-			g.fillRect(PAD, cy, barW, BAR_H);
+			g.fillRect(x0, cy, barW, BAR_H);
 			cy += BAR_H + 2;
 			g.setColor(GRAY);
-			g.drawString("HP?", PAD, cy + fm.getAscent());
+			g.drawString("HP?", x0, cy + fm.getAscent());
 		}
 	}
 
 	private void drawInventoryLeftRail(Graphics2D g, PvpHudState state,
 		Font small, int tabH, int itemsH)
 	{
-		int cx = INVY_LEFT_W / 2;
-		// Content starts at the item grid, not at the pane top, so we skip the tab row.
+		int cx    = INVY_LEFT_W / 2;
+		int lx    = PAD;
+		int railW = INVY_LEFT_W - PAD * 2;
+		// Start at the item grid top (skip tab row when present).
 		int cy = INVY_TOP_H + tabH + PAD;
-
-		ActionClockState clock = state.getActionClock();
-		int atk    = clock.getAttackDelayTicks();
-		int atkMax = clock.getLastWeaponSpeedTicks();
-
-		if (atkMax > 0)
-		{
-			final int DOT_SZ  = 7;
-			final int DOT_GAP = 3;
-			for (int i = 0; i < atkMax; i++)
-			{
-				g.setColor(i < atk ? RED : DIVIDER);
-				g.fillRect(cx - DOT_SZ / 2, cy + i * (DOT_SZ + DOT_GAP), DOT_SZ, DOT_SZ);
-			}
-			cy += atkMax * (DOT_SZ + DOT_GAP) + PAD;
-		}
 
 		g.setFont(small);
 		FontMetrics fm = g.getFontMetrics();
-		SelfState     self = state.getSelf();
-		OpponentState opp  = state.getOpponent();
 
-		// Opponent veng indicator — shown in the main rail (top rail is too narrow)
+		SelfState     self   = state.getSelf();
+		EffectState   fx     = state.getEffects();
+		BoostState    boosts = state.getBoosts();
+		OpponentState opp    = state.getOpponent();
+
+		// ── Self resource bars ─────────────────────────────────────────────────
+		cy = drawInventoryBar(g, fm, cx, lx, cy, railW, "HP",
+			self.getCurrentHp(), self.getMaxHp(), HP_FG, HP_BG, config.hpBarStyle());
+		cy = drawInventoryBar(g, fm, cx, lx, cy, railW, "PR",
+			self.getCurrentPrayer(), self.getMaxPrayer(), PRAYER_FG, PRAYER_BG, config.prayerBarStyle());
+
+		BarDisplayStyle runStyle = config.runBarStyle();
+		if (barVisible(runStyle))
+		{
+			int run = self.getRunEnergy();
+			if (showBar(runStyle))
+			{
+				g.setColor(RUN_BG);
+				g.fillRect(lx, cy, railW, BAR_H);
+				g.setColor(RUN_FG);
+				g.fillRect(lx, cy, Math.max(1, (int)(railW * run / 100.0)), BAR_H);
+				cy += BAR_H + 1;
+			}
+			if (showNum(runStyle))
+			{
+				g.setColor(RUN_FG);
+				drawCentered(g, fm, "RN " + run + "%", cx, cy + fm.getAscent());
+				cy += fm.getHeight() + 1;
+			}
+		}
+
+		BarDisplayStyle specStyle = config.specBarStyle();
+		if (barVisible(specStyle))
+		{
+			int spec = fx.getSpecEnergy();
+			if (showBar(specStyle))
+			{
+				g.setColor(HP_BG);
+				g.fillRect(lx, cy, railW, BAR_H);
+				g.setColor(YELLOW);
+				g.fillRect(lx, cy, Math.max(1, (int)(railW * spec / 100.0)), BAR_H);
+				cy += BAR_H + 1;
+			}
+			if (showNum(specStyle))
+			{
+				g.setColor(YELLOW);
+				drawCentered(g, fm, "SP " + spec + "%", cx, cy + fm.getAscent());
+				cy += fm.getHeight() + 1;
+			}
+		}
+
+		g.setColor(DIVIDER);
+		g.drawLine(lx, cy, INVY_LEFT_W - lx, cy);
+		cy += 3;
+
+		// ── Buff indicators ────────────────────────────────────────────────────
 		if (opp.isTracked() && opp.isVengActive())
 		{
 			g.setColor(ORANGE);
 			drawCentered(g, fm, "V!", cx, cy + fm.getAscent());
 			cy += fm.getHeight() + 1;
 		}
-
 		if (self.isVengActive())
 		{
 			g.setColor(GREEN);
 			drawCentered(g, fm, "VNG", cx, cy + fm.getAscent());
 			cy += fm.getHeight() + 1;
 		}
-
 		int ice = self.getFreezeTicksRemaining(client.getTickCount());
-		if (ice > 0)
+		if (ice > 0 && config.showFreezeTimer())
 		{
 			g.setColor(LIGHT_BLUE);
-			drawCentered(g, fm, "ICE", cx, cy + fm.getAscent());
+			drawCentered(g, fm, "ICE " + ticksToSecs(ice), cx, cy + fm.getAscent());
 			cy += fm.getHeight() + 1;
 		}
-
 		int tb = self.getTeleBlockTicksRemaining();
 		if (tb > 0)
 		{
+			int s = tb * 600 / 1000;
 			g.setColor(ORANGE);
-			drawCentered(g, fm, "TB", cx, cy + fm.getAscent());
+			drawCentered(g, fm, "TB " + (s / 60) + ":" + String.format("%02d", s % 60),
+				cx, cy + fm.getAscent());
+			cy += fm.getHeight() + 1;
 		}
+		if (config.showDivineTimers())
+		{
+			cy = drawInventoryTimerBuff(g, fm, cx, cy, fx.getDivineSupercombatTicks(), "DSC");
+			cy = drawInventoryTimerBuff(g, fm, cx, cy, fx.getDivineRangingTicks(),     "DRG");
+			cy = drawInventoryTimerBuff(g, fm, cx, cy, fx.getDivineMagicTicks(),       "DMG");
+			cy = drawInventoryTimerBuff(g, fm, cx, cy, fx.getDivineBastionTicks(),     "BAS");
+			cy = drawInventoryTimerBuff(g, fm, cx, cy, fx.getDivineBattlemageTicks(),  "BTM");
+			cy = drawInventoryTimerBuff(g, fm, cx, cy, fx.getMenaphiteRemedyTicks(),   "MEN");
+		}
+		cy = drawInventoryTimerBuff(g, fm, cx, cy, fx.getStaminaEffectTicks(), "STM");
+		if (self.isVenomed())
+		{
+			g.setColor(TOXIC_GREEN);
+			drawCentered(g, fm, "VEN", cx, cy + fm.getAscent());
+			cy += fm.getHeight() + 1;
+		}
+		else if (self.isPoisoned())
+		{
+			g.setColor(TOXIC_GREEN);
+			drawCentered(g, fm, "PSN", cx, cy + fm.getAscent());
+			cy += fm.getHeight() + 1;
+		}
+		int drainTicks = self.getStatDrainTicksRemaining();
+		if (drainTicks > 0 && self.getStatDrainPeriod() > 0 && boosts.hasAnyBoost())
+		{
+			g.setColor(YELLOW);
+			drawCentered(g, fm, "d " + drainTicks + "t", cx, cy + fm.getAscent());
+			cy += fm.getHeight() + 1;
+		}
+
+		g.setColor(DIVIDER);
+		g.drawLine(lx, cy, INVY_LEFT_W - lx, cy);
+		cy += 3;
+
+		// ── Action labels ──────────────────────────────────────────────────────
+		ProtectionState prot = state.getProtection();
+		if (prot.isPjSafe())
+		{
+			int s = (int) Math.round(prot.getPjSafeTicksRemaining() * 0.6);
+			g.setColor(s > 20 ? GREEN : s > 10 ? YELLOW : RED);
+			drawCentered(g, fm, "PJ " + s + "s", cx, cy + fm.getAscent());
+			cy += fm.getHeight() + 1;
+		}
+		if (prot.isLmsImmune())
+		{
+			int s = (int) Math.round(prot.getLmsImmuneTicksRemaining() * 0.6);
+			g.setColor(PRAYER_FG);
+			drawCentered(g, fm, "IMM " + s + "s", cx, cy + fm.getAscent());
+			cy += fm.getHeight() + 1;
+		}
+		if (prot.isInCombatLogoutLock())
+		{
+			g.setColor(ORANGE);
+			drawCentered(g, fm, "LOG", cx, cy + fm.getAscent());
+			cy += fm.getHeight() + 1;
+		}
+		if (prot.isUnderAttackLocked())
+		{
+			g.setColor(LIGHT_BLUE);
+			drawCentered(g, fm, "LCK", cx, cy + fm.getAscent());
+			cy += fm.getHeight() + 1;
+		}
+		ManualTimerState t1 = state.getTimer1();
+		if (t1.isRunning())
+		{
+			int s = (int)(t1.getRemainingMs() / 1000);
+			g.setColor(s > 30 ? WHITE : RED);
+			drawCentered(g, fm, "T1 " + (s / 60) + ":" + String.format("%02d", s % 60),
+				cx, cy + fm.getAscent());
+			cy += fm.getHeight() + 1;
+		}
+		ManualTimerState t2 = state.getTimer2();
+		if (t2.isRunning())
+		{
+			int s = (int)(t2.getRemainingMs() / 1000);
+			g.setColor(s > 30 ? WHITE : RED);
+			drawCentered(g, fm, "T2 " + (s / 60) + ":" + String.format("%02d", s % 60),
+				cx, cy + fm.getAscent());
+			cy += fm.getHeight() + 1;
+		}
+		int wildLevel = state.getContext().getWildernessLevel();
+		if (wildLevel > 0)
+		{
+			g.setColor(YELLOW);
+			drawCentered(g, fm, "W" + wildLevel, cx, cy + fm.getAscent());
+			cy += fm.getHeight() + 1;
+		}
+		if (state.getContext().isMultiCombat())
+		{
+			g.setColor(ORANGE);
+			drawCentered(g, fm, "MLT", cx, cy + fm.getAscent());
+			cy += fm.getHeight() + 1;
+		}
+
+		// ── Fight totals ───────────────────────────────────────────────────────
+		PvpFightSession session = state.getCurrentSession();
+		int totalDealt    = session != null ? session.getTotalOutgoing()  : state.getLastTotalOutgoing();
+		int totalReceived = session != null ? session.getTotalIncoming() : state.getLastTotalIncoming();
+		if (totalDealt > 0 || totalReceived > 0)
+		{
+			g.setColor(DIVIDER);
+			g.drawLine(lx, cy, INVY_LEFT_W - lx, cy);
+			cy += 3;
+			if (totalDealt > 0)
+			{
+				g.setColor(GREEN);
+				drawCentered(g, fm, "D " + totalDealt, cx, cy + fm.getAscent());
+				cy += fm.getHeight() + 1;
+			}
+			if (totalReceived > 0)
+			{
+				g.setColor(RED);
+				drawCentered(g, fm, "R " + totalReceived, cx, cy + fm.getAscent());
+			}
+		}
+	}
+
+	/** Draws a mini horizontal bar + optional number, centred in the left rail. Returns updated cy. */
+	private int drawInventoryBar(Graphics2D g, FontMetrics fm, int cx, int lx, int cy, int railW,
+		String label, int current, int max, Color fg, Color bgColor, BarDisplayStyle style)
+	{
+		if (max <= 0 || !barVisible(style)) return cy;
+		float pct = Math.min(1f, (float) current / max);
+		Color barFg = pct > 0.5f ? fg : pct > 0.25f ? YELLOW : RED;
+		if (showBar(style))
+		{
+			g.setColor(bgColor);
+			g.fillRect(lx, cy, railW, BAR_H);
+			g.setColor(barFg);
+			g.fillRect(lx, cy, Math.max(1, (int)(railW * pct)), BAR_H);
+			cy += BAR_H + 1;
+		}
+		if (showNum(style))
+		{
+			g.setColor(barFg);
+			drawCentered(g, fm, label + " " + current, cx, cy + fm.getAscent());
+			cy += fm.getHeight() + 1;
+		}
+		return cy;
+	}
+
+	/** Draws a timer buff label (label + M:SS) if ticks > 0. Returns updated cy. */
+	private int drawInventoryTimerBuff(Graphics2D g, FontMetrics fm, int cx, int cy, int ticks, String label)
+	{
+		if (ticks <= 0) return cy;
+		int s = ticks * 600 / 1000;
+		g.setColor(s > 60 ? GREEN : s > 30 ? YELLOW : RED);
+		drawCentered(g, fm, label + " " + (s / 60) + ":" + String.format("%02d", s % 60),
+			cx, cy + fm.getAscent());
+		return cy + fm.getHeight() + 1;
 	}
 
 	// ── Layout computation ────────────────────────────────────────────────────
