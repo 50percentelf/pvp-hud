@@ -127,17 +127,8 @@ When the local player has Smite active, outgoing hits show `-Np` in the fight lo
 
 These are confirmed next tasks. Each one starts only after the previous is verified in-game.
 
-### Task 2 — Opponent acquisition
-Only acquire an opponent from actual PvP combat. `InteractingChanged` alone must not create a fight session — a session requires at least one of: Attack menu option used, outgoing hitsplat on the target, or incoming hitsplat from the target. Follow interactions and other non-combat interactions must not start a session.
-
-### Task 3 — Boost row geometry collapse
-When `showBoostRow` is off, `computeHorizLayout` and `computeVertLayout` still subtract `BOOST_ROW_H` from the available height. The surrounding panels must reclaim that space when the row is hidden. Float layouts should have an optional `reserveBoostDockWhenHidden` flag (so users can dock another plugin there); Chat Locked and Inventory Hug should always collapse.
-
-### Task 4 — Opponent stat row placement
-The opponent stat row (ATK/STR/DEF/RNG/MAG) is currently bottom-pinned via `p.y + p.height - PAD - statsRowH`. It should be a first-class row rendered after the name/HP section, not pinned to the panel bottom.
-
-### Task 5 — Float layout position on switch (deferred)
-Simplified target behaviour: switching between any two layouts leaves the overlay exactly where it was last dragged. Exception — switching TO Chat Locked pins to the chatbox (already correct); switching FROM Chat Locked to a float layout must NOT inherit the chatbox position (reset to a neutral location instead). Full independent per-layout position memory is out of scope for now.
+### Task — Wilderness level display toggle
+Add a **Show Wilderness Level** boolean to the General config section, default **off**. When off, the `W#` indicator is hidden in the action strip and the Inventory Hug left rail. The feature already exists; this just makes it optional since it has limited value for most users.
 
 ### Streamer Output (deferred — do not implement until P0/P1 HUD correctness work is complete)
 

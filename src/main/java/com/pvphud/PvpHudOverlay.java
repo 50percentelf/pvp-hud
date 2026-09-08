@@ -1032,23 +1032,28 @@ public class PvpHudOverlay extends Overlay
 			}
 		}
 
-		// Opponent base stats (hiscores, async) — first-class row after prayer section
+		// Opponent base stats (hiscores, async) — first-class row after prayer section.
+		// Skip if a large prayer icon has pushed cy too close to the panel bottom.
 		g.setFont(small);
 		smFm = g.getFontMetrics();
 		cy += 2;
-		OpponentStats stats = opp.getStats();
-		int col    = p.width / 5;
-		int c1     = p.x + col / 2;
-		int c2     = c1 + col;
-		int c3     = c2 + col;
-		int c4     = c3 + col;
-		int c5     = c4 + col;
-		int textY  = cy + ICON_SIZE + 2 + smFm.getAscent();
-		drawStatColumn(g, smFm, atkSkillIcon, "ATK", stats.getAttack(),   c1, cy, textY);
-		drawStatColumn(g, smFm, strSkillIcon, "STR", stats.getStrength(), c2, cy, textY);
-		drawStatColumn(g, smFm, defSkillIcon, "DEF", stats.getDefence(),  c3, cy, textY);
-		drawStatColumn(g, smFm, rngSkillIcon, "RNG", stats.getRanged(),   c4, cy, textY);
-		drawStatColumn(g, smFm, magSkillIcon, "MAG", stats.getMagic(),    c5, cy, textY);
+		int statsRowH = ICON_SIZE + 2 + smFm.getAscent();
+		if (cy + statsRowH <= p.y + p.height - PAD)
+		{
+			OpponentStats stats = opp.getStats();
+			int col    = p.width / 5;
+			int c1     = p.x + col / 2;
+			int c2     = c1 + col;
+			int c3     = c2 + col;
+			int c4     = c3 + col;
+			int c5     = c4 + col;
+			int textY  = cy + ICON_SIZE + 2 + smFm.getAscent();
+			drawStatColumn(g, smFm, atkSkillIcon, "ATK", stats.getAttack(),   c1, cy, textY);
+			drawStatColumn(g, smFm, strSkillIcon, "STR", stats.getStrength(), c2, cy, textY);
+			drawStatColumn(g, smFm, defSkillIcon, "DEF", stats.getDefence(),  c3, cy, textY);
+			drawStatColumn(g, smFm, rngSkillIcon, "RNG", stats.getRanged(),   c4, cy, textY);
+			drawStatColumn(g, smFm, magSkillIcon, "MAG", stats.getMagic(),    c5, cy, textY);
+		}
 	}
 
 	// ── Event panel ───────────────────────────────────────────────────────────
