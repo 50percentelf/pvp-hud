@@ -49,8 +49,9 @@ public class PvpHudOverlay extends Overlay
 	private static final int VERT_H         = 400;
 
 	/** INVENTORY_HUG: top rail height and left rail width (px). */
-	private static final int INVY_TOP_H  = 50;
+	private static final int INVY_TOP_H  = 72;
 	private static final int INVY_LEFT_W = 54;
+
 
 	/** Icon size for VERTICAL_BAR and ICON_TRAY buff styles (pixels). */
 	private static final int ICON_SIZE = 18;
@@ -98,6 +99,10 @@ public class PvpHudOverlay extends Overlay
 	private BufferedImage staminaIcon;        // stamina potion
 	private BufferedImage antiPoisonItemIcon; // anti-poison potion (immunity display)
 	private BufferedImage antiVenomItemIcon;  // anti-venom potion (immunity display)
+
+	// ── Cached skill icons for inventory-hug bars (HP / Prayer) ─────────────
+	private volatile BufferedImage hpSkillIcon;
+	private volatile BufferedImage praySkillIcon;
 
 	// ── Cached icons (spell sprites — loaded async, volatile for EDT visibility)
 	private volatile BufferedImage vengIcon;
@@ -178,11 +183,13 @@ public class PvpHudOverlay extends Overlay
 		spriteManager.getSpriteAsync(SpriteID.PRAYER_PROTECT_FROM_MAGIC,    0, img -> prayMagicIcon  = img);
 		spriteManager.getSpriteAsync(SpriteID.PRAYER_SMITE,                 0, img -> smiteIcon      = img);
 
-		spriteManager.getSpriteAsync(SpriteID.SKILL_ATTACK,   0, img -> atkSkillIcon = img);
-		spriteManager.getSpriteAsync(SpriteID.SKILL_STRENGTH, 0, img -> strSkillIcon = img);
-		spriteManager.getSpriteAsync(SpriteID.SKILL_DEFENCE,  0, img -> defSkillIcon = img);
-		spriteManager.getSpriteAsync(SpriteID.SKILL_RANGED,   0, img -> rngSkillIcon = img);
-		spriteManager.getSpriteAsync(SpriteID.SKILL_MAGIC,    0, img -> magSkillIcon = img);
+		spriteManager.getSpriteAsync(SpriteID.SKILL_ATTACK,     0, img -> atkSkillIcon  = img);
+		spriteManager.getSpriteAsync(SpriteID.SKILL_STRENGTH,   0, img -> strSkillIcon  = img);
+		spriteManager.getSpriteAsync(SpriteID.SKILL_DEFENCE,    0, img -> defSkillIcon  = img);
+		spriteManager.getSpriteAsync(SpriteID.SKILL_RANGED,     0, img -> rngSkillIcon  = img);
+		spriteManager.getSpriteAsync(SpriteID.SKILL_MAGIC,      0, img -> magSkillIcon  = img);
+		spriteManager.getSpriteAsync(SpriteID.SKILL_HITPOINTS,  0, img -> hpSkillIcon   = img);
+		spriteManager.getSpriteAsync(SpriteID.SKILL_PRAYER,     0, img -> praySkillIcon = img);
 	}
 
 	// ── Render entry point ────────────────────────────────────────────────────
@@ -406,18 +413,17 @@ public class PvpHudOverlay extends Overlay
 		FontMetrics fm = g.getFontMetrics();
 
 		// ── Corner (above left rail): attack clock + eat/pot dots ─────────────
-		// Fixed 10 dots in a 2×5 grid — count never changes with weapon.
 		ActionClockState clock = state.getActionClock();
 		int atk = clock.getAttackDelayTicks();
 		{
 			final int DOT_SZ  = 4;
 			final int DOT_GAP = 2;
 			final int PER_ROW = 5;
-			int rowW  = PER_ROW * DOT_SZ + (PER_ROW - 1) * DOT_GAP; // 28 px
-			int dotX  = (INVY_LEFT_W - rowW) / 2;                    // centred in 54 px
-			// Two rows of dots + gap + E/P row: 10 + 4 + fontH ≈ 23 px total.
-			// Centre that block in the 50-px top arm height.
-			int dotY  = (INVY_TOP_H - (2 * DOT_SZ + DOT_GAP + 4 + fm.getHeight())) / 2;
+			int rowW = PER_ROW * DOT_SZ + (PER_ROW - 1) * DOT_GAP; // 28 px
+			int dotX = (INVY_LEFT_W - rowW) / 2;
+			// Centre the dot+EP block vertically in the top arm.
+			int blockH = 2 * DOT_SZ + DOT_GAP + 4 + fm.getHeight();
+			int dotY   = (INVY_TOP_H - blockH) / 2;
 			for (int i = 0; i < 10; i++)
 			{
 				int row = i / PER_ROW;
@@ -450,10 +456,28 @@ public class PvpHudOverlay extends Overlay
 		}
 
 		// ── Pane portion (above inventory): opponent info ─────────────────────
-		int x0   = INVY_LEFT_W + PAD;
-		int rx   = totalW - PAD;
-		int barW = rx - x0;
-		int cy   = PAD / 2 + 1;
+		// Overhead prayer icon sits top-right; HP bar shortens to avoid it.
+		HeadIcon prayer   = state.getOpponent().getOverheadPrayer();
+		int prayW         = (prayer != null ? ICON_SIZE + 4 : 0);
+		int x0            = INVY_LEFT_W + PAD;
+		int rx            = totalW - PAD;
+		int barW          = rx - x0 - prayW;  // shortened when prayer icon present
+		int cy            = PAD / 2 + 1;
+
+		// Prayer icon: top-right of the pane section, vertically centred in first two rows.
+		if (prayer != null)
+		{
+			BufferedImage pIcon = prayerIconFor(prayer);
+			int prayX = rx - ICON_SIZE;
+			int prayY = cy;
+			if (pIcon != null)
+				g.drawImage(pIcon, prayX, prayY, ICON_SIZE, ICON_SIZE, null);
+			else
+			{
+				g.setColor(prayerColorFor(prayer));
+				drawRightAligned(g, fm, prayerShortFor(prayer), rx, prayY + fm.getAscent());
+			}
+		}
 
 		OpponentState opp = state.getOpponent();
 		if (!opp.isTracked())
@@ -463,21 +487,21 @@ public class PvpHudOverlay extends Overlay
 			return;
 		}
 
-		// Name + VENG! right-aligned if active
+		// Name — VENG! right of name when no prayer icon; otherwise prayer icon occupies that spot.
 		g.setColor(opp.isVengActive() ? ORANGE : WHITE);
-		String name = opp.getName();
-		int maxNameW = barW - (opp.isVengActive() ? fm.stringWidth("VENG!") + PAD : 0);
-		while (name.length() > 1 && fm.stringWidth(name) > maxNameW)
+		String name    = opp.getName();
+		int nameLimit  = barW - (opp.isVengActive() && prayW == 0 ? fm.stringWidth("VENG!") + PAD : 0);
+		while (name.length() > 1 && fm.stringWidth(name) > nameLimit)
 			name = name.substring(0, name.length() - 1);
 		g.drawString(name, x0, cy + fm.getAscent());
-		if (opp.isVengActive())
+		if (opp.isVengActive() && prayW == 0)
 		{
 			g.setColor(ORANGE);
 			drawRightAligned(g, fm, "VENG!", rx, cy + fm.getAscent());
 		}
 		cy += fm.getHeight() + 1;
 
-		// HP bar + ~HP + overhead prayer abbreviated on the right
+		// HP bar (shortened on the right when prayer icon is shown)
 		int estHp = opp.getEstimatedHp();
 		int maxHp = opp.getMaxHp();
 		if (maxHp > 0)
@@ -489,18 +513,9 @@ public class PvpHudOverlay extends Overlay
 			g.setColor(fg);
 			g.fillRect(x0, cy, Math.max(1, (int)(barW * pct)), BAR_H);
 			cy += BAR_H + 2;
+			// HP as current/base (e.g. 43/99) instead of approximate ~43
 			g.setColor(fg);
-			g.drawString("~" + estHp, x0, cy + fm.getAscent());
-			HeadIcon prayer = opp.getOverheadPrayer();
-			if (prayer != null)
-			{
-				String pLabel = prayerShortFor(prayer);
-				if (pLabel != null)
-				{
-					g.setColor(prayerColorFor(prayer));
-					drawRightAligned(g, fm, pLabel, rx, cy + fm.getAscent());
-				}
-			}
+			g.drawString(estHp + "/" + maxHp, x0, cy + fm.getAscent());
 		}
 		else
 		{
@@ -510,6 +525,35 @@ public class PvpHudOverlay extends Overlay
 			g.setColor(GRAY);
 			g.drawString("HP?", x0, cy + fm.getAscent());
 		}
+		cy += fm.getHeight() + 2;
+
+		// Opponent stats row: 5 skill icons + level numbers.
+		// VENG! banner lives below the stats row if both prayer icon and veng are active.
+		OpponentStats stats  = opp.getStats();
+		int paneW            = totalW - INVY_LEFT_W;
+		int col              = paneW / 5;
+		int iconBaseline     = cy;
+		int numBaseline      = cy + ICON_SIZE + 2 + fm.getAscent();
+		int[] centers = {
+			INVY_LEFT_W + col / 2,
+			INVY_LEFT_W + col + col / 2,
+			INVY_LEFT_W + 2 * col + col / 2,
+			INVY_LEFT_W + 3 * col + col / 2,
+			INVY_LEFT_W + 4 * col + col / 2,
+		};
+		drawStatColumn(g, fm, atkSkillIcon, "ATK", stats.getAttack(),   centers[0], iconBaseline, numBaseline);
+		drawStatColumn(g, fm, strSkillIcon, "STR", stats.getStrength(), centers[1], iconBaseline, numBaseline);
+		drawStatColumn(g, fm, defSkillIcon, "DEF", stats.getDefence(),  centers[2], iconBaseline, numBaseline);
+		drawStatColumn(g, fm, rngSkillIcon, "RNG", stats.getRanged(),   centers[3], iconBaseline, numBaseline);
+		drawStatColumn(g, fm, magSkillIcon, "MAG", stats.getMagic(),    centers[4], iconBaseline, numBaseline);
+
+		if (opp.isVengActive() && prayW > 0)
+		{
+			// Prayer icon already in top-right; show VENG! below stats.
+			cy = iconBaseline + ICON_SIZE + 2 + fm.getHeight() + 2;
+			g.setColor(ORANGE);
+			g.drawString("VENG!", x0, cy + fm.getAscent());
+		}
 	}
 
 	private void drawInventoryLeftRail(Graphics2D g, PvpHudState state,
@@ -518,8 +562,8 @@ public class PvpHudOverlay extends Overlay
 		int cx    = INVY_LEFT_W / 2;
 		int lx    = PAD;
 		int railW = INVY_LEFT_W - PAD * 2;
-		// Start at the item grid top (skip tab row when present).
-		int cy = INVY_TOP_H + tabH + PAD;
+		// Fixed starting position — never shifts when switching inventory/equipment/prayer tabs.
+		int cy = INVY_TOP_H + PAD;
 
 		g.setFont(small);
 		FontMetrics fm = g.getFontMetrics();
@@ -529,10 +573,10 @@ public class PvpHudOverlay extends Overlay
 		BoostState    boosts = state.getBoosts();
 		OpponentState opp    = state.getOpponent();
 
-		// ── Self resource bars ─────────────────────────────────────────────────
-		cy = drawInventoryBar(g, fm, cx, lx, cy, railW, "HP",
+		// ── Self resource bars (icon left, bar right, number below bar) ────────
+		cy = drawInventoryBar(g, fm, cx, lx, cy, railW, hpSkillIcon,
 			self.getCurrentHp(), self.getMaxHp(), HP_FG, HP_BG, config.hpBarStyle());
-		cy = drawInventoryBar(g, fm, cx, lx, cy, railW, "PR",
+		cy = drawInventoryBar(g, fm, cx, lx, cy, railW, praySkillIcon,
 			self.getCurrentPrayer(), self.getMaxPrayer(), PRAYER_FG, PRAYER_BG, config.prayerBarStyle());
 
 		BarDisplayStyle runStyle = config.runBarStyle();
@@ -550,7 +594,7 @@ public class PvpHudOverlay extends Overlay
 			if (showNum(runStyle))
 			{
 				g.setColor(RUN_FG);
-				drawCentered(g, fm, "RN " + run + "%", cx, cy + fm.getAscent());
+				drawCentered(g, fm, run + "%", cx, cy + fm.getAscent());
 				cy += fm.getHeight() + 1;
 			}
 		}
@@ -570,136 +614,109 @@ public class PvpHudOverlay extends Overlay
 			if (showNum(specStyle))
 			{
 				g.setColor(YELLOW);
-				drawCentered(g, fm, "SP " + spec + "%", cx, cy + fm.getAscent());
+				drawCentered(g, fm, spec + "%", cx, cy + fm.getAscent());
 				cy += fm.getHeight() + 1;
 			}
 		}
 
-		g.setColor(DIVIDER);
-		g.drawLine(lx, cy, INVY_LEFT_W - lx, cy);
-		cy += 3;
+		// ── Opponent veng (icon + label, same visual style as self buffs below) ─
+		boolean hasOppVeng  = opp.isTracked() && opp.isVengActive();
+		List<Buff> selfBuffs = buildBuffList(self, fx, boosts);
+		boolean hasBuffs    = hasOppVeng || !selfBuffs.isEmpty();
 
-		// ── Buff indicators ────────────────────────────────────────────────────
-		if (opp.isTracked() && opp.isVengActive())
+		if (hasBuffs)
 		{
-			g.setColor(ORANGE);
-			drawCentered(g, fm, "V!", cx, cy + fm.getAscent());
-			cy += fm.getHeight() + 1;
-		}
-		if (self.isVengActive())
-		{
-			g.setColor(GREEN);
-			drawCentered(g, fm, "VNG", cx, cy + fm.getAscent());
-			cy += fm.getHeight() + 1;
-		}
-		int ice = self.getFreezeTicksRemaining(client.getTickCount());
-		if (ice > 0 && config.showFreezeTimer())
-		{
-			g.setColor(LIGHT_BLUE);
-			drawCentered(g, fm, "ICE " + ticksToSecs(ice), cx, cy + fm.getAscent());
-			cy += fm.getHeight() + 1;
-		}
-		int tb = self.getTeleBlockTicksRemaining();
-		if (tb > 0)
-		{
-			int s = tb * 600 / 1000;
-			g.setColor(ORANGE);
-			drawCentered(g, fm, "TB " + (s / 60) + ":" + String.format("%02d", s % 60),
-				cx, cy + fm.getAscent());
-			cy += fm.getHeight() + 1;
-		}
-		if (config.showDivineTimers())
-		{
-			cy = drawInventoryTimerBuff(g, fm, cx, cy, fx.getDivineSupercombatTicks(), "DSC");
-			cy = drawInventoryTimerBuff(g, fm, cx, cy, fx.getDivineRangingTicks(),     "DRG");
-			cy = drawInventoryTimerBuff(g, fm, cx, cy, fx.getDivineMagicTicks(),       "DMG");
-			cy = drawInventoryTimerBuff(g, fm, cx, cy, fx.getDivineBastionTicks(),     "BAS");
-			cy = drawInventoryTimerBuff(g, fm, cx, cy, fx.getDivineBattlemageTicks(),  "BTM");
-			cy = drawInventoryTimerBuff(g, fm, cx, cy, fx.getMenaphiteRemedyTicks(),   "MEN");
-		}
-		cy = drawInventoryTimerBuff(g, fm, cx, cy, fx.getStaminaEffectTicks(), "STM");
-		if (self.isVenomed())
-		{
-			g.setColor(TOXIC_GREEN);
-			drawCentered(g, fm, "VEN", cx, cy + fm.getAscent());
-			cy += fm.getHeight() + 1;
-		}
-		else if (self.isPoisoned())
-		{
-			g.setColor(TOXIC_GREEN);
-			drawCentered(g, fm, "PSN", cx, cy + fm.getAscent());
-			cy += fm.getHeight() + 1;
-		}
-		int drainTicks = self.getStatDrainTicksRemaining();
-		if (drainTicks > 0 && self.getStatDrainPeriod() > 0 && boosts.hasAnyBoost())
-		{
-			g.setColor(YELLOW);
-			drawCentered(g, fm, "d " + drainTicks + "t", cx, cy + fm.getAscent());
-			cy += fm.getHeight() + 1;
+			g.setColor(DIVIDER);
+			g.drawLine(lx, cy, INVY_LEFT_W - lx, cy);
+			cy += 3;
+
+			int lineH = Math.max(fm.getHeight(), ICON_SIZE) + 1;
+
+			if (hasOppVeng)
+			{
+				int iconY = cy + (lineH - ICON_SIZE) / 2;
+				if (vengIcon != null)
+					g.drawImage(vengIcon, lx, iconY, ICON_SIZE, ICON_SIZE, null);
+				g.setColor(ORANGE);
+				g.drawString("OPP", lx + ICON_SIZE + ICON_GAP, cy + fm.getAscent());
+				cy += lineH;
+			}
+
+			// Self buffs — use the same icon+label vertical-bar style as the other layouts.
+			drawBuffsVertBar(g, small, selfBuffs, lx, cy);
+			cy += selfBuffs.size() * lineH;
 		}
 
-		g.setColor(DIVIDER);
-		g.drawLine(lx, cy, INVY_LEFT_W - lx, cy);
-		cy += 3;
-
-		// ── Action labels ──────────────────────────────────────────────────────
+		// ── Action labels (text-only — no standard icon exists for these) ──────
 		ProtectionState prot = state.getProtection();
-		if (prot.isPjSafe())
-		{
-			int s = (int) Math.round(prot.getPjSafeTicksRemaining() * 0.6);
-			g.setColor(s > 20 ? GREEN : s > 10 ? YELLOW : RED);
-			drawCentered(g, fm, "PJ " + s + "s", cx, cy + fm.getAscent());
-			cy += fm.getHeight() + 1;
-		}
-		if (prot.isLmsImmune())
-		{
-			int s = (int) Math.round(prot.getLmsImmuneTicksRemaining() * 0.6);
-			g.setColor(PRAYER_FG);
-			drawCentered(g, fm, "IMM " + s + "s", cx, cy + fm.getAscent());
-			cy += fm.getHeight() + 1;
-		}
-		if (prot.isInCombatLogoutLock())
-		{
-			g.setColor(ORANGE);
-			drawCentered(g, fm, "LOG", cx, cy + fm.getAscent());
-			cy += fm.getHeight() + 1;
-		}
-		if (prot.isUnderAttackLocked())
-		{
-			g.setColor(LIGHT_BLUE);
-			drawCentered(g, fm, "LCK", cx, cy + fm.getAscent());
-			cy += fm.getHeight() + 1;
-		}
+		boolean hasProt = prot.isPjSafe() || prot.isLmsImmune() || prot.isInCombatLogoutLock()
+			|| prot.isUnderAttackLocked();
 		ManualTimerState t1 = state.getTimer1();
-		if (t1.isRunning())
-		{
-			int s = (int)(t1.getRemainingMs() / 1000);
-			g.setColor(s > 30 ? WHITE : RED);
-			drawCentered(g, fm, "T1 " + (s / 60) + ":" + String.format("%02d", s % 60),
-				cx, cy + fm.getAscent());
-			cy += fm.getHeight() + 1;
-		}
 		ManualTimerState t2 = state.getTimer2();
-		if (t2.isRunning())
+		boolean hasAction = hasProt || t1.isRunning() || t2.isRunning()
+			|| state.getContext().getWildernessLevel() > 0 || state.getContext().isMultiCombat();
+
+		if (hasAction)
 		{
-			int s = (int)(t2.getRemainingMs() / 1000);
-			g.setColor(s > 30 ? WHITE : RED);
-			drawCentered(g, fm, "T2 " + (s / 60) + ":" + String.format("%02d", s % 60),
-				cx, cy + fm.getAscent());
-			cy += fm.getHeight() + 1;
-		}
-		int wildLevel = state.getContext().getWildernessLevel();
-		if (wildLevel > 0)
-		{
-			g.setColor(YELLOW);
-			drawCentered(g, fm, "W" + wildLevel, cx, cy + fm.getAscent());
-			cy += fm.getHeight() + 1;
-		}
-		if (state.getContext().isMultiCombat())
-		{
-			g.setColor(ORANGE);
-			drawCentered(g, fm, "MLT", cx, cy + fm.getAscent());
-			cy += fm.getHeight() + 1;
+			g.setColor(DIVIDER);
+			g.drawLine(lx, cy, INVY_LEFT_W - lx, cy);
+			cy += 3;
+
+			if (prot.isPjSafe())
+			{
+				int s = (int) Math.round(prot.getPjSafeTicksRemaining() * 0.6);
+				g.setColor(s > 20 ? GREEN : s > 10 ? YELLOW : RED);
+				drawCentered(g, fm, "PJ " + s + "s", cx, cy + fm.getAscent());
+				cy += fm.getHeight() + 1;
+			}
+			if (prot.isLmsImmune())
+			{
+				int s = (int) Math.round(prot.getLmsImmuneTicksRemaining() * 0.6);
+				g.setColor(PRAYER_FG);
+				drawCentered(g, fm, "IMM " + s + "s", cx, cy + fm.getAscent());
+				cy += fm.getHeight() + 1;
+			}
+			if (prot.isInCombatLogoutLock())
+			{
+				g.setColor(ORANGE);
+				drawCentered(g, fm, "LOG", cx, cy + fm.getAscent());
+				cy += fm.getHeight() + 1;
+			}
+			if (prot.isUnderAttackLocked())
+			{
+				g.setColor(LIGHT_BLUE);
+				drawCentered(g, fm, "LCK", cx, cy + fm.getAscent());
+				cy += fm.getHeight() + 1;
+			}
+			if (t1.isRunning())
+			{
+				int s = (int)(t1.getRemainingMs() / 1000);
+				g.setColor(s > 30 ? WHITE : RED);
+				drawCentered(g, fm, "T1 " + (s / 60) + ":" + String.format("%02d", s % 60),
+					cx, cy + fm.getAscent());
+				cy += fm.getHeight() + 1;
+			}
+			if (t2.isRunning())
+			{
+				int s = (int)(t2.getRemainingMs() / 1000);
+				g.setColor(s > 30 ? WHITE : RED);
+				drawCentered(g, fm, "T2 " + (s / 60) + ":" + String.format("%02d", s % 60),
+					cx, cy + fm.getAscent());
+				cy += fm.getHeight() + 1;
+			}
+			int wildLevel = state.getContext().getWildernessLevel();
+			if (wildLevel > 0)
+			{
+				g.setColor(YELLOW);
+				drawCentered(g, fm, "W" + wildLevel, cx, cy + fm.getAscent());
+				cy += fm.getHeight() + 1;
+			}
+			if (state.getContext().isMultiCombat())
+			{
+				g.setColor(ORANGE);
+				drawCentered(g, fm, "MLT", cx, cy + fm.getAscent());
+				cy += fm.getHeight() + 1;
+			}
 		}
 
 		// ── Fight totals ───────────────────────────────────────────────────────
@@ -725,40 +742,39 @@ public class PvpHudOverlay extends Overlay
 		}
 	}
 
-	/** Draws a mini horizontal bar + optional number, centred in the left rail. Returns updated cy. */
+	/**
+	 * Draws a skill-icon, bar, and optional number for the inventory-hug left rail.
+	 * Icon (9×9) appears left of the bar when loaded; the bar fills the remaining width.
+	 * Number is centred below the bar when shown. Returns updated cy.
+	 */
 	private int drawInventoryBar(Graphics2D g, FontMetrics fm, int cx, int lx, int cy, int railW,
-		String label, int current, int max, Color fg, Color bgColor, BarDisplayStyle style)
+		BufferedImage icon, int current, int max, Color fg, Color bgColor, BarDisplayStyle style)
 	{
 		if (max <= 0 || !barVisible(style)) return cy;
-		float pct = Math.min(1f, (float) current / max);
+		float pct   = Math.min(1f, (float) current / max);
 		Color barFg = pct > 0.5f ? fg : pct > 0.25f ? YELLOW : RED;
 		if (showBar(style))
 		{
+			final int ICN = 9;
+			int barX = icon != null ? lx + ICN + 2 : lx;
+			int barSz = railW - (icon != null ? ICN + 2 : 0);
+			if (icon != null)
+				g.drawImage(icon, lx, cy + (BAR_H - ICN) / 2, ICN, ICN, null);
 			g.setColor(bgColor);
-			g.fillRect(lx, cy, railW, BAR_H);
+			g.fillRect(barX, cy, barSz, BAR_H);
 			g.setColor(barFg);
-			g.fillRect(lx, cy, Math.max(1, (int)(railW * pct)), BAR_H);
+			g.fillRect(barX, cy, Math.max(1, (int)(barSz * pct)), BAR_H);
 			cy += BAR_H + 1;
 		}
 		if (showNum(style))
 		{
 			g.setColor(barFg);
-			drawCentered(g, fm, label + " " + current, cx, cy + fm.getAscent());
+			drawCentered(g, fm, String.valueOf(current), cx, cy + fm.getAscent());
 			cy += fm.getHeight() + 1;
 		}
 		return cy;
 	}
 
-	/** Draws a timer buff label (label + M:SS) if ticks > 0. Returns updated cy. */
-	private int drawInventoryTimerBuff(Graphics2D g, FontMetrics fm, int cx, int cy, int ticks, String label)
-	{
-		if (ticks <= 0) return cy;
-		int s = ticks * 600 / 1000;
-		g.setColor(s > 60 ? GREEN : s > 30 ? YELLOW : RED);
-		drawCentered(g, fm, label + " " + (s / 60) + ":" + String.format("%02d", s % 60),
-			cx, cy + fm.getAscent());
-		return cy + fm.getHeight() + 1;
-	}
 
 	// ── Layout computation ────────────────────────────────────────────────────
 
