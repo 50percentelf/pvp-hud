@@ -1353,16 +1353,22 @@ public class PvpHudOverlay extends Overlay
 		effectScratch.clear();
 
 		if (self.isVengActive())
-			effectScratch.add(new ActiveEffectView(vengIcon, "VENG RDY", GREEN));
+			effectScratch.add(new ActiveEffectView(vengIcon, "VENG", "VENG RDY", GREEN));
 
 		int freeze = self.getFreezeTicksRemaining(client.getTickCount());
 		if (freeze > 0 && config.showFreezeTimer())
+		{
+			String t = ticksToSecs(freeze);
 			effectScratch.add(new ActiveEffectView(
-				iceIconFor(self.getFreezeSpriteId()), "ICE " + ticksToSecs(freeze), LIGHT_BLUE));
+				iceIconFor(self.getFreezeSpriteId()), t, "ICE " + t, LIGHT_BLUE));
+		}
 
 		int tb = self.getTeleBlockTicksRemaining();
 		if (tb > 0)
-			effectScratch.add(new ActiveEffectView(tbIcon, "TB " + ticksToMSS(tb), ORANGE));
+		{
+			String t = ticksToMSS(tb);
+			effectScratch.add(new ActiveEffectView(tbIcon, t, "TB " + t, ORANGE));
+		}
 
 		if (config.showDivineTimers())
 		{
@@ -1379,9 +1385,9 @@ public class PvpHudOverlay extends Overlay
 			addTimedEffect("STAM", fx.getStaminaEffectTicks(), staminaIcon);
 
 		if (poison.isVenomed())
-			effectScratch.add(new ActiveEffectView(venomIcon,  "VENOM",  TOXIC_GREEN));
+			effectScratch.add(new ActiveEffectView(venomIcon,  "VEN",  "VENOM",  TOXIC_GREEN));
 		else if (poison.isPoisoned())
-			effectScratch.add(new ActiveEffectView(poisonIcon, "POISON", TOXIC_GREEN));
+			effectScratch.add(new ActiveEffectView(poisonIcon, "PSN",  "POISON", TOXIC_GREEN));
 
 		if (poison.isAntiVenomActive())
 			addTimedEffectFallback("ANTI-V", poison.getAntiVenomTicks(),  antiVenomItemIcon);
@@ -1395,19 +1401,26 @@ public class PvpHudOverlay extends Overlay
 		return effectScratch;
 	}
 
+	/** Icon modes show just the time; TEXT mode prefixes the effect label. */
 	private void addTimedEffect(String label, int ticks, BufferedImage icon)
 	{
 		if (ticks <= 0) return;
-		effectScratch.add(new ActiveEffectView(icon, label + " " + ticksToMSS(ticks), timerColor(ticks)));
+		String t = ticksToMSS(ticks);
+		effectScratch.add(new ActiveEffectView(icon, t, label + " " + t, timerColor(ticks)));
 	}
 
-	/** Like addTimedEffect but falls back to a static label when ticks == 0 (active, no countdown). */
+	/** Like addTimedEffect but falls back to a static label when ticks == 0. */
 	private void addTimedEffectFallback(String label, int ticks, BufferedImage icon)
 	{
 		if (ticks > 0)
-			effectScratch.add(new ActiveEffectView(icon, label + " " + ticksToMSS(ticks), timerColor(ticks)));
+		{
+			String t = ticksToMSS(ticks);
+			effectScratch.add(new ActiveEffectView(icon, label + " " + t, timerColor(ticks)));
+		}
 		else
+		{
 			effectScratch.add(new ActiveEffectView(icon, label, GREEN));
+		}
 	}
 
 	private static Color timerColor(int ticks)
@@ -1443,7 +1456,7 @@ public class PvpHudOverlay extends Overlay
 		for (ActiveEffectView e : effects)
 		{
 			g.setColor(e.color);
-			g.drawString(e.label, lx, cy + fm.getAscent());
+			g.drawString(e.getTextLabel(), lx, cy + fm.getAscent());
 			cy += fm.getHeight() + 1;
 		}
 	}
