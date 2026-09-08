@@ -39,7 +39,7 @@ public class SelfState
 	@Getter @Setter private int runEnergy;
 
 	/** Clock calibrated from observed natural -1 stat ticks above base (boost decay). */
-	@Getter private final StatCycleClock boostDecay    = new StatCycleClock();
+	@Getter private final BoostDecayClock boostDecay   = new BoostDecayClock();
 
 	/** Clock calibrated from observed natural +1 stat ticks below base (debuff restoration). */
 	@Getter private final StatCycleClock debuffRestore = new StatCycleClock();

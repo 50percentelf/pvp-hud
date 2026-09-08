@@ -374,7 +374,7 @@ public class PvpHudPlugin extends Plugin
 	private void handleStatCycle(SelfState self, int prev, int current, int base)
 	{
 		if (isNaturalBoostDecay(prev, current, base))
-			self.getBoostDecay().sync(client.isPrayerActive(Prayer.PRESERVE) ? 150 : 100);
+			self.getBoostDecay().sync(client.getTickCount());
 		else if (isNaturalDebuffRestore(prev, current, base))
 			self.getDebuffRestore().sync();
 	}
@@ -512,7 +512,7 @@ public class PvpHudPlugin extends Plugin
 		SelfState self = hudState.getSelf();
 		if (self.getHpRegenTicksRemaining() > 0)
 			self.setHpRegenTicksRemaining(self.getHpRegenTicksRemaining() - 1);
-		self.getBoostDecay().tick();
+		self.getBoostDecay().update(tick, client.isPrayerActive(Prayer.PRESERVE));
 		self.getDebuffRestore().tick();
 
 		EffectState fxTick = hudState.getEffects();

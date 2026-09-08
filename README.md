@@ -145,6 +145,9 @@ Live countdown to the opponent's next possible attack, derived from an observed 
 ### Task — Wilderness level display toggle
 Add a **Show Wilderness Level** boolean to the General config section, default **off**. When off, the `W#` indicator is hidden in the action strip and the Inventory Hug left rail. The feature already exists; this just makes it optional since it has limited value for most users.
 
+### Task — Independent float positions
+`HORIZONTAL_FLOAT` and `VERTICAL_FLOAT` should remember their last dragged position independently. Switching layouts must restore the correct prior position for each layout. `CHAT_LOCKED` and `INVENTORY_HUG` are pinned (not draggable) and are unaffected.
+
 ---
 
 ## Known bugs

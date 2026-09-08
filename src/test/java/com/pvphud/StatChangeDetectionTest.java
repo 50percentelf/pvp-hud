@@ -96,4 +96,38 @@ public class StatChangeDetectionTest
 		// Drain makes it worse: 90 → 85 (not a restore at all).
 		assertFalse(isNaturalDebuffRestore(90, 85, 99));
 	}
+
+	// ── Divine potion interactions ────────────────────────────────────────────
+
+	@Test
+	public void divinePotion_wearOff_doesNotSyncBoostDecay()
+	{
+		// Divine super combat wears off: 118 → 99 (base=99, large multi-level drop).
+		assertFalse(isNaturalBoostDecay(118, 99, 99));
+	}
+
+	@Test
+	public void divinePotion_drink_doesNotSyncBoostDecay()
+	{
+		// Drinking divine super combat: 99 → 118 (large positive jump).
+		assertFalse(isNaturalBoostDecay(99, 118, 99));
+	}
+
+	// ── Clock independence ────────────────────────────────────────────────────
+
+	@Test
+	public void boostDecay_doesNotTriggerDebuffRestore()
+	{
+		// A natural -1 above base must only fire the boost-decay clock.
+		assertTrue(isNaturalBoostDecay(104, 103, 99));
+		assertFalse(isNaturalDebuffRestore(104, 103, 99));
+	}
+
+	@Test
+	public void debuffRestore_doesNotTriggerBoostDecay()
+	{
+		// A natural +1 below base must only fire the debuff-restore clock.
+		assertTrue(isNaturalDebuffRestore(90, 91, 99));
+		assertFalse(isNaturalBoostDecay(90, 91, 99));
+	}
 }
