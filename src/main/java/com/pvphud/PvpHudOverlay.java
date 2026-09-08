@@ -455,104 +455,118 @@ public class PvpHudOverlay extends Overlay
 			}
 		}
 
-		// ── Pane portion (above inventory): opponent info ─────────────────────
-		// Overhead prayer icon sits top-right; HP bar shortens to avoid it.
-		HeadIcon prayer   = state.getOpponent().getOverheadPrayer();
-		int prayW         = (prayer != null ? ICON_SIZE + 4 : 0);
-		int x0            = INVY_LEFT_W + PAD;
-		int rx            = totalW - PAD;
-		int barW          = rx - x0 - prayW;  // shortened when prayer icon present
-		int cy            = PAD / 2 + 1;
+		// ── Pane portion: opponent panel — two rows centred vertically ───────
+		//   Upper row: [name]  [ATK:99] [STR:99] [DEF:99] [RNG:99] [MAG:99]
+		//   Lower row: [==HP bar with 43/99 text===================] [prayer]
+		final int UPPER_H  = 12;           // name/stats row height
+		final int LOWER_H  = ICON_SIZE;    // HP+prayer row height (= 18, fits prayer icon)
+		final int ROW_GAP  = 4;
+		int y0 = (INVY_TOP_H - UPPER_H - ROW_GAP - LOWER_H) / 2;  // centre both rows
+		int y1 = y0 + UPPER_H + ROW_GAP;
 
-		// Prayer icon: top-right of the pane section, vertically centred in first two rows.
-		if (prayer != null)
-		{
-			BufferedImage pIcon = prayerIconFor(prayer);
-			int prayX = rx - ICON_SIZE;
-			int prayY = cy;
-			if (pIcon != null)
-				g.drawImage(pIcon, prayX, prayY, ICON_SIZE, ICON_SIZE, null);
-			else
-			{
-				g.setColor(prayerColorFor(prayer));
-				drawRightAligned(g, fm, prayerShortFor(prayer), rx, prayY + fm.getAscent());
-			}
-		}
+		int x0 = INVY_LEFT_W + PAD;
+		int rx = totalW - PAD;
+		int paneW = rx - x0;
 
 		OpponentState opp = state.getOpponent();
 		if (!opp.isTracked())
 		{
 			g.setColor(GRAY);
-			g.drawString("---", x0, cy + fm.getAscent());
+			g.drawString("---", x0, y0 + fm.getAscent());
 			return;
 		}
 
-		// Name — VENG! right of name when no prayer icon; otherwise prayer icon occupies that spot.
-		g.setColor(opp.isVengActive() ? ORANGE : WHITE);
-		String name    = opp.getName();
-		int nameLimit  = barW - (opp.isVengActive() && prayW == 0 ? fm.stringWidth("VENG!") + PAD : 0);
-		while (name.length() > 1 && fm.stringWidth(name) > nameLimit)
-			name = name.substring(0, name.length() - 1);
-		g.drawString(name, x0, cy + fm.getAscent());
-		if (opp.isVengActive() && prayW == 0)
-		{
-			g.setColor(ORANGE);
-			drawRightAligned(g, fm, "VENG!", rx, cy + fm.getAscent());
-		}
-		cy += fm.getHeight() + 1;
+		// ── Upper row ── name (left) + compact stat cells (right) ────────────
+		final int ICON_S   = 9;   // compact icon size for inline stats
+		final int CELL_GAP = 3;   // px between stat cells
 
-		// HP bar (shortened on the right when prayer icon is shown)
+		OpponentStats stats = opp.getStats();
+		int[] statLvls  = { stats.getAttack(), stats.getStrength(), stats.getDefence(),
+		                    stats.getRanged(),  stats.getMagic()  };
+		BufferedImage[] statIcons = { atkSkillIcon, strSkillIcon, defSkillIcon,
+		                              rngSkillIcon, magSkillIcon   };
+
+		// Measure stat block width so name truncates cleanly.
+		int statsW = 0;
+		int[] numW = new int[5];
+		for (int i = 0; i < 5; i++)
+		{
+			String s = statLvls[i] >= 0 ? String.valueOf(statLvls[i]) : "?";
+			numW[i]  = fm.stringWidth(s);
+			statsW  += ICON_S + numW[i] + (i < 4 ? CELL_GAP : 0);
+		}
+
+		int nameMaxW = paneW - statsW - PAD;
+		String name = opp.getName();
+		while (name.length() > 1 && fm.stringWidth(name) > nameMaxW)
+			name = name.substring(0, name.length() - 1);
+		g.setColor(opp.isVengActive() ? ORANGE : WHITE);
+		g.drawString(name, x0, y0 + fm.getAscent());
+
+		// Stats: right-aligned, drawn left-to-right starting at rx - statsW
+		int sx   = rx - statsW;
+		int iconY = y0 + (UPPER_H - ICON_S) / 2;
+		int numY  = y0 + fm.getAscent();
+		for (int i = 0; i < 5; i++)
+		{
+			if (statIcons[i] != null)
+				g.drawImage(statIcons[i], sx, iconY, ICON_S, ICON_S, null);
+			sx += ICON_S;
+			g.setColor(statLvls[i] >= 0 ? WHITE : GRAY);
+			g.drawString(statLvls[i] >= 0 ? String.valueOf(statLvls[i]) : "?", sx, numY);
+			sx += numW[i] + (i < 4 ? CELL_GAP : 0);
+		}
+
+		// ── Lower row ── HP bar (text overlaid) + prayer icon at far right ────
+		HeadIcon prayer  = opp.getOverheadPrayer();
+		int prayX        = rx - ICON_SIZE;            // prayer icon left edge
+		int barEndX      = prayer != null ? prayX - 3 : rx;
+		int barSz        = barEndX - x0;
+
+		// Bar is taller than BAR_H so the HP text fits inside it.
+		final int HUD_BAR_H = 10;
+		int barY = y1 + (LOWER_H - HUD_BAR_H) / 2;  // vertically centred in the row
+
 		int estHp = opp.getEstimatedHp();
 		int maxHp = opp.getMaxHp();
 		if (maxHp > 0)
 		{
 			float pct = Math.min(1f, (float) estHp / maxHp);
-			Color fg = pct > 0.5f ? HP_FG : pct > 0.25f ? YELLOW : RED;
+			Color fg  = pct > 0.5f ? HP_FG : pct > 0.25f ? YELLOW : RED;
 			g.setColor(HP_BG);
-			g.fillRect(x0, cy, barW, BAR_H);
+			g.fillRect(x0, barY, barSz, HUD_BAR_H);
 			g.setColor(fg);
-			g.fillRect(x0, cy, Math.max(1, (int)(barW * pct)), BAR_H);
-			cy += BAR_H + 2;
-			// HP as current/base (e.g. 43/99) instead of approximate ~43
-			g.setColor(fg);
-			g.drawString(estHp + "/" + maxHp, x0, cy + fm.getAscent());
+			g.fillRect(x0, barY, Math.max(1, (int)(barSz * pct)), HUD_BAR_H);
+			// HP value as text on the bar, right-aligned
+			String hpStr = estHp + "/" + maxHp;
+			int    hpX   = barEndX - 2 - fm.stringWidth(hpStr);
+			int    hpY   = barY + (HUD_BAR_H + fm.getAscent() - fm.getDescent()) / 2;
+			g.setColor(WHITE);
+			g.drawString(hpStr, hpX, hpY);
 		}
 		else
 		{
 			g.setColor(HP_BG);
-			g.fillRect(x0, cy, barW, BAR_H);
-			cy += BAR_H + 2;
+			g.fillRect(x0, barY, barSz, HUD_BAR_H);
+			String hpStr = "HP?";
+			int    hpX   = barEndX - 2 - fm.stringWidth(hpStr);
+			int    hpY   = barY + (HUD_BAR_H + fm.getAscent() - fm.getDescent()) / 2;
 			g.setColor(GRAY);
-			g.drawString("HP?", x0, cy + fm.getAscent());
+			g.drawString(hpStr, hpX, hpY);
 		}
-		cy += fm.getHeight() + 2;
 
-		// Opponent stats row: 5 skill icons + level numbers.
-		// VENG! banner lives below the stats row if both prayer icon and veng are active.
-		OpponentStats stats  = opp.getStats();
-		int paneW            = totalW - INVY_LEFT_W;
-		int col              = paneW / 5;
-		int iconBaseline     = cy;
-		int numBaseline      = cy + ICON_SIZE + 2 + fm.getAscent();
-		int[] centers = {
-			INVY_LEFT_W + col / 2,
-			INVY_LEFT_W + col + col / 2,
-			INVY_LEFT_W + 2 * col + col / 2,
-			INVY_LEFT_W + 3 * col + col / 2,
-			INVY_LEFT_W + 4 * col + col / 2,
-		};
-		drawStatColumn(g, fm, atkSkillIcon, "ATK", stats.getAttack(),   centers[0], iconBaseline, numBaseline);
-		drawStatColumn(g, fm, strSkillIcon, "STR", stats.getStrength(), centers[1], iconBaseline, numBaseline);
-		drawStatColumn(g, fm, defSkillIcon, "DEF", stats.getDefence(),  centers[2], iconBaseline, numBaseline);
-		drawStatColumn(g, fm, rngSkillIcon, "RNG", stats.getRanged(),   centers[3], iconBaseline, numBaseline);
-		drawStatColumn(g, fm, magSkillIcon, "MAG", stats.getMagic(),    centers[4], iconBaseline, numBaseline);
-
-		if (opp.isVengActive() && prayW > 0)
+		// Prayer icon at far right, vertically centred in the lower row.
+		if (prayer != null)
 		{
-			// Prayer icon already in top-right; show VENG! below stats.
-			cy = iconBaseline + ICON_SIZE + 2 + fm.getHeight() + 2;
-			g.setColor(ORANGE);
-			g.drawString("VENG!", x0, cy + fm.getAscent());
+			BufferedImage pIcon = prayerIconFor(prayer);
+			int prayY = y1 + (LOWER_H - ICON_SIZE) / 2;
+			if (pIcon != null)
+				g.drawImage(pIcon, prayX, prayY, ICON_SIZE, ICON_SIZE, null);
+			else
+			{
+				g.setColor(prayerColorFor(prayer));
+				g.drawString(prayerShortFor(prayer), prayX, prayY + fm.getAscent());
+			}
 		}
 	}
 
