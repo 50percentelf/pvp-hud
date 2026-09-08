@@ -656,8 +656,8 @@ public class PvpHudOverlay extends Overlay
 				cy += lineH;
 			}
 
-			// Self buffs — use the same icon+label vertical-bar style as the other layouts.
-			drawEffectsVertBar(g, small, selfBuffs, lx, cy);
+			// Self buffs — icon-only vertical strip.
+			drawEffectsVertBar(g, selfBuffs, lx, cy);
 			cy += selfBuffs.size() * lineH;
 		}
 
@@ -1206,9 +1206,9 @@ public class PvpHudOverlay extends Overlay
 		{
 			BuffStyle style = activeProfile.buffStyle;
 			if (style == BuffStyle.VERTICAL_BAR)
-				drawEffectsVertBar(g, small, effects, lx, cy);
+				drawEffectsVertBar(g, effects, lx, cy);
 			else if (style == BuffStyle.ICON_TRAY)
-				drawEffectsIconTray(g, small, effects, lx, cy);
+				drawEffectsIconTray(g, effects, lx, cy);
 			else
 				drawEffectsText(g, normal, effects, lx, cy);
 		}
@@ -1461,50 +1461,30 @@ public class PvpHudOverlay extends Overlay
 		}
 	}
 
-	// ── VERTICAL_BAR: icon then label, left-aligned in the buff column ──────────
+	// ── VERTICAL_BAR: icon only, one per row ─────────────────────────────────
 
-	private void drawEffectsVertBar(Graphics2D g, Font small, List<ActiveEffectView> effects, int lx, int cy)
+	private void drawEffectsVertBar(Graphics2D g, List<ActiveEffectView> effects, int lx, int cy)
 	{
-		g.setFont(small);
-		FontMetrics fm = g.getFontMetrics();
-		int lineH = Math.max(fm.getHeight(), ICON_SIZE) + 1;
-
+		int lineH = ICON_SIZE + 2;
 		for (ActiveEffectView e : effects)
 		{
-			int iconY = cy + (lineH - 1 - ICON_SIZE) / 2;
-			if (e.icon != null)
-				g.drawImage(e.icon, lx, iconY, ICON_SIZE, ICON_SIZE, null);
-			int textX = e.icon != null ? lx + ICON_SIZE + ICON_GAP : lx;
-			g.setColor(e.color);
-			g.drawString(e.label, textX, cy + fm.getAscent());
+			if (e.icon == null) continue;
+			g.drawImage(e.icon, lx, cy, ICON_SIZE, ICON_SIZE, null);
 			cy += lineH;
 		}
 	}
 
-	// ── ICON_TRAY: horizontal strip of icons with labels below ────────────────
+	// ── ICON_TRAY: horizontal strip of icons only ─────────────────────────────
 
-	private void drawEffectsIconTray(Graphics2D g, Font small, List<ActiveEffectView> effects, int lx, int cy)
+	private void drawEffectsIconTray(Graphics2D g, List<ActiveEffectView> effects, int lx, int cy)
 	{
-		g.setFont(small);
-		FontMetrics fm = g.getFontMetrics();
 		int slotW = ICON_SIZE + ICON_GAP;
-
-		for (int i = 0; i < effects.size(); i++)
+		int col   = 0;
+		for (ActiveEffectView e : effects)
 		{
-			ActiveEffectView e = effects.get(i);
-			int ix = lx + i * slotW;
-
-			if (e.icon != null)
-				g.drawImage(e.icon, ix, cy, ICON_SIZE, ICON_SIZE, null);
-			else
-			{
-				g.setColor(e.color);
-				g.fillRect(ix, cy, ICON_SIZE, ICON_SIZE);
-			}
-
-			g.setColor(e.color);
-			int labelX = ix + (ICON_SIZE - fm.stringWidth(e.label)) / 2;
-			g.drawString(e.label, labelX, cy + ICON_SIZE + 1 + fm.getAscent());
+			if (e.icon == null) continue;
+			g.drawImage(e.icon, lx + col * slotW, cy, ICON_SIZE, ICON_SIZE, null);
+			col++;
 		}
 	}
 
