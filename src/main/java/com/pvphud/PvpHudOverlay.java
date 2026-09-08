@@ -1353,7 +1353,7 @@ public class PvpHudOverlay extends Overlay
 		effectScratch.clear();
 
 		if (self.isVengActive())
-			effectScratch.add(new ActiveEffectView(vengIcon, "VENG", "VENG RDY", GREEN));
+			effectScratch.add(new ActiveEffectView(vengIcon, "", "VENG RDY", GREEN));
 
 		int freeze = self.getFreezeTicksRemaining(client.getTickCount());
 		if (freeze > 0 && config.showFreezeTimer())
@@ -1385,9 +1385,9 @@ public class PvpHudOverlay extends Overlay
 			addTimedEffect("STAM", fx.getStaminaEffectTicks(), staminaIcon);
 
 		if (poison.isVenomed())
-			effectScratch.add(new ActiveEffectView(venomIcon,  "VEN",  "VENOM",  TOXIC_GREEN));
+			effectScratch.add(new ActiveEffectView(venomIcon,  "",  "VENOM",  TOXIC_GREEN));
 		else if (poison.isPoisoned())
-			effectScratch.add(new ActiveEffectView(poisonIcon, "PSN",  "POISON", TOXIC_GREEN));
+			effectScratch.add(new ActiveEffectView(poisonIcon, "",  "POISON", TOXIC_GREEN));
 
 		if (poison.isAntiVenomActive())
 			addTimedEffectFallback("ANTI-V", poison.getAntiVenomTicks(),  antiVenomItemIcon);
@@ -1415,11 +1415,11 @@ public class PvpHudOverlay extends Overlay
 		if (ticks > 0)
 		{
 			String t = ticksToMSS(ticks);
-			effectScratch.add(new ActiveEffectView(icon, label + " " + t, timerColor(ticks)));
+			effectScratch.add(new ActiveEffectView(icon, t, label + " " + t, timerColor(ticks)));
 		}
 		else
 		{
-			effectScratch.add(new ActiveEffectView(icon, label, GREEN));
+			effectScratch.add(new ActiveEffectView(icon, "", label, GREEN));
 		}
 	}
 
@@ -1461,29 +1461,43 @@ public class PvpHudOverlay extends Overlay
 		}
 	}
 
-	// ── VERTICAL_BAR: icon only, one per row ─────────────────────────────────
+	// ── VERTICAL_BAR: icon + optional timer, one per row ────────────────────
 
 	private void drawEffectsVertBar(Graphics2D g, List<ActiveEffectView> effects, int lx, int cy)
 	{
-		int lineH = ICON_SIZE + 2;
+		FontMetrics fm = g.getFontMetrics();
+		int lineH = Math.max(ICON_SIZE, fm.getHeight()) + 2;
 		for (ActiveEffectView e : effects)
 		{
 			if (e.icon == null) continue;
-			g.drawImage(e.icon, lx, cy, ICON_SIZE, ICON_SIZE, null);
+			int iconY = cy + (lineH - ICON_SIZE) / 2;
+			g.drawImage(e.icon, lx, iconY, ICON_SIZE, ICON_SIZE, null);
+			if (!e.label.isEmpty())
+			{
+				g.setColor(e.color);
+				g.drawString(e.label, lx + ICON_SIZE + ICON_GAP, cy + fm.getAscent());
+			}
 			cy += lineH;
 		}
 	}
 
-	// ── ICON_TRAY: horizontal strip of icons only ─────────────────────────────
+	// ── ICON_TRAY: horizontal strip, icon + optional timer below ─────────────
 
 	private void drawEffectsIconTray(Graphics2D g, List<ActiveEffectView> effects, int lx, int cy)
 	{
+		FontMetrics fm = g.getFontMetrics();
 		int slotW = ICON_SIZE + ICON_GAP;
 		int col   = 0;
 		for (ActiveEffectView e : effects)
 		{
 			if (e.icon == null) continue;
-			g.drawImage(e.icon, lx + col * slotW, cy, ICON_SIZE, ICON_SIZE, null);
+			int x = lx + col * slotW;
+			g.drawImage(e.icon, x, cy, ICON_SIZE, ICON_SIZE, null);
+			if (!e.label.isEmpty())
+			{
+				g.setColor(e.color);
+				drawCentered(g, fm, e.label, x + ICON_SIZE / 2, cy + ICON_SIZE + fm.getAscent());
+			}
 			col++;
 		}
 	}
