@@ -100,6 +100,17 @@ public interface PvpHudConfig extends Config
 	}
 
 	@ConfigItem(
+		keyName = "reserveBoostDockWhenHidden",
+		name = "Reserve Boost Row Space When Hidden",
+		description = "Float layouts only: keep the boost row band visible as an empty docking pocket for other overlays when Show Boost Row is off. Has no effect on Chat Locked or Inventory Hug.",
+		position = 8
+	)
+	default boolean reserveBoostDockWhenHidden()
+	{
+		return false;
+	}
+
+	@ConfigItem(
 		keyName = "showFreezeTimer",
 		name = "Show Freeze Timer",
 		description = "Show the self-freeze (ICE) countdown timer in the buff strip.",

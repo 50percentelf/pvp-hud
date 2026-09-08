@@ -256,7 +256,7 @@ public class PvpHudOverlay extends Overlay
 			layout.setChatboxBounds(new Rectangle(local));
 			layout.markDirty();
 		}
-		if (layout.isDirty()) computeHorizLayout(layout, local);
+		if (layout.isDirty()) computeHorizLayout(layout, local, false);  // Chat Locked always collapses
 
 		drawAll(g, state, layout, local, normal, small, false);
 		return new Dimension(bounds.width, bounds.height);
@@ -270,7 +270,7 @@ public class PvpHudOverlay extends Overlay
 		int h = stored != null ? stored.height : 200;
 		Rectangle bounds = new Rectangle(0, 0, w, h);
 
-		if (layout.isDirty()) computeHorizLayout(layout, bounds);
+		if (layout.isDirty()) computeHorizLayout(layout, bounds, config.reserveBoostDockWhenHidden());
 
 		drawAll(g, state, layout, bounds, normal, small, false);
 		return new Dimension(w, h);
@@ -280,7 +280,7 @@ public class PvpHudOverlay extends Overlay
 		HudLayoutState layout, Font normal, Font small)
 	{
 		Rectangle bounds = new Rectangle(0, 0, VERT_W, VERT_H);
-		if (layout.isDirty()) computeVertLayout(layout, bounds);
+		if (layout.isDirty()) computeVertLayout(layout, bounds, config.reserveBoostDockWhenHidden());
 
 		drawAll(g, state, layout, bounds, normal, small, true);
 		return new Dimension(VERT_W, VERT_H);
@@ -788,30 +788,36 @@ public class PvpHudOverlay extends Overlay
 
 	// ── Layout computation ────────────────────────────────────────────────────
 
-	private void computeHorizLayout(HudLayoutState layout, Rectangle b)
+	private void computeHorizLayout(HudLayoutState layout, Rectangle b, boolean reserveDock)
 	{
-		int mainH = b.height - ACTION_STRIP_H - BOOST_ROW_H;
-		int third = b.width / 3;
-		int right = b.width - third;
+		boolean showBoost = config.showBoostRow();
+		int boostH = (showBoost || reserveDock) ? BOOST_ROW_H : 0;
+		int mainH  = b.height - ACTION_STRIP_H - boostH;
+		int third  = b.width / 3;
+		int right  = b.width - third;
 
 		layout.setOpponentPanel(new Rectangle(b.x,         b.y,         third,         mainH));
 		layout.setEventPanel   (new Rectangle(b.x + third, b.y,         right - third, mainH));
 		layout.setSelfPanel    (new Rectangle(b.x + right, b.y,         third,         mainH));
-		layout.setBoostRow     (new Rectangle(b.x,         b.y + mainH, b.width,       BOOST_ROW_H));
-		layout.setActionStrip  (new Rectangle(b.x,         b.y + mainH + BOOST_ROW_H, b.width, ACTION_STRIP_H));
+		layout.setBoostRow(boostH > 0
+			? new Rectangle(b.x, b.y + mainH, b.width, BOOST_ROW_H) : null);
+		layout.setActionStrip(new Rectangle(b.x, b.y + mainH + boostH, b.width, ACTION_STRIP_H));
 		layout.setDirty(false);
 	}
 
-	private void computeVertLayout(HudLayoutState layout, Rectangle b)
+	private void computeVertLayout(HudLayoutState layout, Rectangle b, boolean reserveDock)
 	{
-		int mainH = b.height - ACTION_STRIP_H - BOOST_ROW_H;
-		int secH  = mainH / 3;
+		boolean showBoost = config.showBoostRow();
+		int boostH = (showBoost || reserveDock) ? BOOST_ROW_H : 0;
+		int mainH  = b.height - ACTION_STRIP_H - boostH;
+		int secH   = mainH / 3;
 
 		layout.setOpponentPanel(new Rectangle(b.x, b.y,            b.width, secH));
 		layout.setEventPanel   (new Rectangle(b.x, b.y + secH,     b.width, secH));
 		layout.setSelfPanel    (new Rectangle(b.x, b.y + 2 * secH, b.width, mainH - 2 * secH));
-		layout.setBoostRow     (new Rectangle(b.x, b.y + mainH,    b.width, BOOST_ROW_H));
-		layout.setActionStrip  (new Rectangle(b.x, b.y + mainH + BOOST_ROW_H, b.width, ACTION_STRIP_H));
+		layout.setBoostRow(boostH > 0
+			? new Rectangle(b.x, b.y + mainH, b.width, BOOST_ROW_H) : null);
+		layout.setActionStrip(new Rectangle(b.x, b.y + mainH + boostH, b.width, ACTION_STRIP_H));
 		layout.setDirty(false);
 	}
 
@@ -826,9 +832,10 @@ public class PvpHudOverlay extends Overlay
 		Rectangle ev       = layout.getEventPanel();
 
 		g.setColor(new Color(20, 20, 20, config.backgroundOpacity()));
-		if (!config.showBoostRow() && boostRow != null)
+		boolean showBoost = config.showBoostRow();
+		if (!showBoost && boostRow != null)
 		{
-			// Leave the boost row band transparent so other overlays placed there show through
+			// reserveDock mode: leave the boost row band transparent for other overlays.
 			g.fillRect(bounds.x, bounds.y, bounds.width, boostRow.y - bounds.y);
 			if (strip != null)
 				g.fillRect(strip.x, strip.y, strip.width, strip.height);
@@ -843,7 +850,7 @@ public class PvpHudOverlay extends Overlay
 			g.setColor(STRIP_BG);
 			g.fillRect(strip.x, strip.y, strip.width, strip.height);
 		}
-		if (boostRow != null)
+		if (boostRow != null && showBoost)
 		{
 			g.setColor(DIVIDER);
 			g.drawLine(boostRow.x, boostRow.y, boostRow.x + boostRow.width, boostRow.y);
