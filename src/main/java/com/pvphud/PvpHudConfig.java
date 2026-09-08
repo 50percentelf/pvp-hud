@@ -35,8 +35,8 @@ public interface PvpHudConfig extends Config
 
 	@ConfigItem(
 		keyName = "hudVisible",
-		name = "Show HUD (testing)",
-		description = "Temporarily force the HUD visible for visual testing.",
+		name = "Show HUD",
+		description = "Show the HUD overlay. Toggle in-game with the Toggle HUD Hotkey, or enable here for Manual mode.",
 		section = generalSection,
 		position = 1
 	)

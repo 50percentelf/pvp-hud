@@ -112,17 +112,7 @@ public class PvpHudPlugin extends Plugin
 	private int lastFreezeGraphicId   = -1;
 	private int lastFreezeGraphicTick = -1;
 
-	/**
-	 * Vengeance cast spot-anim. More reliable than animation ID because the cast
-	 * animation varies with equipped weapon; this graphic is consistent.
-	 */
-	private static final int SPOTANIM_VENGEANCE = 725;
-
-	/**
-	 * Candidate animation IDs for Vengeance cast (Lunar spellbook). Varies by
-	 * weapon type; kept as fallback alongside graphic-based detection.
-	 */
-	private static final int[] ANIM_VENGEANCE_IDS = {4410, 4411, 4671, 4072, 4071};
+	// SPOTANIM_VENGEANCE and ANIM_VENGEANCE_IDS removed — Vengeance tracking deferred post-v0.1.
 
 	private final HotkeyListener hudToggleListener = new HotkeyListener(() -> config.hudToggleKey())
 	{
@@ -234,7 +224,7 @@ public class PvpHudPlugin extends Plugin
 		self.setMaxPrayer(client.getRealSkillLevel(Skill.PRAYER));
 		// client.getEnergy() returns 0-10000; divide by 100 for 0-100%
 		self.setRunEnergy(client.getEnergy() / 100);
-		self.setVengActive(client.getVarbitValue(Varbits.VENGEANCE_ACTIVE) == 1);
+		// Vengeance tracking deferred post-v0.1 — do not initialise vengActive.
 		self.setTeleBlockTicksRemaining(client.getVarbitValue(Varbits.TELEBLOCK));
 
 		EffectState fx = hudState.getEffects();
@@ -400,11 +390,7 @@ public class PvpHudPlugin extends Plugin
 		int varpId   = event.getVarpId();
 		int value    = event.getValue();
 
-		if (varbitId == Varbits.VENGEANCE_ACTIVE)
-		{
-			hudState.getSelf().setVengActive(value == 1);
-		}
-		else if (varbitId == Varbits.TELEBLOCK)
+		if (varbitId == Varbits.TELEBLOCK)
 		{
 			hudState.getSelf().setTeleBlockTicksRemaining(value);
 		}
@@ -481,25 +467,7 @@ public class PvpHudPlugin extends Plugin
 			}
 			return;
 		}
-		else if (actor instanceof Player)
-		{
-			// Detect opponent Vengeance cast via its spot-anim (reliable across weapon types).
-			// Opponent freeze is NOT tracked — rejected by RuneLite review policy.
-			OpponentState opp = hudState.getOpponent();
-			if (!opp.isTracked() || actor.getName() == null
-				|| !actor.getName().equalsIgnoreCase(opp.getName()))
-			{
-				return;
-			}
-			for (ActorSpotAnim sa : actor.getSpotAnims())
-			{
-				if (sa.getId() == SPOTANIM_VENGEANCE)
-				{
-					opp.setVengActive(true);
-					return;
-				}
-			}
-		}
+		// Opponent Vengeance detection removed — deferred post-v0.1.
 	}
 
 	// ── Game tick ─────────────────────────────────────────────────────────────
@@ -562,7 +530,7 @@ public class PvpHudPlugin extends Plugin
 		}
 	}
 
-	// ── Animation — attack delay and opponent veng detection ──────────────────
+	// ── Animation — attack delay ─────────────────────────────────────────────
 
 	@Subscribe
 	public void onAnimationChanged(AnimationChanged event)
@@ -578,24 +546,7 @@ public class PvpHudPlugin extends Plugin
 				hudState.getActionClock().setLastWeaponSpeedTicks(speed);
 			}
 		}
-		else if (actor instanceof Player)
-		{
-			OpponentState opp = hudState.getOpponent();
-			if (!opp.isTracked() || actor.getName() == null
-				|| !actor.getName().equalsIgnoreCase(opp.getName()))
-			{
-				return;
-			}
-			int anim = actor.getAnimation();
-			for (int id : ANIM_VENGEANCE_IDS)
-			{
-				if (anim == id)
-				{
-					opp.setVengActive(true);
-					break;
-				}
-			}
-		}
+		// Opponent Vengeance animation detection removed — deferred post-v0.1.
 	}
 
 	// ── Interacting changed — combat candidate tracking ──────────────────────
@@ -755,7 +706,6 @@ public class PvpHudPlugin extends Plugin
 	private void handleOutgoingHit(OpponentState opp, int damage)
 	{
 		opp.setLastOutgoingHit(damage);
-		if (opp.isVengActive()) opp.setVengActive(false);
 
 		if (opp.getEstimatedHp() > 0)
 			opp.setEstimatedHp(Math.max(0, opp.getEstimatedHp() - damage));

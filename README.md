@@ -26,7 +26,6 @@ A coherent PvP combat dashboard for RuneLite. Consolidates fight tracking, buff 
 | Estimated HP | Back-calculated from total damage dealt and current ratio. |
 | Pending hit | Floating damage value from XP drop, shown before the HP bar updates. |
 | Overhead prayer | Large icon + label for Protect Melee/Ranged/Magic and Smite. |
-| Veng indicator | `VENG!` label next to name when opponent Vengeance is active. |
 | Hiscores stats | ATK / STR / DEF / RNG / MAG populated asynchronously from the hiscores API on combat start. |
 
 ### Fight (centre)
@@ -34,7 +33,7 @@ A coherent PvP combat dashboard for RuneLite. Consolidates fight tracking, buff 
 | Element | Notes |
 |---|---|
 | Hit log | Three most recent outgoing (green) and incoming (red) hits, newest at top. |
-| Stack label | `[dmg]` brackets indicate multiple hitsplats on the same actor in the same tick (weapon + ring of recoil, weapon + opponent's Vengeance, etc.). |
+| Stack label | `[dmg]` brackets indicate multiple hitsplats on the same actor in the same tick (weapon + ring of recoil, etc.). |
 | Prayer drain | `-Np` suffix on hits where Smite was active. |
 | Session totals | `#D` / `#R` pinned to the bottom: total damage dealt and received. |
 | Fight Over banner | Shown after the opponent's HP ratio reaches 0 or the session times out. |
@@ -56,7 +55,6 @@ Displayed in the YOU panel. Three display styles: **Text**, **Vertical Bar** (ic
 
 | Buff | Trigger |
 |---|---|
-| `VENG RDY` | Vengeance ready to fire. |
 | `ICE Xs` | Self-freeze timer. Starts only from the "You have been frozen!" game message. Repeated ice impacts while already frozen do not extend it. Covers Rush (8t), Burst (16t), Blitz (24t), Barrage (32t), Bind (5t), Snare (10t), Entangle (15t). |
 | `TB M:SS` | Tele Block countdown from the varbit. |
 | `DSC / DRG / DMG / BAS / BTM / MEN` | Divine potion timers (can be hidden). |
@@ -112,13 +110,15 @@ When the local player has Smite active, outgoing hits show `-Np` in the fight lo
 
 ---
 
-## Deferred / not yet implemented
+## Deferred / post-v0.1
 
+- **Vengeance tracking** — `VENG RDY` self-indicator and `VENG!` opponent label. State infrastructure exists but event handlers are gated; feature is not displayed.
+- **Special prayer-impact tracking** — Sara Strike, Clear Mind, and Sapphire bolt prayer-drain attribution. Enum values defined; no v0.1 code path sets them.
 - Bind/Snare/Entangle spot-anim IDs (181/180/179) need in-game verification — ice spell detection is confirmed correct.
 - Extended freeze duration from Sceptre of the Gods (+3 ticks) and Swampbark armour (+1 tick/piece). Hook exists; equipment check not yet wired.
 - LMS context detection for the IMM timer (currently always inactive outside explicit LMS detection).
-- CHANCE! hit detection (requires opponent defence stats and combat formula — deferred).
-- Sara Strike, Clear Mind, and Sapphire bolt prayer-impact detection.
+- CHANCE! hit detection (requires opponent defence stats and combat formula).
+- HUD Mode: PvP areas only and auto-detect on combat options are defined but not yet implemented; Manual mode is the only functional option in v0.1.
 
 ---
 

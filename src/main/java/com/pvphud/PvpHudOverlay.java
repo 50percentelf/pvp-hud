@@ -107,7 +107,7 @@ public class PvpHudOverlay extends Overlay
 	private volatile BufferedImage runEnergyIcon;
 
 	// ── Cached icons (spell sprites — loaded async, volatile for EDT visibility)
-	private volatile BufferedImage vengIcon;
+	// vengIcon removed — Vengeance display deferred post-v0.1.
 	private volatile BufferedImage tbIcon;
 	private volatile BufferedImage iceRushIcon;
 	private volatile BufferedImage iceBurstIcon;
@@ -166,7 +166,7 @@ public class PvpHudOverlay extends Overlay
 		antiPoisonItemIcon = itemManager.getImage(ItemID._4DOSEANTIPOISON);
 		antiVenomItemIcon  = itemManager.getImage(ItemID.ANTIVENOM_4);
 
-		spriteManager.getSpriteAsync(SpriteID.SPELL_VENGEANCE,               0, img -> vengIcon      = img);
+		// SpriteID.SPELL_VENGEANCE not loaded — Vengeance display deferred post-v0.1.
 		spriteManager.getSpriteAsync(SpriteID.SPELL_TELE_BLOCK,              0, img -> tbIcon         = img);
 		spriteManager.getSpriteAsync(SpriteID.SPELL_ICE_RUSH,                0, img -> iceRushIcon    = img);
 		spriteManager.getSpriteAsync(SpriteID.SPELL_ICE_BURST,               0, img -> iceBurstIcon   = img);
@@ -520,19 +520,13 @@ public class PvpHudOverlay extends Overlay
 				cellX + sIconSz + 1, sNumY);
 		}
 
-		// ── Row 1: opponent name + optional VENG! label ──────────────────────
-		String vengLabel = opp.isVengActive() ? "VENG!" : null;
-		int nameMaxW = barEndX - x0 - (vengLabel != null ? fm.stringWidth(vengLabel) + PAD : 0);
+		// ── Row 1: opponent name ──────────────────────────────────────────────
+		int nameMaxW = barEndX - x0;
 		String name = opp.getName();
 		while (name.length() > 1 && fm.stringWidth(name) > nameMaxW)
 			name = name.substring(0, name.length() - 1);
-		g.setColor(opp.isVengActive() ? ORANGE : WHITE);
+		g.setColor(WHITE);
 		g.drawString(name, x0, y1 + fm.getAscent());
-		if (vengLabel != null)
-		{
-			g.setColor(ORANGE);
-			drawRightAligned(g, fm, vengLabel, barEndX, y1 + fm.getAscent());
-		}
 
 		// ── Row 2: HP bar, text overlaid ─────────────────────────────────────
 		int estHp = opp.getEstimatedHp();
@@ -677,30 +671,14 @@ public class PvpHudOverlay extends Overlay
 			}
 		}
 
-		// ── Opponent veng (icon + label, same visual style as self buffs below) ─
-		boolean hasOppVeng  = opp.isTracked() && opp.isVengActive();
 		List<ActiveEffectView> selfBuffs = buildActiveEffects(self, fx, poison, boosts);
-		boolean hasBuffs    = hasOppVeng || !selfBuffs.isEmpty();
-
-		if (hasBuffs)
+		if (!selfBuffs.isEmpty())
 		{
 			g.setColor(DIVIDER);
 			g.drawLine(lx, cy, INVY_LEFT_W - lx, cy);
 			cy += 3;
 
 			int lineH = Math.max(fm.getHeight(), ICON_SIZE) + 1;
-
-			if (hasOppVeng)
-			{
-				int iconY = cy + (lineH - ICON_SIZE) / 2;
-				if (vengIcon != null)
-					g.drawImage(vengIcon, lx, iconY, ICON_SIZE, ICON_SIZE, null);
-				g.setColor(ORANGE);
-				g.drawString("OPP", lx + ICON_SIZE + ICON_GAP, cy + fm.getAscent());
-				cy += lineH;
-			}
-
-			// Self buffs — icon-only vertical strip.
 			drawEffectsVertBar(g, selfBuffs, lx, cy);
 			cy += selfBuffs.size() * lineH;
 		}
@@ -973,21 +951,14 @@ public class PvpHudOverlay extends Overlay
 			return;
 		}
 
-		// Name row: name left, VENG! right if active
+		// Name row
 		g.setFont(normal);
 		FontMetrics fm = g.getFontMetrics();
 		g.setColor(WHITE);
 		String name = opp.getName();
-		int maxNameW = w - (opp.isVengActive() ? smFm.stringWidth("VENG!") + PAD : 0);
-		while (name.length() > 1 && fm.stringWidth(name) > maxNameW)
+		while (name.length() > 1 && fm.stringWidth(name) > w)
 			name = name.substring(0, name.length() - 1);
 		g.drawString(name, x, cy + fm.getAscent());
-		if (opp.isVengActive())
-		{
-			g.setFont(small);
-			g.setColor(ORANGE);
-			drawRightAligned(g, smFm, "VENG!", p.x + p.width - PAD, cy + fm.getAscent());
-		}
 		cy += fm.getHeight() + 4;
 
 		// HP bar + HP text
@@ -1395,9 +1366,7 @@ public class PvpHudOverlay extends Overlay
 		PoisonState poison, BoostState boosts)
 	{
 		effectScratch.clear();
-
-		if (self.isVengActive())
-			effectScratch.add(new ActiveEffectView(vengIcon, "", "VENG RDY", GREEN));
+		// Vengeance "VENG RDY" effect deferred post-v0.1.
 
 		int freeze = self.getFreezeTicksRemaining(client.getTickCount());
 		if (freeze > 0 && config.showFreezeTimer())
