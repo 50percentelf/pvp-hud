@@ -465,8 +465,7 @@ public class PvpHudOverlay extends Overlay
 		int x0     = INVY_LEFT_W + PAD;
 		int rx     = totalW - PAD;
 		int paneW  = rx - x0;
-		// Prayer icon spans rows 1+2; enlarged by 5% of pane width for better visibility.
-		int praySz = nameH + GAP + HUD_BAR_H + paneW / 20;
+		int praySz = ICON_SIZE;  // standard prayer icon size
 
 		OpponentState opp = state.getOpponent();
 		HeadIcon prayer   = opp.getOverheadPrayer();
@@ -551,16 +550,18 @@ public class PvpHudOverlay extends Overlay
 			g.drawString(hpStr, hpX, hpY);
 		}
 
-		// ── Prayer icon: right column, spans rows 1+2 ────────────────────────
+		// ── Prayer icon: right column, centred across rows 1+2 ──────────────
 		if (prayer != null)
 		{
+			int spanH  = (y2 + HUD_BAR_H) - y1;
+			int prayY  = y1 + (spanH - ICON_SIZE) / 2;
 			BufferedImage pIcon = prayerIconFor(prayer);
 			if (pIcon != null)
-				g.drawImage(pIcon, prayX, y1, praySz, praySz, null);
+				g.drawImage(pIcon, prayX, prayY, ICON_SIZE, ICON_SIZE, null);
 			else
 			{
 				g.setColor(prayerColorFor(prayer));
-				g.drawString(prayerShortFor(prayer), prayX, y1 + fm.getAscent());
+				g.drawString(prayerShortFor(prayer), prayX, prayY + fm.getAscent());
 			}
 		}
 	}
