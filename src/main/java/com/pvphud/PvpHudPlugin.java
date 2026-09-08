@@ -12,7 +12,6 @@ import com.pvphud.state.PrayerEffect;
 import com.pvphud.state.ProtectionState;
 import com.pvphud.state.PvpFightSession;
 import com.pvphud.state.SelfState;
-import java.io.IOException;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
@@ -52,6 +51,10 @@ import net.runelite.client.config.ConfigManager;
 import net.runelite.client.eventbus.Subscribe;
 import net.runelite.client.events.ConfigChanged;
 import net.runelite.client.game.ItemManager;
+import net.runelite.client.hiscore.HiscoreClient;
+import net.runelite.client.hiscore.HiscoreEndpoint;
+import net.runelite.client.hiscore.HiscoreResult;
+import net.runelite.client.hiscore.HiscoreSkill;
 import net.runelite.client.input.KeyManager;
 import net.runelite.client.plugins.Plugin;
 import net.runelite.client.plugins.PluginDescriptor;
@@ -61,13 +64,6 @@ import net.runelite.client.util.HotkeyListener;
 import net.runelite.client.util.Text;
 import net.runelite.http.api.item.ItemEquipmentStats;
 import net.runelite.http.api.item.ItemStats;
-import okhttp3.Call;
-import okhttp3.Callback;
-import okhttp3.HttpUrl;
-import okhttp3.OkHttpClient;
-import okhttp3.Request;
-import okhttp3.Response;
-import okhttp3.ResponseBody;
 
 @Slf4j
 @PluginDescriptor(
@@ -84,7 +80,7 @@ public class PvpHudPlugin extends Plugin
 	@Inject private PvpHudOverlay  overlay;
 	@Inject private ItemManager    itemManager;
 	@Inject private KeyManager     keyManager;
-	@Inject private OkHttpClient   okHttpClient;
+	@Inject private HiscoreClient  hiscoreClient;
 	@Inject private ClientThread   clientThread;
 
 	@Getter
@@ -1070,86 +1066,47 @@ public class PvpHudPlugin extends Plugin
 		String key = playerName.toLowerCase();
 		if (!lookedUp.add(key)) return; // already queued
 
-		HttpUrl url = HttpUrl.parse("https://secure.runescape.com/m=hiscore_oldschool/index_lite.ws")
-			.newBuilder()
-			.addQueryParameter("player", playerName)
-			.build();
-		Request request = new Request.Builder().url(url).build();
+		hiscoreClient.lookupAsync(playerName, HiscoreEndpoint.NORMAL)
+			.whenComplete((result, ex) ->
+			{
+				if (ex != null || result == null)
+				{
+					log.debug("Hiscores lookup failed for {}: {}", playerName,
+						ex != null ? ex.getMessage() : "null result");
+					return;
+				}
+				applyHiscoresResult(playerName, result);
+			});
+	}
 
-		okHttpClient.newCall(request).enqueue(new Callback()
+	private void applyHiscoresResult(String playerName, HiscoreResult result)
+	{
+		int attack    = skillLevel(result, HiscoreSkill.ATTACK);
+		int defence   = skillLevel(result, HiscoreSkill.DEFENCE);
+		int strength  = skillLevel(result, HiscoreSkill.STRENGTH);
+		int hitpoints = skillLevel(result, HiscoreSkill.HITPOINTS);
+		int ranged    = skillLevel(result, HiscoreSkill.RANGED);
+		int magic     = skillLevel(result, HiscoreSkill.MAGIC);
+
+		clientThread.invoke(() ->
 		{
-			@Override
-			public void onFailure(Call call, IOException e)
-			{
-				log.debug("Hiscores lookup failed for {}: {}", playerName, e.getMessage());
-			}
-
-			@Override
-			public void onResponse(Call call, Response response)
-			{
-				try (ResponseBody body = response.body())
-				{
-					if (!response.isSuccessful() || body == null) return;
-					String text = body.string();
-					applyHiscoresResponse(playerName, text);
-				}
-				catch (IOException e)
-				{
-					log.debug("Hiscores read error for {}: {}", playerName, e.getMessage());
-				}
-			}
+			OpponentState opp = hudState.getOpponent();
+			if (!opp.isTracked() || !playerName.equalsIgnoreCase(opp.getName())) return;
+			opp.getStats().setAttack(attack);
+			opp.getStats().setDefence(defence);
+			opp.getStats().setStrength(strength);
+			opp.getStats().setHitpoints(hitpoints);
+			opp.getStats().setRanged(ranged);
+			opp.getStats().setMagic(magic);
+			// Seed maxHp from hiscores — overrides the rough back-calculation.
+			if (hitpoints > 0) opp.setMaxHp(hitpoints);
 		});
 	}
 
-	private void applyHiscoresResponse(String playerName, String text)
+	private static int skillLevel(HiscoreResult result, HiscoreSkill skill)
 	{
-		String[] lines = text.split("\n");
-		// Hiscores line order: Total(0), Attack(1), Defence(2), Strength(3),
-		//   Hitpoints(4), Ranged(5), Prayer(6), Magic(7), ...
-		// Each line: rank,level,xp
-		try
-		{
-			int attack     = parseHiscoreLevel(lines, 1);
-			int defence    = parseHiscoreLevel(lines, 2);
-			int strength   = parseHiscoreLevel(lines, 3);
-			int hitpoints  = parseHiscoreLevel(lines, 4);
-			int ranged     = parseHiscoreLevel(lines, 5);
-			int magic      = parseHiscoreLevel(lines, 7);
-
-			clientThread.invoke(() ->
-			{
-				OpponentState opp = hudState.getOpponent();
-				if (!opp.isTracked() || !playerName.equalsIgnoreCase(opp.getName())) return;
-				opp.getStats().setAttack(attack);
-				opp.getStats().setDefence(defence);
-				opp.getStats().setStrength(strength);
-				opp.getStats().setHitpoints(hitpoints);
-				opp.getStats().setRanged(ranged);
-				opp.getStats().setMagic(magic);
-				// Seed maxHp from hiscores — overrides the rough back-calculation.
-				if (hitpoints > 0) opp.setMaxHp(hitpoints);
-			});
-		}
-		catch (Exception e)
-		{
-			log.debug("Failed to parse hiscores for {}: {}", playerName, e.getMessage());
-		}
-	}
-
-	private static int parseHiscoreLevel(String[] lines, int index)
-	{
-		if (index >= lines.length) return -1;
-		String[] parts = lines[index].trim().split(",");
-		if (parts.length < 2) return -1;
-		try
-		{
-			int level = Integer.parseInt(parts[1].trim());
-			return level > 0 ? level : -1;
-		}
-		catch (NumberFormatException e)
-		{
-			return -1;
-		}
+		net.runelite.client.hiscore.Skill s = result.getSkill(skill);
+		return s != null && s.getLevel() > 0 ? s.getLevel() : -1;
 	}
 
 	@Provides
