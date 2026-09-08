@@ -455,20 +455,34 @@ public class PvpHudOverlay extends Overlay
 			}
 		}
 
-		// ── Pane portion: opponent panel — two rows centred vertically ───────
-		//   Upper row: [name]  [ATK:99] [STR:99] [DEF:99] [RNG:99] [MAG:99]
-		//   Lower row: [==HP bar with 43/99 text===================] [prayer]
-		final int UPPER_H  = 12;           // name/stats row height
-		final int LOWER_H  = ICON_SIZE;    // HP+prayer row height (= 18, fits prayer icon)
-		final int ROW_GAP  = 4;
-		int y0 = (INVY_TOP_H - UPPER_H - ROW_GAP - LOWER_H) / 2;  // centre both rows
-		int y1 = y0 + UPPER_H + ROW_GAP;
-
-		int x0 = INVY_LEFT_W + PAD;
-		int rx = totalW - PAD;
-		int paneW = rx - x0;
+		// ── Pane: 3-row opponent panel ───────────────────────────────────────
+		//   Row 0 (stats): [ATK:99] [STR:99] [DEF:99] [RNG:99] [MAG:99]  ← fills bar width
+		//   Row 1 (name):  [opponent name]                | [PRAYER ICON]
+		//   Row 2 (hp):    [====HP bar 43/99============] |  (spans rows 1+2)
+		final int HUD_BAR_H = 10;
+		final int GAP       = 3;
+		int nameH  = fm.getHeight();
+		int x0     = INVY_LEFT_W + PAD;
+		int rx     = totalW - PAD;
+		int paneW  = rx - x0;
+		// Prayer icon spans rows 1+2; enlarged by 5% of pane width for better visibility.
+		int praySz = nameH + GAP + HUD_BAR_H + paneW / 20;
 
 		OpponentState opp = state.getOpponent();
+		HeadIcon prayer   = opp.getOverheadPrayer();
+		int prayX   = rx - praySz;
+		int barEndX = prayer != null ? prayX - 3 : rx;
+		int barSz   = barEndX - x0;
+
+		// Stat cells: 5 evenly-spaced cells spanning [x0, barEndX], icons bigger than before.
+		int cellW   = barSz / 5;
+		int sIconSz = Math.min(13, Math.max(9, cellW / 2));  // 9–13px, scales with cell
+
+		int totalRowH = sIconSz + GAP + nameH + GAP + HUD_BAR_H;
+		int y0 = (INVY_TOP_H - totalRowH) / 2;  // stats row top
+		int y1 = y0 + sIconSz + GAP;             // name row top
+		int y2 = y1 + nameH + GAP;               // HP bar row top
+
 		if (!opp.isTracked())
 		{
 			g.setColor(GRAY);
@@ -476,57 +490,40 @@ public class PvpHudOverlay extends Overlay
 			return;
 		}
 
-		// ── Upper row ── name (left) + compact stat cells (right) ────────────
-		final int ICON_S   = 9;   // compact icon size for inline stats
-		final int CELL_GAP = 3;   // px between stat cells
-
+		// ── Row 0: stat cells evenly distributed across bar width ─────────────
 		OpponentStats stats = opp.getStats();
 		int[] statLvls  = { stats.getAttack(), stats.getStrength(), stats.getDefence(),
 		                    stats.getRanged(),  stats.getMagic()  };
 		BufferedImage[] statIcons = { atkSkillIcon, strSkillIcon, defSkillIcon,
 		                              rngSkillIcon, magSkillIcon   };
-
-		// Measure stat block width so name truncates cleanly.
-		int statsW = 0;
 		int[] numW = new int[5];
 		for (int i = 0; i < 5; i++)
 		{
 			String s = statLvls[i] >= 0 ? String.valueOf(statLvls[i]) : "?";
-			numW[i]  = fm.stringWidth(s);
-			statsW  += ICON_S + numW[i] + (i < 4 ? CELL_GAP : 0);
+			numW[i] = fm.stringWidth(s);
+		}
+		int sNumY = y0 + fm.getAscent();
+		for (int i = 0; i < 5; i++)
+		{
+			// Centre the (icon + number) block within its cell.
+			int contentW = sIconSz + 1 + numW[i];
+			int cellX    = x0 + i * cellW + (cellW - contentW) / 2;
+			if (statIcons[i] != null)
+				g.drawImage(statIcons[i], cellX, y0, sIconSz, sIconSz, null);
+			g.setColor(statLvls[i] >= 0 ? WHITE : GRAY);
+			g.drawString(statLvls[i] >= 0 ? String.valueOf(statLvls[i]) : "?",
+				cellX + sIconSz + 1, sNumY);
 		}
 
-		int nameMaxW = paneW - statsW - PAD;
+		// ── Row 1: opponent name ──────────────────────────────────────────────
+		int nameMaxW = barEndX - x0;
 		String name = opp.getName();
 		while (name.length() > 1 && fm.stringWidth(name) > nameMaxW)
 			name = name.substring(0, name.length() - 1);
 		g.setColor(opp.isVengActive() ? ORANGE : WHITE);
-		g.drawString(name, x0, y0 + fm.getAscent());
+		g.drawString(name, x0, y1 + fm.getAscent());
 
-		// Stats: right-aligned, drawn left-to-right starting at rx - statsW
-		int sx   = rx - statsW;
-		int iconY = y0 + (UPPER_H - ICON_S) / 2;
-		int numY  = y0 + fm.getAscent();
-		for (int i = 0; i < 5; i++)
-		{
-			if (statIcons[i] != null)
-				g.drawImage(statIcons[i], sx, iconY, ICON_S, ICON_S, null);
-			sx += ICON_S;
-			g.setColor(statLvls[i] >= 0 ? WHITE : GRAY);
-			g.drawString(statLvls[i] >= 0 ? String.valueOf(statLvls[i]) : "?", sx, numY);
-			sx += numW[i] + (i < 4 ? CELL_GAP : 0);
-		}
-
-		// ── Lower row ── HP bar (text overlaid) + prayer icon at far right ────
-		HeadIcon prayer  = opp.getOverheadPrayer();
-		int prayX        = rx - ICON_SIZE;            // prayer icon left edge
-		int barEndX      = prayer != null ? prayX - 3 : rx;
-		int barSz        = barEndX - x0;
-
-		// Bar is taller than BAR_H so the HP text fits inside it.
-		final int HUD_BAR_H = 10;
-		int barY = y1 + (LOWER_H - HUD_BAR_H) / 2;  // vertically centred in the row
-
+		// ── Row 2: HP bar (shortened), text overlaid ──────────────────────────
 		int estHp = opp.getEstimatedHp();
 		int maxHp = opp.getMaxHp();
 		if (maxHp > 0)
@@ -534,38 +531,36 @@ public class PvpHudOverlay extends Overlay
 			float pct = Math.min(1f, (float) estHp / maxHp);
 			Color fg  = pct > 0.5f ? HP_FG : pct > 0.25f ? YELLOW : RED;
 			g.setColor(HP_BG);
-			g.fillRect(x0, barY, barSz, HUD_BAR_H);
+			g.fillRect(x0, y2, barSz, HUD_BAR_H);
 			g.setColor(fg);
-			g.fillRect(x0, barY, Math.max(1, (int)(barSz * pct)), HUD_BAR_H);
-			// HP value as text on the bar, right-aligned
+			g.fillRect(x0, y2, Math.max(1, (int)(barSz * pct)), HUD_BAR_H);
 			String hpStr = estHp + "/" + maxHp;
 			int    hpX   = barEndX - 2 - fm.stringWidth(hpStr);
-			int    hpY   = barY + (HUD_BAR_H + fm.getAscent() - fm.getDescent()) / 2;
+			int    hpY   = y2 + (HUD_BAR_H + fm.getAscent() - fm.getDescent()) / 2;
 			g.setColor(WHITE);
 			g.drawString(hpStr, hpX, hpY);
 		}
 		else
 		{
 			g.setColor(HP_BG);
-			g.fillRect(x0, barY, barSz, HUD_BAR_H);
+			g.fillRect(x0, y2, barSz, HUD_BAR_H);
 			String hpStr = "HP?";
 			int    hpX   = barEndX - 2 - fm.stringWidth(hpStr);
-			int    hpY   = barY + (HUD_BAR_H + fm.getAscent() - fm.getDescent()) / 2;
+			int    hpY   = y2 + (HUD_BAR_H + fm.getAscent() - fm.getDescent()) / 2;
 			g.setColor(GRAY);
 			g.drawString(hpStr, hpX, hpY);
 		}
 
-		// Prayer icon at far right, vertically centred in the lower row.
+		// ── Prayer icon: right column, spans rows 1+2 ────────────────────────
 		if (prayer != null)
 		{
 			BufferedImage pIcon = prayerIconFor(prayer);
-			int prayY = y1 + (LOWER_H - ICON_SIZE) / 2;
 			if (pIcon != null)
-				g.drawImage(pIcon, prayX, prayY, ICON_SIZE, ICON_SIZE, null);
+				g.drawImage(pIcon, prayX, y1, praySz, praySz, null);
 			else
 			{
 				g.setColor(prayerColorFor(prayer));
-				g.drawString(prayerShortFor(prayer), prayX, prayY + fm.getAscent());
+				g.drawString(prayerShortFor(prayer), prayX, y1 + fm.getAscent());
 			}
 		}
 	}

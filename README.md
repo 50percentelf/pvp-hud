@@ -139,6 +139,17 @@ The opponent stat row (ATK/STR/DEF/RNG/MAG) is currently bottom-pinned via `p.y 
 ### Task 5 — Independent float positions
 Horizontal Float and Vertical Float should remember their positions independently. Switching layouts should restore the correct prior position for each layout. Chat Locked and Inventory Hug remain pinned and are unaffected.
 
+### Task 6 — Settings refactor: global behavior + per-layout presentation profiles
+Reorganize configuration into two tiers:
+- **Global settings** — plugin-wide behavior: active layout selector, activation mode, HUD testing/mock-data toggle, Timer 1/Timer 2 durations and hotkeys, combat-event feature toggles, lookup/tracking behavior.
+- **Per-layout profiles** — one independent persistent config profile per layout (`CHAT_LOCKED`, `HORIZONTAL_FLOAT`, `VERTICAL_FLOAT`, `INVENTORY_HUG`). Each profile covers presentation only: module visibility, opponent HP display style, fight/self/boost/action sections, action-strip modules, transparent boost docking pocket (where applicable), compactness/spacing, and Inventory Hug-specific top/corner/left-arm module config.
+
+Switching layouts must never overwrite another layout's profile: Horizontal → Inventory Hug → Horizontal must restore the exact previous Horizontal presentation settings. All layouts share the same `PvpHudState`/trackers — no combat logic duplication. No complicated inheritance between profiles.
+
+RuneLite config UI section order: **General**, **Chat Locked**, **Horizontal Float**, **Vertical Float**, **Inventory Hug**. Migrate existing config keys sensibly so current users do not lose settings. Floating layout dragged positions must survive layout switches. Structure the profile model so a future fifth Streamer profile can be added cleanly.
+
+Deliverables: implement the refactor, update tests for config/profile persistence and layout switching, report the new config structure and any migrated keys, run the full test suite, then stop. Do not add Streamer Output in this task.
+
 ### Streamer Output (deferred — do not implement until P0/P1 HUD correctness work is complete)
 
 Add an optional **Streamer Output** presentation target that renders the PvP HUD into a separate standalone window intended for OBS/window capture, while sharing the exact same `PvpHudState` and combat trackers as the normal in-game HUD. No combat logic may be duplicated in the streamer renderer.

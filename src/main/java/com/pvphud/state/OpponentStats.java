@@ -7,11 +7,12 @@ import lombok.Setter;
 public class OpponentStats
 {
 	/** Base stat levels; -1 = not yet loaded. */
-	@Getter @Setter private int attack   = -1;
-	@Getter @Setter private int strength = -1;
-	@Getter @Setter private int defence  = -1;
-	@Getter @Setter private int ranged   = -1;
-	@Getter @Setter private int magic    = -1;
+	@Getter @Setter private int attack    = -1;
+	@Getter @Setter private int strength  = -1;
+	@Getter @Setter private int defence   = -1;
+	@Getter @Setter private int ranged    = -1;
+	@Getter @Setter private int magic     = -1;
+	@Getter @Setter private int hitpoints = -1;
 
 	public boolean isKnown()
 	{
@@ -20,6 +21,6 @@ public class OpponentStats
 
 	public void reset()
 	{
-		attack = strength = defence = ranged = magic = -1;
+		attack = strength = defence = ranged = magic = hitpoints = -1;
 	}
 }

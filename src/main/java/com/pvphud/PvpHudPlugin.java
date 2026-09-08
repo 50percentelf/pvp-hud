@@ -826,7 +826,17 @@ public class PvpHudPlugin extends Plugin
 			return;
 		}
 
-		PvpFightSession session  = hudState.getCurrentSession();
+		// Hiscores HP is authoritative when available.
+		int hiscoresHp = opp.getStats().getHitpoints();
+		if (hiscoresHp > 0)
+		{
+			opp.setMaxHp(hiscoresHp);
+			opp.setEstimatedHp((int) Math.round(hiscoresHp * (double) ratio / scale));
+			return;
+		}
+
+		// Fall back to back-calculation from damage dealt until hiscores load.
+		PvpFightSession session   = hudState.getCurrentSession();
 		int             totalDealt = session != null ? session.getTotalOutgoing() : 0;
 
 		if (opp.getMaxHp() <= 0)
@@ -1035,11 +1045,12 @@ public class PvpHudPlugin extends Plugin
 		// Each line: rank,level,xp
 		try
 		{
-			int attack   = parseHiscoreLevel(lines, 1);
-			int defence  = parseHiscoreLevel(lines, 2);
-			int strength = parseHiscoreLevel(lines, 3);
-			int ranged   = parseHiscoreLevel(lines, 5);
-			int magic    = parseHiscoreLevel(lines, 7);
+			int attack     = parseHiscoreLevel(lines, 1);
+			int defence    = parseHiscoreLevel(lines, 2);
+			int strength   = parseHiscoreLevel(lines, 3);
+			int hitpoints  = parseHiscoreLevel(lines, 4);
+			int ranged     = parseHiscoreLevel(lines, 5);
+			int magic      = parseHiscoreLevel(lines, 7);
 
 			clientThread.invoke(() ->
 			{
@@ -1048,8 +1059,11 @@ public class PvpHudPlugin extends Plugin
 				opp.getStats().setAttack(attack);
 				opp.getStats().setDefence(defence);
 				opp.getStats().setStrength(strength);
+				opp.getStats().setHitpoints(hitpoints);
 				opp.getStats().setRanged(ranged);
 				opp.getStats().setMagic(magic);
+				// Seed maxHp from hiscores — overrides the rough back-calculation.
+				if (hitpoints > 0) opp.setMaxHp(hitpoints);
 			});
 		}
 		catch (Exception e)
