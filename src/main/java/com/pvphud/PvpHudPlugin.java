@@ -40,6 +40,7 @@ import net.runelite.api.Varbits;
 import net.runelite.api.WorldType;
 import net.runelite.api.coords.WorldPoint;
 import net.runelite.api.events.AnimationChanged;
+import net.runelite.api.events.CanvasSizeChanged;
 import net.runelite.api.events.ChatMessage;
 import net.runelite.api.events.GameStateChanged;
 import net.runelite.api.events.GameTick;
@@ -47,7 +48,10 @@ import net.runelite.api.events.GraphicChanged;
 import net.runelite.api.events.HitsplatApplied;
 import net.runelite.api.events.InteractingChanged;
 import net.runelite.api.events.MenuOptionClicked;
+import net.runelite.api.events.ResizeableChanged;
 import net.runelite.api.events.StatChanged;
+import net.runelite.api.events.WidgetLoaded;
+import net.runelite.api.gameval.InterfaceID;
 import net.runelite.api.events.VarbitChanged;
 import net.runelite.client.callback.ClientThread;
 import net.runelite.client.config.ConfigManager;
@@ -159,6 +163,7 @@ public class PvpHudPlugin extends Plugin
 		hudState.getContext().setPvpActive(config.hudVisible());
 		initSelfState();
 		applyOverlayPosition();
+		overlay.invalidateInventoryHugAnchor();
 		overlay.loadIcons();
 		overlayManager.add(overlay);
 		keyManager.registerKeyListener(hudToggleListener);
@@ -266,8 +271,38 @@ public class PvpHudPlugin extends Plugin
 		if (!event.getGroup().equals("pvp-hud")) return;
 		hudState.getContext().setMode(config.hudMode());
 		hudState.getContext().setPvpActive(config.hudVisible());
-		if ("hudLayout".equals(event.getKey())) applyOverlayPosition();
+		if ("hudLayout".equals(event.getKey()))
+		{
+			applyOverlayPosition();
+			overlay.invalidateInventoryHugAnchor();
+		}
 		hudState.getLayout().markDirty();
+	}
+
+	@Subscribe
+	public void onCanvasSizeChanged(CanvasSizeChanged event)
+	{
+		overlay.invalidateInventoryHugAnchor();
+	}
+
+	@Subscribe
+	public void onResizeableChanged(ResizeableChanged event)
+	{
+		overlay.invalidateInventoryHugAnchor();
+	}
+
+	@Subscribe
+	public void onWidgetLoaded(WidgetLoaded event)
+	{
+		// Invalidate when any top-level gameframe interface is (re)loaded.
+		// Fixed viewport (548), resizable stretch (161), resizable pre-EOC (164).
+		int g = event.getGroupId();
+		if (g == InterfaceID.TOPLEVEL
+			|| g == InterfaceID.TOPLEVEL_OSRS_STRETCH
+			|| g == InterfaceID.TOPLEVEL_PRE_EOC)
+		{
+			overlay.invalidateInventoryHugAnchor();
+		}
 	}
 
 	@Subscribe
@@ -281,12 +316,14 @@ public class PvpHudPlugin extends Plugin
 			pendingOpponentActor = null;
 			prevMenaphiteVarbit  = -1;
 			hudState.fullReset();
+			overlay.invalidateInventoryHugAnchor();
 		}
 		else if (event.getGameState() == GameState.LOGGED_IN)
 		{
 			hudState.getContext().setMode(config.hudMode());
 			hudState.getContext().setPvpActive(config.hudVisible());
 			hudState.getLayout().markDirty();
+			overlay.invalidateInventoryHugAnchor();
 			initSelfState();
 		}
 	}

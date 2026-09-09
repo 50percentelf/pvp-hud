@@ -130,8 +130,14 @@ public class PvpHudOverlay extends Overlay
 	private volatile BufferedImage magSkillIcon;
 
 	private HudLayout    lastLayout;
-	private Widget       cachedInventoryPane = null;
-	private LayoutProfile activeProfile      = null;
+	private LayoutProfile activeProfile = null;
+
+	// ── Inventory Hug anchor cache ────────────────────────────────────────────
+	// Recomputed only on: startup, LOGGED_IN/HOPPING, layout switch, canvas
+	// resize, gameframe reload — not every render frame.
+	private volatile boolean inventoryHugAnchorDirty = true;
+	private HugGeometry      inventoryHugCachedGeom;
+	private Rectangle        inventoryHugPaneBounds;
 
 	/** Last known drag position for each float layout — restored on layout switch. */
 	private Point horizFloatPos = null;
@@ -220,8 +226,7 @@ public class PvpHudOverlay extends Overlay
 			else if (currentLayout == HudLayout.VERTICAL_FLOAT && vertFloatPos != null)
 				setPreferredLocation(vertFloatPos);
 
-			if (currentLayout != HudLayout.INVENTORY_HUG)
-				cachedInventoryPane = null;
+			invalidateInventoryHugAnchor();
 		}
 
 		// Keep each float layout's position snapshot fresh every frame.
@@ -299,38 +304,37 @@ public class PvpHudOverlay extends Overlay
 	private Dimension renderInventoryHug(Graphics2D g, PvpHudState state,
 		HudLayoutState layout, Font normal, Font small)
 	{
+		// Recompute anchor only when dirty (event-driven invalidation).
+		// Normal steady-state path: zero parent-chain traversal, no widget walks.
+		if (inventoryHugAnchorDirty)
+			recalculateInventoryHugAnchor();
+
+		HugGeometry hug = inventoryHugCachedGeom;
+		if (hug == null) return null;
+
+		// Single per-render widget lookup — no parent chain traversal.
+		// Used only to determine active-tab state for tabH/itemsH layout.
 		Widget invWidget = client.getWidget(InterfaceID.Inventory.ITEMS);
 		boolean inventoryActive = invWidget != null
 			&& !invWidget.isHidden()
 			&& invWidget.getWidth() > 0
 			&& invWidget.getHeight() > 0;
 
-		// Always try to locate the side-panel container, regardless of which tab is active.
-		// The parent container widget stays visible on all tabs; only the ITEMS child is hidden.
-		// Fallback to the items widget itself only when the inventory tab is actually open,
-		// because a hidden items widget may have stale/zero-height bounds.
-		if (invWidget != null)
+		// tabH/itemsH affect left-rail content layout and change when the user
+		// switches tabs. The anchor itself is cached and unaffected.
+		int tabH, itemsH;
+		if (inventoryActive)
 		{
-			Widget found = findInventoryPane(invWidget);
-			if (found != null && !found.isHidden() && found.getWidth() > 0)
-				cachedInventoryPane = found;
-			else if (cachedInventoryPane == null && inventoryActive)
-				cachedInventoryPane = invWidget;
+			Rectangle items      = invWidget.getBounds();
+			Rectangle paneBounds = inventoryHugPaneBounds;
+			tabH   = paneBounds != null ? Math.max(0, items.y - paneBounds.y) : 0;
+			itemsH = items.height;
 		}
-
-		Widget paneWidget = cachedInventoryPane;
-		if (paneWidget == null || paneWidget.isHidden() || paneWidget.getWidth() <= 0)
-			return null;
-
-		Rectangle pane  = paneWidget.getBounds();
-		if (pane.width <= 0 || pane.height <= 0) return null;
-
-		// When a non-inventory tab is active, treat the full pane as the item area
-		// so tabH = 0 and the left rail covers the entire pane height.
-		Rectangle items = inventoryActive ? invWidget.getBounds() : pane;
-
-		HugGeometry hug = computeHug(items, pane, INVY_LEFT_W, INVY_TOP_H);
-		setPreferredLocation(hug.anchor);
+		else
+		{
+			tabH   = 0;
+			itemsH = hug.paneH;
+		}
 
 		Color bg = new Color(20, 20, 20, activeProfile.backgroundOpacity);
 		g.setColor(bg);
@@ -343,11 +347,11 @@ public class PvpHudOverlay extends Overlay
 
 		// ── Inner border edges that face the inventory ────────────────────────
 		g.setColor(DIVIDER);
-		g.drawLine(0, INVY_TOP_H - 1, hug.totalW - 1, INVY_TOP_H - 1);               // arm bottom
-		g.drawLine(INVY_LEFT_W - 1, INVY_TOP_H, INVY_LEFT_W - 1, hug.totalH - 1);    // left arm right
+		g.drawLine(0, INVY_TOP_H - 1, hug.totalW - 1, INVY_TOP_H - 1);
+		g.drawLine(INVY_LEFT_W - 1, INVY_TOP_H, INVY_LEFT_W - 1, hug.totalH - 1);
 
 		drawInventoryTopRail(g, state, small, hug.totalW);
-		drawInventoryLeftRail(g, state, small, hug.tabH, hug.itemsH);
+		drawInventoryLeftRail(g, state, small, tabH, itemsH);
 
 		return new Dimension(hug.totalW, hug.totalH);
 	}
@@ -372,6 +376,57 @@ public class PvpHudOverlay extends Overlay
 				return w;
 		}
 		return null;
+	}
+
+	/** Mark the cached anchor stale; next render frame will recompute it. */
+	void invalidateInventoryHugAnchor()
+	{
+		inventoryHugAnchorDirty = true;
+	}
+
+	/**
+	 * Recomputes the inventory-hug anchor by locating the side-panel container widget.
+	 * Called at most once per invalidation cycle; the result is cached until the next
+	 * invalidation (canvas resize, login, layout switch, gameframe reload).
+	 *
+	 * If the required widgets are not yet available (e.g. called before the client has
+	 * finished loading), the dirty flag stays true so the next render frame retries.
+	 * The previously cached geometry is preserved on failure so the HUD can still render.
+	 */
+	private void recalculateInventoryHugAnchor()
+	{
+		inventoryHugAnchorDirty = false;
+
+		Widget invWidget = client.getWidget(InterfaceID.Inventory.ITEMS);
+		if (invWidget == null)
+		{
+			inventoryHugAnchorDirty = true; // widget not yet loaded; retry
+			return;
+		}
+
+		Widget paneWidget = findInventoryPane(invWidget);
+		if (paneWidget == null && !invWidget.isHidden() && invWidget.getWidth() > 0)
+			paneWidget = invWidget; // fallback: no tab row found, anchor directly to ITEMS
+		if (paneWidget == null || paneWidget.isHidden() || paneWidget.getWidth() <= 0)
+		{
+			inventoryHugAnchorDirty = true; // pane not visible yet (wrong tab, loading); retry
+			return;                          // keep old cached geom so HUD stays visible
+		}
+
+		Rectangle pane = paneWidget.getBounds();
+		if (pane.width <= 0 || pane.height <= 0)
+		{
+			inventoryHugAnchorDirty = true;
+			return;
+		}
+
+		boolean invActive = !invWidget.isHidden() && invWidget.getWidth() > 0;
+		Rectangle items   = invActive ? invWidget.getBounds() : pane;
+
+		HugGeometry hug = computeHug(items, pane, INVY_LEFT_W, INVY_TOP_H);
+		inventoryHugCachedGeom = hug;
+		inventoryHugPaneBounds = new Rectangle(pane);
+		setPreferredLocation(hug.anchor);
 	}
 
 	/** Immutable geometry bundle for the inventory-hug L-shape. Package-visible for tests. */
