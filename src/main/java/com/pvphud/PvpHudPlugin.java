@@ -864,7 +864,8 @@ public class PvpHudPlugin extends Plugin
 	private void updateEnvironment()
 	{
 		boolean inWilderness = client.getVarbitValue(Varbits.IN_WILDERNESS) == 1;
-		boolean onPvpWorld   = client.getWorldType().contains(WorldType.PVP);
+		java.util.Set<WorldType> worldTypes = client.getWorldType();
+		boolean onPvpWorld   = worldTypes != null && worldTypes.contains(WorldType.PVP);
 		hudState.getContext().setInPvpZone(inWilderness || onPvpWorld);
 		int wildLevel = 0;
 		if (inWilderness)
