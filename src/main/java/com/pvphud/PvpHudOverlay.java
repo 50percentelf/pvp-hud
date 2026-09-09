@@ -646,8 +646,25 @@ public class PvpHudOverlay extends Overlay
 		PoisonState   poison = state.getPoison();
 		OpponentState opp    = state.getOpponent();
 
+		// HP shake — same damped-sine formula as drawHpPrayerBars.
+		// Only the HP bar shifts; prayer/run/spec remain stationary.
+		int shakeX = 0;
+		if (config.showHpShake())
+		{
+			long incomingMs = self.getLastIncomingDamageMs();
+			if (incomingMs > 0)
+			{
+				long elapsed = System.currentTimeMillis() - incomingMs;
+				if (elapsed < 600)
+				{
+					double damping = 1.0 - elapsed / 600.0;
+					shakeX = (int) (Math.sin(elapsed * 0.025) * 8 * damping);
+				}
+			}
+		}
+
 		// ── Self resource bars (icon left, bar right, number below bar) ────────
-		cy = drawInventoryBar(g, fm, cx, lx, cy, railW, hpSkillIcon,
+		cy = drawInventoryBar(g, fm, cx + shakeX, lx + shakeX, cy, railW, hpSkillIcon,
 			self.getCurrentHp(), self.getMaxHp(), HP_FG, HP_BG, activeProfile.hpBarStyle);
 		cy = drawInventoryBar(g, fm, cx, lx, cy, railW, praySkillIcon,
 			self.getCurrentPrayer(), self.getMaxPrayer(), PRAYER_FG, PRAYER_BG, activeProfile.prayerBarStyle);
