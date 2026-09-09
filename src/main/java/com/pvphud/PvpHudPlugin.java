@@ -228,7 +228,8 @@ public class PvpHudPlugin extends Plugin
 		// Vengeance tracking deferred post-v0.1 — do not initialise vengActive.
 		self.setTeleBlockTicksRemaining(client.getVarbitValue(Varbits.TELEBLOCK));
 
-		EffectState fx = hudState.getEffects();
+		EffectState fx   = hudState.getEffects();
+		int         tick = client.getTickCount();
 		fx.setDivineSupercombatTicks(client.getVarbitValue(Varbits.DIVINE_SUPER_COMBAT));
 		fx.setDivineRangingTicks(client.getVarbitValue(Varbits.DIVINE_RANGING));
 		fx.setDivineMagicTicks(client.getVarbitValue(Varbits.DIVINE_MAGIC));
@@ -238,6 +239,21 @@ public class PvpHudPlugin extends Plugin
 		fx.getMenaphite().setTotalTicksRemaining(menVal * 25);
 		prevMenaphiteVarbit = menVal;
 		// nextProcTicks stays 0 — we don't know where in the 25-tick cycle we joined.
+
+		// Antifire: if already active, assume the next boundary is one full interval away.
+		// The varbit handler will correct the phase on the first observed decrement.
+		int antifireVal = client.getVarbitValue(Varbits.ANTIFIRE);
+		if (antifireVal > 0)
+		{
+			fx.setNextAntifireTick(tick + 30);
+			fx.setAntifireVarbitValue(antifireVal);
+		}
+		int superAntifireVal = client.getVarbitValue(Varbits.SUPER_ANTIFIRE);
+		if (superAntifireVal > 0)
+		{
+			fx.setNextSuperAntifireTick(tick + 20);
+			fx.setSuperAntifireVarbitValue(superAntifireVal);
+		}
 		// Stamina effect is self-tracked (STAMINA_EFFECT is binary, not a countdown).
 		// At startup we can't know remaining time, so we don't initialize the timer.
 	}
@@ -265,6 +281,13 @@ public class PvpHudPlugin extends Plugin
 			pendingOpponentActor = null;
 			prevMenaphiteVarbit  = -1;
 			hudState.fullReset();
+		}
+		else if (event.getGameState() == GameState.LOGGED_IN)
+		{
+			hudState.getContext().setMode(config.hudMode());
+			hudState.getContext().setPvpActive(config.hudVisible());
+			hudState.getLayout().markDirty();
+			initSelfState();
 		}
 	}
 
@@ -424,6 +447,35 @@ public class PvpHudPlugin extends Plugin
 					men.setNextProcTicks(25); // proc just fired; next restore in 25 ticks
 			}
 			prevMenaphiteVarbit = value;
+		}
+		else if (varbitId == Varbits.ANTIFIRE)
+		{
+			int tick = client.getTickCount();
+			EffectState efx = hudState.getEffects();
+			if (value == 0)
+			{
+				efx.setNextAntifireTick(-1);
+			}
+			else if (efx.getNextAntifireTick() - tick <= 0)
+			{
+				// Phase unknown or expired — set the next boundary to one full interval away.
+				efx.setNextAntifireTick(tick + 30);
+			}
+			efx.setAntifireVarbitValue(value);
+		}
+		else if (varbitId == Varbits.SUPER_ANTIFIRE)
+		{
+			int tick = client.getTickCount();
+			EffectState efx = hudState.getEffects();
+			if (value == 0)
+			{
+				efx.setNextSuperAntifireTick(-1);
+			}
+			else if (efx.getNextSuperAntifireTick() - tick <= 0)
+			{
+				efx.setNextSuperAntifireTick(tick + 20);
+			}
+			efx.setSuperAntifireVarbitValue(value);
 		}
 		else if (varbitId == Varbits.STAMINA_EFFECT)
 		{

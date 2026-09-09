@@ -96,6 +96,8 @@ public class PvpHudOverlay extends Overlay
 	private BufferedImage btmIcon;            // divine battlemage
 	private BufferedImage menIcon;            // menaphite remedy
 	private BufferedImage staminaIcon;        // stamina potion
+	private BufferedImage antifireIcon;       // antifire + extended antifire
+	private BufferedImage superAntifireIcon;  // super antifire + extended super antifire
 	private BufferedImage antiPoisonItemIcon; // anti-poison potion (immunity display)
 	private BufferedImage antiVenomItemIcon;  // anti-venom potion (immunity display)
 
@@ -161,6 +163,8 @@ public class PvpHudOverlay extends Overlay
 		btmIcon            = itemManager.getImage(ItemID._4DOSEDIVINEBATTLEMAGE);
 		menIcon            = itemManager.getImage(MENAPHITE_REMEDY_4);
 		staminaIcon        = itemManager.getImage(ItemID._4DOSESTAMINA);
+		antifireIcon       = itemManager.getImage(ItemID._4DOSE1ANTIDRAGON);
+		superAntifireIcon  = itemManager.getImage(ItemID._4DOSE3ANTIDRAGON);
 		antiPoisonItemIcon = itemManager.getImage(ItemID._4DOSEANTIPOISON);
 		antiVenomItemIcon  = itemManager.getImage(ItemID.ANTIVENOM_4);
 
@@ -681,8 +685,9 @@ public class PvpHudOverlay extends Overlay
 
 		// ── Action labels (text-only — no standard icon exists for these) ──────
 		ProtectionState prot = state.getProtection();
-		boolean hasProt = prot.isPjSafe() || prot.isLmsImmune() || prot.isInCombatLogoutLock()
-			|| prot.isUnderAttackLocked();
+		boolean showLocks = config.showCombatLocks();
+		boolean hasProt = prot.isLmsImmune()
+			|| (showLocks && (prot.isPjSafe() || prot.isInCombatLogoutLock() || prot.isUnderAttackLocked()));
 		ManualTimerState t1 = state.getTimer1();
 		ManualTimerState t2 = state.getTimer2();
 		boolean hasAction = hasProt || t1.isRunning() || t2.isRunning()
@@ -694,7 +699,7 @@ public class PvpHudOverlay extends Overlay
 			g.drawLine(lx, cy, INVY_LEFT_W - lx, cy);
 			cy += 3;
 
-			if (prot.isPjSafe())
+			if (showLocks && prot.isPjSafe())
 			{
 				int s = (int) Math.round(prot.getPjSafeTicksRemaining() * 0.6);
 				g.setColor(s > 20 ? GREEN : s > 10 ? YELLOW : RED);
@@ -708,13 +713,13 @@ public class PvpHudOverlay extends Overlay
 				drawCentered(g, fm, "IMM " + s + "s", cx, cy + fm.getAscent());
 				cy += fm.getHeight() + 1;
 			}
-			if (prot.isInCombatLogoutLock())
+			if (showLocks && prot.isInCombatLogoutLock())
 			{
 				g.setColor(ORANGE);
 				drawCentered(g, fm, "LOG", cx, cy + fm.getAscent());
 				cy += fm.getHeight() + 1;
 			}
-			if (prot.isUnderAttackLocked())
+			if (showLocks && prot.isUnderAttackLocked())
 			{
 				g.setColor(LIGHT_BLUE);
 				drawCentered(g, fm, "LCK", cx, cy + fm.getAscent());
@@ -1375,6 +1380,12 @@ public class PvpHudOverlay extends Overlay
 		if (fx.getStaminaEffectTicks() > 0)
 			addTimedEffect("STAM", fx.getStaminaEffectTicks(), staminaIcon);
 
+		int currentTick = client.getTickCount();
+		int afTicks  = fx.getAntifireTicks(currentTick);
+		int safTicks = fx.getSuperAntifireTicks(currentTick);
+		if (afTicks  > 0) addTimedEffect("AF",  afTicks,  antifireIcon);
+		if (safTicks > 0) addTimedEffect("SAF", safTicks, superAntifireIcon);
+
 		if (poison.isVenomed())
 			effectScratch.add(new ActiveEffectView(venomIcon,  "",  "VENOM",  TOXIC_GREEN));
 		else if (poison.isPoisoned())
@@ -1655,8 +1666,9 @@ public class PvpHudOverlay extends Overlay
 				g.drawString(lbl, textX, baseline);
 				textX += fm.stringWidth(lbl) + 6;
 			}
-			ProtectionState prot = state.getProtection();
-			if (prot.isPjSafe() && textX < textRx)
+			ProtectionState prot     = state.getProtection();
+			boolean         showLcks = config.showCombatLocks();
+			if (showLcks && prot.isPjSafe() && textX < textRx)
 			{
 				int s = (int) Math.round(prot.getPjSafeTicksRemaining() * 0.6);
 				String lbl = "PJ " + s;
@@ -1672,13 +1684,13 @@ public class PvpHudOverlay extends Overlay
 				g.drawString(lbl, textX, baseline);
 				textX += fm.stringWidth(lbl) + 6;
 			}
-			if (prot.isInCombatLogoutLock() && textX < textRx)
+			if (showLcks && prot.isInCombatLogoutLock() && textX < textRx)
 			{
 				g.setColor(ORANGE);
 				g.drawString("LOG", textX, baseline);
 				textX += fm.stringWidth("LOG") + 6;
 			}
-			if (prot.isUnderAttackLocked() && textX < textRx)
+			if (showLcks && prot.isUnderAttackLocked() && textX < textRx)
 			{
 				g.setColor(LIGHT_BLUE);
 				g.drawString("LCK", textX, baseline);
@@ -1758,8 +1770,9 @@ public class PvpHudOverlay extends Overlay
 			colorList.add(s > 30 ? WHITE : RED);
 		}
 
-		ProtectionState prot = state.getProtection();
-		if (prot.isPjSafe())
+		ProtectionState prot     = state.getProtection();
+		boolean         showLcks = config.showCombatLocks();
+		if (showLcks && prot.isPjSafe())
 		{
 			int s = (int) Math.round(prot.getPjSafeTicksRemaining() * 0.6);
 			labelList.add("PJ " + s + "s");
@@ -1771,12 +1784,12 @@ public class PvpHudOverlay extends Overlay
 			labelList.add("IMM " + s + "s");
 			colorList.add(PRAYER_FG);
 		}
-		if (prot.isInCombatLogoutLock())
+		if (showLcks && prot.isInCombatLogoutLock())
 		{
 			labelList.add("LOG");
 			colorList.add(ORANGE);
 		}
-		if (prot.isUnderAttackLocked())
+		if (showLcks && prot.isUnderAttackLocked())
 		{
 			labelList.add("LCK");
 			colorList.add(LIGHT_BLUE);

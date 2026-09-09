@@ -617,9 +617,12 @@ public interface PvpHudConfig extends Config
 	}
 
 	// ── Experimental / Pending RuneLite Ruling ───────────────────────────────
-	// These features are intentionally NOT available. No config items appear
-	// here because neither feature can be enabled. Both require RuneLite team
-	// guidance before implementation can proceed.
+	// Features in this section are incomplete or awaiting RuneLite team guidance.
+	//
+	// Combat Locks (PJ / LOG / LCK): the underlying ProtectionState is tracked
+	//   correctly, but the timer accuracy has not been fully verified in-game
+	//   across all edge cases (splash hits, multi-combat, same-tick exchanges).
+	//   Disabled by default pending confirmation testing.
 	//
 	// Streamer Output: renders the HUD into a separate OBS/window-capture
 	//   window sharing the same PvpHudState; no duplicate combat logic.
@@ -631,11 +634,25 @@ public interface PvpHudConfig extends Config
 
 	@ConfigSection(
 		name = "Experimental — Pending RuneLite Ruling",
-		description = "Streamer Output and Opponent Attack Cycle are NOT implemented. "
-			+ "Both are awaiting RuneLite review before development can proceed. "
-			+ "No options here are toggleable — this section is informational only.",
+		description = "Features here are incomplete or awaiting RuneLite review. "
+			+ "Streamer Output and Opponent Attack Cycle are NOT implemented and cannot be enabled. "
+			+ "Combat Locks can be toggled but accuracy has not been fully verified in-game.",
 		position = 50,
 		closedByDefault = true
 	)
 	String pendingRulingSection = "pendingRuling";
+
+	@ConfigItem(
+		keyName = "showCombatLocks",
+		name = "Show Combat Locks (PJ / LOG / LCK)  [EXPERIMENTAL]",
+		description = "<html>Show PJ-safe timer, combat logout lock (LOG), and under-attack lock (LCK) "
+			+ "in the action strip.<br>"
+			+ "Incomplete: timer accuracy under all edge cases has not been verified in-game.</html>",
+		section = pendingRulingSection,
+		position = 0
+	)
+	default boolean showCombatLocks()
+	{
+		return false;
+	}
 }
