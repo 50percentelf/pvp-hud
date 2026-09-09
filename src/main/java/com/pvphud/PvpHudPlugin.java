@@ -226,7 +226,7 @@ public class PvpHudPlugin extends Plugin
 		// client.getEnergy() returns 0-10000; divide by 100 for 0-100%
 		self.setRunEnergy(client.getEnergy() / 100);
 		// Vengeance tracking deferred post-v0.1 — do not initialise vengActive.
-		self.setTeleBlockTicksRemaining(client.getVarbitValue(Varbits.TELEBLOCK));
+		self.setTeleBlockTicksRemaining(decodeTeleblockTicks(client.getVarbitValue(Varbits.TELEBLOCK)));
 
 		EffectState fx   = hudState.getEffects();
 		int         tick = client.getTickCount();
@@ -410,7 +410,7 @@ public class PvpHudPlugin extends Plugin
 
 		if (varbitId == Varbits.TELEBLOCK)
 		{
-			hudState.getSelf().setTeleBlockTicksRemaining(value);
+			hudState.getSelf().setTeleBlockTicksRemaining(decodeTeleblockTicks(value));
 		}
 		else if (varbitId == Varbits.DIVINE_SUPER_COMBAT)
 		{
@@ -928,6 +928,18 @@ public class PvpHudPlugin extends Plugin
 	 * Equipment extensions (Sceptre of the Gods, Swampbark) are applied separately
 	 * in {@link #adjustedFreezeTicks}.
 	 */
+	/**
+	 * Decode raw {@code Varbits.TELEBLOCK} value to active TB ticks remaining.
+	 * Raw 0      = not active, no immunity.
+	 * Raw 1..100 = post-TB reapplication immunity only (TB itself has expired).
+	 * Raw 101+   = TB active; remaining = raw - 100.
+	 * Mirrors RuneLite TimersAndBuffsPlugin: {@code event.getValue() - 100}.
+	 */
+	static int decodeTeleblockTicks(int raw)
+	{
+		return Math.max(0, raw - 100);
+	}
+
 	static int freezeTicksForGraphic(int graphicId)
 	{
 		switch (graphicId)
