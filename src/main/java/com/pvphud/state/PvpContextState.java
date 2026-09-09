@@ -1,18 +1,11 @@
 package com.pvphud.state;
 
-import com.pvphud.HudMode;
 import lombok.Getter;
 import lombok.Setter;
 
-/** Top-level context: whether PvP mode is active and how it was triggered. */
+/** Top-level context: zone and chat state for the local session. */
 public class PvpContextState
 {
-	@Getter @Setter
-	private boolean pvpActive;
-
-	@Getter @Setter
-	private HudMode mode = HudMode.MANUAL;
-
 	/** True while the player is in the Wilderness or a PvP world. */
 	@Getter @Setter
 	private boolean inPvpZone;
@@ -31,7 +24,6 @@ public class PvpContextState
 
 	public void reset()
 	{
-		pvpActive = false;
 		inPvpZone = false;
 		chatVisible = false;
 		wildernessLevel = 0;

@@ -204,7 +204,7 @@ public class PvpHudOverlay extends Overlay
 	public Dimension render(Graphics2D g)
 	{
 		PvpHudState state = plugin.getHudState();
-		if (!state.getContext().isPvpActive())
+		if (!plugin.shouldShowHud())
 		{
 			return null;
 		}

@@ -159,8 +159,7 @@ public class PvpHudPlugin extends Plugin
 		pendingOpponentName  = null;
 		pendingOpponentActor = null;
 		hudState.fullReset();
-		hudState.getContext().setMode(config.hudMode());
-		hudState.getContext().setPvpActive(config.hudVisible());
+		updateEnvironment();
 		initSelfState();
 		applyOverlayPosition();
 		overlay.invalidateInventoryHugAnchor();
@@ -269,8 +268,6 @@ public class PvpHudPlugin extends Plugin
 	public void onConfigChanged(ConfigChanged event)
 	{
 		if (!event.getGroup().equals("pvp-hud")) return;
-		hudState.getContext().setMode(config.hudMode());
-		hudState.getContext().setPvpActive(config.hudVisible());
 		if ("hudLayout".equals(event.getKey()))
 		{
 			applyOverlayPosition();
@@ -320,10 +317,9 @@ public class PvpHudPlugin extends Plugin
 		}
 		else if (event.getGameState() == GameState.LOGGED_IN)
 		{
-			hudState.getContext().setMode(config.hudMode());
-			hudState.getContext().setPvpActive(config.hudVisible());
 			hudState.getLayout().markDirty();
 			overlay.invalidateInventoryHugAnchor();
+			updateEnvironment();
 			initSelfState();
 		}
 	}
@@ -833,12 +829,42 @@ public class PvpHudPlugin extends Plugin
 			tick);
 	}
 
+	// ── HUD visibility predicate ─────────────────────────────────────────────
+
+	/**
+	 * Single source of truth for whether the HUD should render.
+	 * Extracted as a static method so it is unit-testable without a live Client.
+	 */
+	static boolean computeShouldShow(boolean enabled, HudMode mode, boolean inPvpZone, boolean hasSession)
+	{
+		if (!enabled) return false;
+		switch (mode)
+		{
+			case MANUAL:   return true;
+			case PVP_AREA: return inPvpZone;
+			case AUTO:     return hasSession;
+			default:       return false;
+		}
+	}
+
+	boolean shouldShowHud()
+	{
+		return computeShouldShow(
+			config.hudVisible(),
+			config.hudMode(),
+			hudState.getContext().isInPvpZone(),
+			hudState.getCurrentSession() != null);
+	}
+
 	// ── Environment polling ───────────────────────────────────────────────────
 
 	private void updateEnvironment()
 	{
+		boolean inWilderness = client.getVarbitValue(Varbits.IN_WILDERNESS) == 1;
+		boolean onPvpWorld   = client.getWorldType().contains(WorldType.PVP);
+		hudState.getContext().setInPvpZone(inWilderness || onPvpWorld);
 		int wildLevel = 0;
-		if (client.getVarbitValue(Varbits.IN_WILDERNESS) == 1)
+		if (inWilderness)
 		{
 			Player local = client.getLocalPlayer();
 			if (local != null)

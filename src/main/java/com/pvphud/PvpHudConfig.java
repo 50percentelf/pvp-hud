@@ -36,8 +36,8 @@ public interface PvpHudConfig extends Config
 
 	@ConfigItem(
 		keyName = "hudVisible",
-		name = "Show HUD",
-		description = "Show the HUD overlay. Toggle in-game with the Toggle HUD Hotkey, or enable here for Manual mode.",
+		name = "HUD Enabled",
+		description = "Master enable/disable for PvP HUD. HUD Mode determines when an enabled HUD is displayed. The Toggle HUD Hotkey changes this setting.",
 		section = generalSection,
 		position = 1
 	)
