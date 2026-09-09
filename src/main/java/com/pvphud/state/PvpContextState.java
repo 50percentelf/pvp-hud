@@ -8,7 +8,7 @@ public class PvpContextState
 {
 	/** True while the player is in the Wilderness or a PvP world. */
 	@Getter @Setter
-	private boolean inPvpZone;
+	private volatile boolean inPvpZone;
 
 	/** True when the normal chatbox should be shown instead of the HUD. */
 	@Getter @Setter

@@ -159,7 +159,10 @@ public class PvpHudPlugin extends Plugin
 		pendingOpponentName  = null;
 		pendingOpponentActor = null;
 		hudState.fullReset();
-		updateEnvironment();
+		if (client.getGameState() == GameState.LOGGED_IN)
+		{
+			updateEnvironment();
+		}
 		initSelfState();
 		applyOverlayPosition();
 		overlay.invalidateInventoryHugAnchor();
