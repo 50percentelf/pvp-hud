@@ -685,13 +685,14 @@ public class PvpHudOverlay extends Overlay
 
 		// ── Action labels (text-only — no standard icon exists for these) ──────
 		ProtectionState prot = state.getProtection();
-		boolean showLocks = config.showCombatLocks();
+		boolean showLocks    = config.showCombatLocks();
+		boolean showZoneInfo = config.showZoneInfo();
 		boolean hasProt = prot.isLmsImmune()
 			|| (showLocks && (prot.isPjSafe() || prot.isInCombatLogoutLock() || prot.isUnderAttackLocked()));
 		ManualTimerState t1 = state.getTimer1();
 		ManualTimerState t2 = state.getTimer2();
 		boolean hasAction = hasProt || t1.isRunning() || t2.isRunning()
-			|| state.getContext().getWildernessLevel() > 0 || state.getContext().isMultiCombat();
+			|| (showZoneInfo && (state.getContext().getWildernessLevel() > 0 || state.getContext().isMultiCombat()));
 
 		if (hasAction)
 		{
@@ -741,18 +742,21 @@ public class PvpHudOverlay extends Overlay
 					cx, cy + fm.getAscent());
 				cy += fm.getHeight() + 1;
 			}
-			int wildLevel = state.getContext().getWildernessLevel();
-			if (wildLevel > 0)
+			if (showZoneInfo)
 			{
-				g.setColor(YELLOW);
-				drawCentered(g, fm, "W" + wildLevel, cx, cy + fm.getAscent());
-				cy += fm.getHeight() + 1;
-			}
-			if (state.getContext().isMultiCombat())
-			{
-				g.setColor(ORANGE);
-				drawCentered(g, fm, "MLT", cx, cy + fm.getAscent());
-				cy += fm.getHeight() + 1;
+				int wildLevel = state.getContext().getWildernessLevel();
+				if (wildLevel > 0)
+				{
+					g.setColor(YELLOW);
+					drawCentered(g, fm, "W" + wildLevel, cx, cy + fm.getAscent());
+					cy += fm.getHeight() + 1;
+				}
+				if (state.getContext().isMultiCombat())
+				{
+					g.setColor(ORANGE);
+					drawCentered(g, fm, "MLT", cx, cy + fm.getAscent());
+					cy += fm.getHeight() + 1;
+				}
 			}
 		}
 
@@ -1795,16 +1799,19 @@ public class PvpHudOverlay extends Overlay
 			colorList.add(LIGHT_BLUE);
 		}
 
-		int wildLevel = state.getContext().getWildernessLevel();
-		if (wildLevel > 0)
+		if (config.showZoneInfo())
 		{
-			labelList.add("W" + wildLevel);
-			colorList.add(YELLOW);
-		}
-		if (state.getContext().isMultiCombat())
-		{
-			labelList.add("MULTI");
-			colorList.add(ORANGE);
+			int wildLevel = state.getContext().getWildernessLevel();
+			if (wildLevel > 0)
+			{
+				labelList.add("W" + wildLevel);
+				colorList.add(YELLOW);
+			}
+			if (state.getContext().isMultiCombat())
+			{
+				labelList.add("MLT");
+				colorList.add(ORANGE);
+			}
 		}
 
 		String[] labels = labelList.toArray(new String[0]);

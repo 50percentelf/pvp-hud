@@ -619,6 +619,9 @@ public interface PvpHudConfig extends Config
 	// ── Experimental / Pending RuneLite Ruling ───────────────────────────────
 	// Features in this section are incomplete or awaiting RuneLite team guidance.
 	//
+	// Zone Info (W# / MLT): reads Varbits.WILDERNESS_LEVEL and the multi-combat
+	//   region flag. Disabled by default — still evaluating layout fit.
+	//
 	// Combat Locks (PJ / LOG / LCK): the underlying ProtectionState is tracked
 	//   correctly, but the timer accuracy has not been fully verified in-game
 	//   across all edge cases (splash hits, multi-combat, same-tick exchanges).
@@ -643,13 +646,25 @@ public interface PvpHudConfig extends Config
 	String pendingRulingSection = "pendingRuling";
 
 	@ConfigItem(
+		keyName = "showZoneInfo",
+		name = "Show Zone Info (W# / MLT)  [EXPERIMENTAL]",
+		description = "Show wilderness level (W##) and multi-combat zone (MLT) indicators in the action strip.",
+		section = pendingRulingSection,
+		position = 0
+	)
+	default boolean showZoneInfo()
+	{
+		return false;
+	}
+
+	@ConfigItem(
 		keyName = "showCombatLocks",
 		name = "Show Combat Locks (PJ / LOG / LCK)  [EXPERIMENTAL]",
 		description = "<html>Show PJ-safe timer, combat logout lock (LOG), and under-attack lock (LCK) "
 			+ "in the action strip.<br>"
 			+ "Incomplete: timer accuracy under all edge cases has not been verified in-game.</html>",
 		section = pendingRulingSection,
-		position = 0
+		position = 1
 	)
 	default boolean showCombatLocks()
 	{
