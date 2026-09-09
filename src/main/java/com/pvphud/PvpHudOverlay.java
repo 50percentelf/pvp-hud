@@ -1357,14 +1357,16 @@ public class PvpHudOverlay extends Overlay
 		{
 			String t = ticksToSecs(freeze);
 			effectScratch.add(new ActiveEffectView(
-				iceIconFor(self.getFreezeSpriteId()), t, "ICE " + t, LIGHT_BLUE));
+				iceIconFor(self.getFreezeSpriteId()), t, "ICE " + t, LIGHT_BLUE,
+				config.barrageHighlightColor()));
 		}
 
 		int tb = self.getTeleBlockTicksRemaining();
 		if (tb > 0)
 		{
 			String t = ticksToMSS(tb);
-			effectScratch.add(new ActiveEffectView(tbIcon, t, "TB " + t, ORANGE));
+			effectScratch.add(new ActiveEffectView(tbIcon, t, "TB " + t, ORANGE,
+				config.tbHighlightColor()));
 		}
 
 		if (config.showDivineTimers())
@@ -1433,6 +1435,15 @@ public class PvpHudOverlay extends Overlay
 		}
 	}
 
+	private static void drawIconHighlight(Graphics2D g, Color c, int x, int y, int size)
+	{
+		if (c == null) return;
+		g.setColor(new Color(c.getRed(), c.getGreen(), c.getBlue(), 60));
+		g.fillRect(x - 1, y - 1, size + 2, size + 2);
+		g.setColor(c);
+		g.drawRect(x - 1, y - 1, size + 2, size + 2);
+	}
+
 	private static Color timerColor(int ticks)
 	{
 		int s = ticks * 600 / 1000;
@@ -1481,6 +1492,7 @@ public class PvpHudOverlay extends Overlay
 		{
 			if (e.icon == null) continue;
 			int iconY = cy + (lineH - ICON_SIZE) / 2;
+			drawIconHighlight(g, e.highlightColor, lx, iconY, ICON_SIZE);
 			g.drawImage(e.icon, lx, iconY, ICON_SIZE, ICON_SIZE, null);
 			if (!e.label.isEmpty())
 			{
@@ -1517,6 +1529,7 @@ public class PvpHudOverlay extends Overlay
 			}
 			int x     = lx + col * colW;
 			int iconX = x + (colW - ICON_SIZE) / 2;
+			drawIconHighlight(g, e.highlightColor, iconX, cy, ICON_SIZE);
 			g.drawImage(e.icon, iconX, cy, ICON_SIZE, ICON_SIZE, null);
 			if (!e.label.isEmpty())
 			{
@@ -1545,6 +1558,7 @@ public class PvpHudOverlay extends Overlay
 		{
 			if (e.icon == null) continue;
 			int x = lx + col * slotW;
+			drawIconHighlight(g, e.highlightColor, x, cy, ICON_SIZE);
 			g.drawImage(e.icon, x, cy, ICON_SIZE, ICON_SIZE, null);
 			if (!e.label.isEmpty())
 			{

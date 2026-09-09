@@ -1,5 +1,6 @@
 package com.pvphud;
 
+import java.awt.Color;
 import net.runelite.client.config.Config;
 import net.runelite.client.config.ConfigGroup;
 import net.runelite.client.config.ConfigItem;
@@ -164,6 +165,30 @@ public interface PvpHudConfig extends Config
 	default int timer2Duration()
 	{
 		return 300;
+	}
+
+	@ConfigItem(
+		keyName = "barrageHighlightColor",
+		name = "Barrage Highlight Colour",
+		description = "Draws a coloured border around the freeze icon when you are frozen. None = disabled.",
+		section = generalSection,
+		position = 12
+	)
+	default Color barrageHighlightColor()
+	{
+		return null;
+	}
+
+	@ConfigItem(
+		keyName = "tbHighlightColor",
+		name = "Teleblock Highlight Colour",
+		description = "Draws a coloured border around the Tele Block icon when you are teleblocked. None = disabled.",
+		section = generalSection,
+		position = 13
+	)
+	default Color tbHighlightColor()
+	{
+		return null;
 	}
 
 	// ── Chat Locked section ──────────────────────────────────────────────────
