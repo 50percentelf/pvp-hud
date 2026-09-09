@@ -395,30 +395,20 @@ public class PvpHudOverlay extends Overlay
 	 */
 	private void recalculateInventoryHugAnchor()
 	{
-		inventoryHugAnchorDirty = false;
-
 		Widget invWidget = client.getWidget(InterfaceID.Inventory.ITEMS);
 		if (invWidget == null)
-		{
-			inventoryHugAnchorDirty = true; // widget not yet loaded; retry
-			return;
-		}
+			return; // widget not yet loaded; remain dirty and retry
 
 		Widget paneWidget = findInventoryPane(invWidget);
-		if (paneWidget == null && !invWidget.isHidden() && invWidget.getWidth() > 0)
-			paneWidget = invWidget; // fallback: no tab row found, anchor directly to ITEMS
-		if (paneWidget == null || paneWidget.isHidden() || paneWidget.getWidth() <= 0)
+		if (paneWidget == null
+			|| paneWidget.isHidden()
+			|| paneWidget.getWidth() <= 0
+			|| paneWidget.getHeight() <= 0)
 		{
-			inventoryHugAnchorDirty = true; // pane not visible yet (wrong tab, loading); retry
-			return;                          // keep old cached geom so HUD stays visible
+			return; // full menu pane not available yet; remain dirty and retry
 		}
 
 		Rectangle pane = paneWidget.getBounds();
-		if (pane.width <= 0 || pane.height <= 0)
-		{
-			inventoryHugAnchorDirty = true;
-			return;
-		}
 
 		boolean invActive = !invWidget.isHidden() && invWidget.getWidth() > 0;
 		Rectangle items   = invActive ? invWidget.getBounds() : pane;
@@ -427,6 +417,7 @@ public class PvpHudOverlay extends Overlay
 		inventoryHugCachedGeom = hug;
 		inventoryHugPaneBounds = new Rectangle(pane);
 		setPreferredLocation(hug.anchor);
+		inventoryHugAnchorDirty = false;
 	}
 
 	/** Immutable geometry bundle for the inventory-hug L-shape. Package-visible for tests. */
