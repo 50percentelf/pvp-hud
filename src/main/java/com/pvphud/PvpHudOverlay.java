@@ -1461,9 +1461,9 @@ public class PvpHudOverlay extends Overlay
 			effectScratch.add(new ActiveEffectView(poisonIcon, "",  "POISON", TOXIC_GREEN));
 
 		if (poison.isAntiVenomActive())
-			addTimedEffectFallback("ANTI-V", poison.getAntiVenomTicks(),  antiVenomItemIcon);
+			addTimedEffect("ANTI-V", poison.getAntiVenomTicks(),  antiVenomItemIcon);
 		else if (poison.isAntiPoisonActive())
-			addTimedEffectFallback("ANTI-P", poison.getAntiPoisonTicks(), antiPoisonItemIcon);
+			addTimedEffect("ANTI-P", poison.getAntiPoisonTicks(), antiPoisonItemIcon);
 
 		int drainTicks = self.getBoostDecay().getTicksRemaining();
 		if (drainTicks > 0 && self.getBoostDecay().isCalibrated() && boosts.hasAnyBoost())
@@ -1484,19 +1484,6 @@ public class PvpHudOverlay extends Overlay
 		effectScratch.add(new ActiveEffectView(icon, t, label + " " + t, timerColor(ticks)));
 	}
 
-	/** Like addTimedEffect but falls back to a static label when ticks == 0. */
-	private void addTimedEffectFallback(String label, int ticks, BufferedImage icon)
-	{
-		if (ticks > 0)
-		{
-			String t = ticksToMSS(ticks);
-			effectScratch.add(new ActiveEffectView(icon, t, label + " " + t, timerColor(ticks)));
-		}
-		else
-		{
-			effectScratch.add(new ActiveEffectView(icon, "", label, GREEN));
-		}
-	}
 
 	private static void drawIconHighlight(Graphics2D g, Color c, int x, int y, int size)
 	{
