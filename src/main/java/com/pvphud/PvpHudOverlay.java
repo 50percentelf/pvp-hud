@@ -427,6 +427,15 @@ public class PvpHudOverlay extends Overlay
 		inventoryHugAnchorDirty = true;
 	}
 
+	/**
+	 * True for one render frame after a gameframe switch.
+	 * recalculateInventoryHugAnchor() skips committing on the settling frame so
+	 * that stale widget positions (from the old gameframe's layout scripts) are
+	 * never locked in as the anchor.  The subsequent frame re-reads fresh positions
+	 * and commits normally.
+	 */
+	private boolean inventoryHugSettling = false;
+
 	static GameframeType detectGameframe(boolean resized, int topLevelId)
 	{
 		if (!resized) return GameframeType.FIXED;
@@ -439,6 +448,7 @@ public class PvpHudOverlay extends Overlay
 	{
 		plugin.getHudState().getLayout().markDirty();
 		inventoryHugAnchorDirty = true;
+		inventoryHugSettling = true;
 	}
 
 	/**
@@ -491,6 +501,11 @@ public class PvpHudOverlay extends Overlay
 		Rectangle items   = invActive ? invWidget.getBounds() : pane;
 
 		HugGeometry hug = computeHug(items, pane, INVY_LEFT_W, INVY_TOP_H);
+		if (inventoryHugSettling)
+		{
+			inventoryHugSettling = false;
+			return; // skip committing; recompute next frame with settled widget positions
+		}
 		inventoryHugCachedGeom = hug;
 		inventoryHugPaneBounds = new Rectangle(pane);
 		setPreferredLocation(hug.anchor);
