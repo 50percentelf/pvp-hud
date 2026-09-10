@@ -557,16 +557,24 @@ public class PvpHudPlugin extends Plugin
 
 		if (actor == client.getLocalPlayer())
 		{
-			// Cache the freeze-spell graphic so onChatMessage can use it to refine
-			// the duration when "You have been frozen!" arrives on the same tick.
-			// Do NOT apply the freeze timer here — that only happens on the confirmed
-			// chat message so repeated ice hits while already frozen are ignored.
-			int tick = client.getTickCount();
+			int       tick = client.getTickCount();
+			SelfState self = hudState.getSelf();
 			for (ActorSpotAnim sa : actor.getSpotAnims())
 			{
-				if (freezeTicksForGraphic(sa.getId()) > 0)
+				int id = sa.getId();
+				if (id == SpotanimID.BIND_IMPACT
+					|| id == SpotanimID.SNARE_IMPACT
+					|| id == SpotanimID.ENTANGLE_IMPACT)
 				{
-					lastFreezeGraphicId   = sa.getId();
+					// Standard binding spells: start timer directly from impact graphic,
+					// matching RuneLite's TimersAndBuffsPlugin behaviour.
+					self.applyFreeze(tick, freezeTicksForGraphic(id), freezeSpriteIdForGraphic(id));
+					return;
+				}
+				if (freezeTicksForGraphic(id) > 0)
+				{
+					// Ice spells: cache for same-tick chat-message confirmation.
+					lastFreezeGraphicId   = id;
 					lastFreezeGraphicTick = tick;
 					break;
 				}
@@ -586,11 +594,13 @@ public class PvpHudPlugin extends Plugin
 		SelfState self = hudState.getSelf();
 
 		// Movement while frozen proves the freeze has expired — clear immediately.
+		// Guard against the tick the freeze was applied (position may be stale).
 		Player localPlayer = client.getLocalPlayer();
 		if (localPlayer != null)
 		{
 			WorldPoint pos = localPlayer.getWorldLocation();
-			if (self.isFrozen(tick) && lastPlayerPos != null && !pos.equals(lastPlayerPos))
+			if (self.isFrozen(tick) && lastPlayerPos != null && !pos.equals(lastPlayerPos)
+				&& tick != self.getFreezeStartTick())
 				self.clearFreeze();
 			lastPlayerPos = pos;
 		}
@@ -1113,41 +1123,42 @@ public class PvpHudPlugin extends Plugin
 
 	// ── Poison / venom / immunity ─────────────────────────────────────────────────
 
-	/** Mirrors RuneLite's TimersAndBuffsPlugin constants. */
+	/** Mirrors RuneLite's TimersAndBuffsPlugin threshold. */
 	private static final int VENOM_VALUE_CUTOFF = -38;
-	private static final int POISON_TICK_LENGTH = 30;
 
 	/**
-	 * Applies the POISON VarPlayer value to PoisonState.
-	 * Positive values = poisoned or venomed; negative values = immunity phase.
-	 * Values at or below VENOM_VALUE_CUTOFF (-38) indicate anti-venom protection;
-	 * values from -1 to VENOM_VALUE_CUTOFF+1 indicate anti-poison protection.
+	 * Applies the POISON VarPlayer value to PoisonState using RuneLite's
+	 * phase-aware nextPoisonTick formula.
+	 * Positive = poisoned/venomed; negative = immunity.
+	 * Values strictly below VENOM_VALUE_CUTOFF (-38) are anti-venom;
+	 * values from -1 to VENOM_VALUE_CUTOFF (-38) inclusive are anti-poison.
 	 */
 	private void applyPoisonVarp(int value)
 	{
-		PoisonState ps = hudState.getPoison();
+		PoisonState ps  = hudState.getPoison();
+		int         now = client.getTickCount();
 		ps.setVenomed(value >= 1_000_000);
 		ps.setPoisoned(value > 0 && value < 1_000_000);
-		if (value <= VENOM_VALUE_CUTOFF)
+		if (value < VENOM_VALUE_CUTOFF)
 		{
 			ps.setAntiVenomActive(true);
 			ps.setAntiPoisonActive(false);
-			ps.setAntiVenomTicks(Math.abs(value) * POISON_TICK_LENGTH);
-			ps.setAntiPoisonTicks(0);
+			ps.setPoisonVarpValue(value);
+			ps.setNextPoisonTick(now + PoisonState.POISON_TICK_LENGTH);
 		}
 		else if (value < 0)
 		{
 			ps.setAntiPoisonActive(true);
 			ps.setAntiVenomActive(false);
-			ps.setAntiPoisonTicks(Math.abs(value) * POISON_TICK_LENGTH);
-			ps.setAntiVenomTicks(0);
+			ps.setPoisonVarpValue(value);
+			ps.setNextPoisonTick(now + PoisonState.POISON_TICK_LENGTH);
 		}
 		else
 		{
 			ps.setAntiVenomActive(false);
 			ps.setAntiPoisonActive(false);
-			ps.setAntiPoisonTicks(0);
-			ps.setAntiVenomTicks(0);
+			ps.setPoisonVarpValue(0);
+			ps.setNextPoisonTick(-1);
 		}
 	}
 

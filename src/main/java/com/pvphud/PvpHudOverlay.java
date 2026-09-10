@@ -1553,9 +1553,9 @@ public class PvpHudOverlay extends Overlay
 			effectScratch.add(new ActiveEffectView(poisonIcon, "",  "POISON", TOXIC_GREEN));
 
 		if (poison.isAntiVenomActive())
-			addTimedEffect("ANTI-V", poison.getAntiVenomTicks(),  antiVenomItemIcon);
+			addTimedEffect("ANTI-V", poison.getImmunityTicksRemaining(currentTick), antiVenomItemIcon);
 		else if (poison.isAntiPoisonActive())
-			addTimedEffect("ANTI-P", poison.getAntiPoisonTicks(), antiPoisonItemIcon);
+			addTimedEffect("ANTI-P", poison.getImmunityTicksRemaining(currentTick), antiPoisonItemIcon);
 
 		int drainTicks = self.getBoostDecay().getTicksRemaining();
 		if (drainTicks > 0 && self.getBoostDecay().isCalibrated() && boosts.hasAnyBoost())

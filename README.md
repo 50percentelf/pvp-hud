@@ -115,7 +115,6 @@ When the local player has Smite active, outgoing hits show `-Np` in the fight lo
 
 - **Vengeance tracking** — `VENG RDY` self-indicator and `VENG!` opponent label. State infrastructure exists but event handlers are gated; feature is not displayed.
 - **Special prayer-impact tracking** — Sara Strike, Clear Mind, and Sapphire bolt prayer-drain attribution. Enum values defined; no v0.1 code path sets them.
-- Extended freeze duration from Sceptre of the Gods (+3 ticks) and Swampbark armour (+1 tick/piece). Hook exists; equipment check not yet wired.
 - LMS context detection for the IMM timer (currently always inactive).
 - CHANCE! hit detection (requires opponent defence stats and combat formula).
 

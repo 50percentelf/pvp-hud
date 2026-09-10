@@ -13,7 +13,7 @@ public class SelfState
 	 * Game tick on which the freeze started (-1 = not frozen).
 	 * Stored as a start/end tick pair so repeated ice impacts cannot extend it.
 	 */
-	private int freezeStartTick = -1;
+	@Getter private int freezeStartTick = -1;
 
 	/** Game tick on which the freeze expires (-1 = not frozen). */
 	private int freezeEndTick = -1;

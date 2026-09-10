@@ -208,4 +208,23 @@ public class SelfFreezeTimerTest
 		assertEquals(0, s.getFreezeSpriteId());
 		assertFalse(s.isFrozen(0));
 	}
+
+	// ── freezeStartTick — movement-thaw same-tick guard ──────────────────────
+
+	@Test
+	public void getFreezeStartTick_returnsApplyTick()
+	{
+		SelfState s = new SelfState();
+		s.applyFreeze(42, 8, SpriteID.SPELL_BIND);
+		assertEquals(42, s.getFreezeStartTick());
+	}
+
+	@Test
+	public void getFreezeStartTick_clearedAfterClearFreeze()
+	{
+		SelfState s = new SelfState();
+		s.applyFreeze(10, 8, SpriteID.SPELL_BIND);
+		s.clearFreeze();
+		assertEquals(-1, s.getFreezeStartTick());
+	}
 }
