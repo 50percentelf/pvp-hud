@@ -1,6 +1,6 @@
 # PvP HUD
 
-A coherent PvP combat dashboard for RuneLite. Consolidates fight tracking, buff timers, resource bars, boost monitoring, and combat-protection indicators into a single configurable overlay.
+A configurable PvP combat HUD for RuneLite. Consolidates fight tracking, buff timers, resource bars, boost monitoring, and combat-protection indicators into a single configurable overlay.
 
 ---
 
@@ -13,6 +13,8 @@ A coherent PvP combat dashboard for RuneLite. Consolidates fight tracking, buff 
 | **Vertical Float** | Narrow stacked panel, freely draggable via Alt+drag. |
 | **Inventory Hug** | Attaches a left rail and top rail flush against the inventory panel without overlapping it. |
 
+Float layouts remember their last dragged position independently per layout and per gameframe (Fixed / Resizable Classic / Resizable Modern).
+
 ---
 
 ## Panels
@@ -21,10 +23,9 @@ A coherent PvP combat dashboard for RuneLite. Consolidates fight tracking, buff 
 
 | Element | Notes |
 |---|---|
-| Name | Orange when their Vengeance is active. |
+| Name | Opponent's display name. |
 | HP bar | Colour-coded green → yellow → red. Derived from health-bar ratio. |
-| Estimated HP | Back-calculated from total damage dealt and current ratio. |
-| Pending hit | Floating damage value from XP drop, shown before the HP bar updates. |
+| Estimated HP | Back-calculated from total damage dealt and current ratio; replaced by hiscores HP once loaded. |
 | Overhead prayer | Large icon + label for Protect Melee/Ranged/Magic and Smite. |
 | Hiscores stats | ATK / STR / DEF / RNG / MAG populated asynchronously from the hiscores API on combat start. |
 
@@ -55,7 +56,7 @@ Displayed in the YOU panel. Three display styles: **Text**, **Vertical Bar** (ic
 
 | Buff | Trigger |
 |---|---|
-| `ICE Xs` | Self-freeze timer. Starts only from the "You have been frozen!" game message. Repeated ice impacts while already frozen do not extend it. Covers Rush (8t), Burst (16t), Blitz (24t), Barrage (32t), Bind (5t), Snare (10t), Entangle (15t). |
+| `ICE Xs` | Self-freeze timer. Starts only from the "You have been frozen!" game message. Repeated ice impacts while already frozen do not extend it. Clears immediately when movement is detected. Covers Rush (8t), Burst (16t), Blitz (24t), Barrage (32t), Bind (8t), Snare (16t), Entangle (24t). |
 | `TB M:SS` | Tele Block countdown from the varbit. |
 | `DSC / DRG / DMG / BAS / BTM / MEN` | Divine potion timers (can be hidden). |
 | `STAM M:SS` | Stamina potion effect (self-tracked: 200 ticks / dose). |
@@ -88,7 +89,7 @@ ATK / STR / DEF / RNG / MAG skill icons with current boost level. Configurable a
 
 | Setting | Default | Notes |
 |---|---|---|
-| HUD Mode | Manual | Manual, PvP areas only, or auto-detect on combat. |
+| HUD Mode | Manual | Manual (always show when enabled), PvP areas only (Wilderness + PvP worlds), or Auto (show only while a fight session is active). |
 | HUD Layout | Chat Locked | See Layouts above. |
 | Buff Display Style | Vertical Bar | Text, Vertical Bar, Icon Tray. |
 | Background Opacity | 220 | 0–255. |
@@ -114,11 +115,9 @@ When the local player has Smite active, outgoing hits show `-Np` in the fight lo
 
 - **Vengeance tracking** — `VENG RDY` self-indicator and `VENG!` opponent label. State infrastructure exists but event handlers are gated; feature is not displayed.
 - **Special prayer-impact tracking** — Sara Strike, Clear Mind, and Sapphire bolt prayer-drain attribution. Enum values defined; no v0.1 code path sets them.
-- Bind/Snare/Entangle spot-anim IDs (181/180/179) need in-game verification — ice spell detection is confirmed correct.
 - Extended freeze duration from Sceptre of the Gods (+3 ticks) and Swampbark armour (+1 tick/piece). Hook exists; equipment check not yet wired.
-- LMS context detection for the IMM timer (currently always inactive outside explicit LMS detection).
+- LMS context detection for the IMM timer (currently always inactive).
 - CHANCE! hit detection (requires opponent defence stats and combat formula).
-- HUD Mode: PvP areas only and auto-detect on combat options are defined but not yet implemented; Manual mode is the only functional option in v0.1.
 
 ---
 
@@ -137,16 +136,6 @@ Renders the PvP HUD into a separate standalone window for OBS/window capture. Sh
 Live countdown to the opponent's next possible attack, derived from an observed combat animation. No attack-style prediction, no prayer recommendation, no target identification, no freeze tracking.
 
 **Not implemented. Awaiting RuneLite review.**
-
----
-
-## Pending tasks
-
-### Task — Wilderness level display toggle
-Add a **Show Wilderness Level** boolean to the General config section, default **off**. When off, the `W#` indicator is hidden in the action strip and the Inventory Hug left rail. The feature already exists; this just makes it optional since it has limited value for most users.
-
-### Task — Independent float positions
-`HORIZONTAL_FLOAT` and `VERTICAL_FLOAT` should remember their last dragged position independently. Switching layouts must restore the correct prior position for each layout. `CHAT_LOCKED` and `INVENTORY_HUG` are pinned (not draggable) and are unaffected.
 
 ---
 

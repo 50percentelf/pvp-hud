@@ -27,6 +27,7 @@ import net.runelite.api.Client;
 import net.runelite.api.EquipmentInventorySlot;
 import net.runelite.api.GameState;
 import net.runelite.api.GraphicID;
+import net.runelite.api.gameval.SpotanimID;
 import net.runelite.api.HeadIcon;
 import net.runelite.api.InventoryID;
 import net.runelite.api.Item;
@@ -117,6 +118,9 @@ public class PvpHudPlugin extends Plugin
 	/** Last known Menaphite Remedy varbit value; -1 = not yet observed. */
 	private int prevMenaphiteVarbit = -1;
 
+	/** Player position from the previous game tick; used to detect movement while frozen. */
+	private WorldPoint lastPlayerPos = null;
+
 	// SPOTANIM_VENGEANCE and ANIM_VENGEANCE_IDS removed — Vengeance tracking deferred post-v0.1.
 
 	private final HotkeyListener hudToggleListener = new HotkeyListener(() -> config.hudToggleKey())
@@ -161,6 +165,7 @@ public class PvpHudPlugin extends Plugin
 		prevMenaphiteVarbit   = -1;
 		lastFreezeGraphicId   = -1;
 		lastFreezeGraphicTick = -1;
+		lastPlayerPos         = null;
 		hudState.fullReset();
 		applyOverlayPosition();
 		overlay.invalidateInventoryHugAnchor();
@@ -323,6 +328,7 @@ public class PvpHudPlugin extends Plugin
 			pendingOpponentName  = null;
 			pendingOpponentActor = null;
 			prevMenaphiteVarbit  = -1;
+			lastPlayerPos        = null;
 			hudState.fullReset();
 			overlay.invalidateInventoryHugAnchor();
 		}
@@ -578,6 +584,17 @@ public class PvpHudPlugin extends Plugin
 		int tick = client.getTickCount();
 
 		SelfState self = hudState.getSelf();
+
+		// Movement while frozen proves the freeze has expired — clear immediately.
+		Player localPlayer = client.getLocalPlayer();
+		if (localPlayer != null)
+		{
+			WorldPoint pos = localPlayer.getWorldLocation();
+			if (self.isFrozen(tick) && lastPlayerPos != null && !pos.equals(lastPlayerPos))
+				self.clearFreeze();
+			lastPlayerPos = pos;
+		}
+
 		if (self.getHpRegenTicksRemaining() > 0)
 			self.setHpRegenTicksRemaining(self.getHpRegenTicksRemaining() - 1);
 		self.getBoostDecay().update(tick, client.isPrayerActive(Prayer.PRESERVE));
@@ -984,22 +1001,6 @@ public class PvpHudPlugin extends Plugin
 		return speed > 0 ? speed : 4;
 	}
 
-	// ── Standard-spellbook binding spell spot-anim IDs (on target) ─────────────
-	// TODO: verify these IDs in-game; numbers taken from community references.
-	private static final int SPOTANIM_BIND     = 181;
-	private static final int SPOTANIM_SNARE    = 180;
-	private static final int SPOTANIM_ENTANGLE = 179;
-
-	/**
-	 * Returns the base freeze duration for a spell graphic, matching RuneLite's
-	 * Timer plugin values.
-	 *
-	 * Ice spells (Ancient Magicks): Rush 8t, Burst 16t, Blitz 24t, Barrage 32t.
-	 * Standard binding spells: Bind 5t, Snare 10t, Entangle 15t.
-	 *
-	 * Equipment extensions (Sceptre of the Gods, Swampbark) are applied separately
-	 * in {@link #adjustedFreezeTicks}.
-	 */
 	/**
 	 * Decode raw {@code Varbits.TELEBLOCK} value to active TB ticks remaining.
 	 * Raw 0      = not active, no immunity.
@@ -1016,14 +1017,14 @@ public class PvpHudPlugin extends Plugin
 	{
 		switch (graphicId)
 		{
-			case GraphicID.ICE_RUSH:    return 8;
-			case GraphicID.ICE_BURST:   return 16;
-			case GraphicID.ICE_BLITZ:   return 24;
-			case GraphicID.ICE_BARRAGE: return 32;
-			case SPOTANIM_BIND:         return 5;
-			case SPOTANIM_SNARE:        return 10;
-			case SPOTANIM_ENTANGLE:     return 15;
-			default:                    return 0;
+			case GraphicID.ICE_RUSH:           return 8;
+			case GraphicID.ICE_BURST:          return 16;
+			case GraphicID.ICE_BLITZ:          return 24;
+			case GraphicID.ICE_BARRAGE:        return 32;
+			case SpotanimID.BIND_IMPACT:       return 8;
+			case SpotanimID.SNARE_IMPACT:      return 16;
+			case SpotanimID.ENTANGLE_IMPACT:   return 24;
+			default:                           return 0;
 		}
 	}
 
@@ -1031,16 +1032,14 @@ public class PvpHudPlugin extends Plugin
 	{
 		switch (graphicId)
 		{
-			case GraphicID.ICE_RUSH:    return SpriteID.SPELL_ICE_RUSH;
-			case GraphicID.ICE_BURST:   return SpriteID.SPELL_ICE_BURST;
-			case GraphicID.ICE_BLITZ:   return SpriteID.SPELL_ICE_BLITZ;
-			case GraphicID.ICE_BARRAGE: return SpriteID.SPELL_ICE_BARRAGE;
-			// Bind/Snare/Entangle reuse ICE_BARRAGE sprite as placeholder.
-			// TODO: use correct standard-spellbook spell sprite IDs once verified.
-			case SPOTANIM_BIND:
-			case SPOTANIM_SNARE:
-			case SPOTANIM_ENTANGLE:     return SpriteID.SPELL_ICE_BARRAGE;
-			default:                    return SpriteID.SPELL_ICE_BARRAGE;
+			case GraphicID.ICE_RUSH:           return SpriteID.SPELL_ICE_RUSH;
+			case GraphicID.ICE_BURST:          return SpriteID.SPELL_ICE_BURST;
+			case GraphicID.ICE_BLITZ:          return SpriteID.SPELL_ICE_BLITZ;
+			case GraphicID.ICE_BARRAGE:        return SpriteID.SPELL_ICE_BARRAGE;
+			case SpotanimID.BIND_IMPACT:       return SpriteID.SPELL_BIND;
+			case SpotanimID.SNARE_IMPACT:      return SpriteID.SPELL_SNARE;
+			case SpotanimID.ENTANGLE_IMPACT:   return SpriteID.SPELL_ENTANGLE;
+			default:                           return SpriteID.SPELL_ICE_BARRAGE;
 		}
 	}
 
@@ -1092,12 +1091,6 @@ public class PvpHudPlugin extends Plugin
 		self.applyFreeze(tick, duration, spriteId);
 	}
 
-	/**
-	 * Applies equipment-based freeze extensions on top of the base duration.
-	 *
-	 * TODO: implement — Sceptre of the Gods adds +3 ticks to all ice freezes;
-	 *       Swampbark armour adds +1 tick per piece worn to Bind/Snare/Entangle.
-	 */
 	private int adjustedFreezeTicks(int graphicId, int baseTicks)
 	{
 		return baseTicks;
@@ -1120,29 +1113,34 @@ public class PvpHudPlugin extends Plugin
 
 	// ── Poison / venom / immunity ─────────────────────────────────────────────────
 
+	/** Mirrors RuneLite's TimersAndBuffsPlugin constants. */
+	private static final int VENOM_VALUE_CUTOFF = -38;
+	private static final int POISON_TICK_LENGTH = 30;
+
 	/**
 	 * Applies the POISON VarPlayer value to PoisonState.
-	 * Negative values encode active protection; positive = active poison/venom.
-	 * Task 6 will replace the approximated tick derivation with the correct encoding.
+	 * Positive values = poisoned or venomed; negative values = immunity phase.
+	 * Values at or below VENOM_VALUE_CUTOFF (-38) indicate anti-venom protection;
+	 * values from -1 to VENOM_VALUE_CUTOFF+1 indicate anti-poison protection.
 	 */
 	private void applyPoisonVarp(int value)
 	{
 		PoisonState ps = hudState.getPoison();
 		ps.setVenomed(value >= 1_000_000);
 		ps.setPoisoned(value > 0 && value < 1_000_000);
-		if (value < 0 && value > -500_000)
-		{
-			ps.setAntiVenomActive(false);
-			ps.setAntiPoisonActive(true);
-			ps.setAntiPoisonTicks(Math.abs(value) * 30);
-			ps.setAntiVenomTicks(0);
-		}
-		else if (value <= -500_000)
+		if (value <= VENOM_VALUE_CUTOFF)
 		{
 			ps.setAntiVenomActive(true);
 			ps.setAntiPoisonActive(false);
-			ps.setAntiVenomTicks((Math.abs(value) - 500_000) * 30);
+			ps.setAntiVenomTicks(Math.abs(value) * POISON_TICK_LENGTH);
 			ps.setAntiPoisonTicks(0);
+		}
+		else if (value < 0)
+		{
+			ps.setAntiPoisonActive(true);
+			ps.setAntiVenomActive(false);
+			ps.setAntiPoisonTicks(Math.abs(value) * POISON_TICK_LENGTH);
+			ps.setAntiVenomTicks(0);
 		}
 		else
 		{

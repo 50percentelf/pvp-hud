@@ -3,12 +3,8 @@ package com.pvphud.state;
 /**
  * Poison, venom, and protection state for the local player.
  *
- * Consolidated from the previous split across SelfState (boolean flags) and
- * EffectState (anti-poison/anti-venom tick counters).
- *
- * antiPoisonTicks and antiVenomTicks are self-decremented each game tick as
- * approximate countdowns; they are re-synchronised whenever the POISON VarPlayer
- * fires. Task 6 replaces the approximation with the correct encoding.
+ * antiPoisonTicks and antiVenomTicks are self-decremented each game tick and
+ * re-synchronised whenever the POISON VarPlayer fires.
  */
 public class PoisonState
 {

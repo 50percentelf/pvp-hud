@@ -4,6 +4,7 @@ import com.pvphud.PvpHudPlugin;
 import com.pvphud.state.SelfState;
 import net.runelite.api.GraphicID;
 import net.runelite.api.SpriteID;
+import net.runelite.api.gameval.SpotanimID;
 import org.junit.Test;
 import static org.junit.Assert.*;
 
@@ -47,22 +48,19 @@ public class SelfFreezeTimerTest
 	@Test
 	public void bind_baseDuration()
 	{
-		// Standard Bind: 5 ticks. Graphic ID 181 — verify in-game if the timer is wrong.
-		assertEquals(5, PvpHudPlugin.freezeTicksForGraphic(181));
+		assertEquals(8, PvpHudPlugin.freezeTicksForGraphic(SpotanimID.BIND_IMPACT));
 	}
 
 	@Test
 	public void snare_baseDuration()
 	{
-		// Standard Snare: 10 ticks. Graphic ID 180 — verify in-game if the timer is wrong.
-		assertEquals(10, PvpHudPlugin.freezeTicksForGraphic(180));
+		assertEquals(16, PvpHudPlugin.freezeTicksForGraphic(SpotanimID.SNARE_IMPACT));
 	}
 
 	@Test
 	public void entangle_baseDuration()
 	{
-		// Standard Entangle: 15 ticks. Graphic ID 179 — verify in-game if the timer is wrong.
-		assertEquals(15, PvpHudPlugin.freezeTicksForGraphic(179));
+		assertEquals(24, PvpHudPlugin.freezeTicksForGraphic(SpotanimID.ENTANGLE_IMPACT));
 	}
 
 	@Test
