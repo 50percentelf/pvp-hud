@@ -1123,15 +1123,14 @@ public class PvpHudPlugin extends Plugin
 
 	// ── Poison / venom / immunity ─────────────────────────────────────────────────
 
-	/** Mirrors RuneLite's TimersAndBuffsPlugin threshold. */
-	private static final int VENOM_VALUE_CUTOFF = -38;
-
 	/**
-	 * Applies the POISON VarPlayer value to PoisonState using RuneLite's
-	 * phase-aware nextPoisonTick formula.
+	 * Applies the POISON VarPlayer value to PoisonState.
 	 * Positive = poisoned/venomed; negative = immunity.
 	 * Values strictly below VENOM_VALUE_CUTOFF (-38) are anti-venom;
-	 * values from -1 to VENOM_VALUE_CUTOFF (-38) inclusive are anti-poison.
+	 * values from -38 to -1 inclusive are anti-poison.
+	 *
+	 * nextPoisonTick synchronisation mirrors RuneLite's TimersAndBuffsPlugin:
+	 * cleared on value 0, otherwise only reset when the existing tick has expired.
 	 */
 	private void applyPoisonVarp(int value)
 	{
@@ -1139,19 +1138,21 @@ public class PvpHudPlugin extends Plugin
 		int         now = client.getTickCount();
 		ps.setVenomed(value >= 1_000_000);
 		ps.setPoisoned(value > 0 && value < 1_000_000);
-		if (value < VENOM_VALUE_CUTOFF)
+		if (value < PoisonState.VENOM_VALUE_CUTOFF)
 		{
 			ps.setAntiVenomActive(true);
 			ps.setAntiPoisonActive(false);
 			ps.setPoisonVarpValue(value);
-			ps.setNextPoisonTick(now + PoisonState.POISON_TICK_LENGTH);
+			if (ps.getNextPoisonTick() - now <= 0)
+				ps.setNextPoisonTick(now + PoisonState.POISON_TICK_LENGTH);
 		}
 		else if (value < 0)
 		{
 			ps.setAntiPoisonActive(true);
 			ps.setAntiVenomActive(false);
 			ps.setPoisonVarpValue(value);
-			ps.setNextPoisonTick(now + PoisonState.POISON_TICK_LENGTH);
+			if (ps.getNextPoisonTick() - now <= 0)
+				ps.setNextPoisonTick(now + PoisonState.POISON_TICK_LENGTH);
 		}
 		else
 		{

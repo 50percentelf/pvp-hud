@@ -56,7 +56,7 @@ Displayed in the YOU panel. Three display styles: **Text**, **Vertical Bar** (ic
 
 | Buff | Trigger |
 |---|---|
-| `ICE Xs` | Self-freeze timer. Starts only from the "You have been frozen!" game message. Repeated ice impacts while already frozen do not extend it. Clears immediately when movement is detected. Covers Rush (8t), Burst (16t), Blitz (24t), Barrage (32t), Bind (8t), Snare (16t), Entangle (24t). |
+| `ICE Xs` | Self-freeze timer. Ice spells (Rush/Burst/Blitz/Barrage) start from the "You have been frozen!" game message, using the same-tick impact graphic to select the duration; repeated ice hits while already frozen do not extend it. Bind/Snare/Entangle start directly from their local impact graphics. Clears immediately when movement is detected. Covers Rush (8t), Burst (16t), Blitz (24t), Barrage (32t), Bind (8t), Snare (16t), Entangle (24t). |
 | `TB M:SS` | Tele Block countdown from the varbit. |
 | `DSC / DRG / DMG / BAS / BTM / MEN` | Divine potion timers (can be hidden). |
 | `STAM M:SS` | Stamina potion effect (self-tracked: 200 ticks / dose). |
