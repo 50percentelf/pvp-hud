@@ -290,13 +290,13 @@ public class PvpHudPlugin extends Plugin
 	@Subscribe
 	public void onCanvasSizeChanged(CanvasSizeChanged event)
 	{
-		overlay.invalidateInventoryHugAnchor();
+		overlay.onGameframeChanged();
 	}
 
 	@Subscribe
 	public void onResizeableChanged(ResizeableChanged event)
 	{
-		overlay.invalidateInventoryHugAnchor();
+		overlay.onGameframeChanged();
 	}
 
 	@Subscribe
@@ -309,7 +309,7 @@ public class PvpHudPlugin extends Plugin
 			|| g == InterfaceID.TOPLEVEL_OSRS_STRETCH
 			|| g == InterfaceID.TOPLEVEL_PRE_EOC)
 		{
-			overlay.invalidateInventoryHugAnchor();
+			overlay.onGameframeChanged();
 		}
 	}
 

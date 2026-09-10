@@ -22,6 +22,7 @@ import java.awt.Point;
 import java.awt.Rectangle;
 import java.awt.image.BufferedImage;
 import java.util.ArrayList;
+import java.util.EnumMap;
 import java.util.List;
 import javax.inject.Inject;
 import net.runelite.api.Client;
@@ -140,8 +141,9 @@ public class PvpHudOverlay extends Overlay
 	private Rectangle        inventoryHugPaneBounds;
 
 	/** Last known drag position for each float layout — restored on layout switch. */
-	private Point horizFloatPos = null;
-	private Point vertFloatPos  = null;
+	private GameframeType lastGameframe = null;
+	private final EnumMap<GameframeType, Point> horizFloatPositions = new EnumMap<>(GameframeType.class);
+	private final EnumMap<GameframeType, Point> vertFloatPositions  = new EnumMap<>(GameframeType.class);
 
 	// Scratch list for building active-effect views each frame (cleared on reuse)
 	private final List<ActiveEffectView> effectScratch = new ArrayList<>(16);
@@ -213,28 +215,60 @@ public class PvpHudOverlay extends Overlay
 		HudLayoutState layout   = state.getLayout();
 		activeProfile = LayoutProfile.forLayout(currentLayout, config);
 
+		GameframeType currentGameframe = detectGameframe(client.isResized(), client.getTopLevelInterfaceId());
+
+		if (lastGameframe == null)
+		{
+			lastGameframe = currentGameframe;
+		}
+		else if (currentGameframe != lastGameframe)
+		{
+			// Save current float position under the outgoing gameframe key
+			Point outPos = getPreferredLocation();
+			if (outPos != null)
+			{
+				if (currentLayout == HudLayout.HORIZONTAL_FLOAT)
+					horizFloatPositions.put(lastGameframe, outPos);
+				else if (currentLayout == HudLayout.VERTICAL_FLOAT)
+					vertFloatPositions.put(lastGameframe, outPos);
+			}
+			// Restore position for incoming gameframe (null = cleared, first-time for this frame)
+			if (currentLayout == HudLayout.HORIZONTAL_FLOAT)
+				setPreferredLocation(horizFloatPositions.get(currentGameframe));
+			else if (currentLayout == HudLayout.VERTICAL_FLOAT)
+				setPreferredLocation(vertFloatPositions.get(currentGameframe));
+
+			lastGameframe = currentGameframe;
+			layout.markDirty();
+			inventoryHugAnchorDirty = true;
+		}
+
 		if (currentLayout != lastLayout)
 		{
 			lastLayout = currentLayout;
 			layout.markDirty();
 
-			// Restore the last known position for this float layout.
-			// Only call setPreferredLocation when we have a saved point — never pass null,
-			// which would wipe RuneLite's own stored position on first use.
-			if (currentLayout == HudLayout.HORIZONTAL_FLOAT && horizFloatPos != null)
-				setPreferredLocation(horizFloatPos);
-			else if (currentLayout == HudLayout.VERTICAL_FLOAT && vertFloatPos != null)
-				setPreferredLocation(vertFloatPos);
+			// Restore gameframe-specific position, or null to clear locked-layout anchor
+			// on first-time float entry (prevents inheriting chatbox/inventory position).
+			if (currentLayout == HudLayout.HORIZONTAL_FLOAT)
+				setPreferredLocation(horizFloatPositions.get(currentGameframe));
+			else if (currentLayout == HudLayout.VERTICAL_FLOAT)
+				setPreferredLocation(vertFloatPositions.get(currentGameframe));
 
 			invalidateInventoryHugAnchor();
 		}
 
-		// Keep each float layout's position snapshot fresh every frame.
-		// This replaces the on-switch save which could race against RuneLite's render pass.
+		// Per-frame position snapshot: keeps the map current while the user drags.
 		if (currentLayout == HudLayout.HORIZONTAL_FLOAT)
-			horizFloatPos = getPreferredLocation();
+		{
+			Point pos = getPreferredLocation();
+			if (pos != null) horizFloatPositions.put(currentGameframe, pos);
+		}
 		else if (currentLayout == HudLayout.VERTICAL_FLOAT)
-			vertFloatPos = getPreferredLocation();
+		{
+			Point pos = getPreferredLocation();
+			if (pos != null) vertFloatPositions.put(currentGameframe, pos);
+		}
 
 		Font normal = FontManager.getRunescapeFont();
 		Font small  = FontManager.getRunescapeSmallFont();
@@ -280,11 +314,16 @@ public class PvpHudOverlay extends Overlay
 	private Dimension renderHorizontalFloat(Graphics2D g, PvpHudState state,
 		HudLayoutState layout, Font normal, Font small)
 	{
-		Rectangle stored = layout.getChatboxBounds();
-		int w = stored != null ? stored.width  : 519;
-		int h = stored != null ? stored.height : 200;
+		Rectangle currentChat = getChatboxBounds();
+		int w = currentChat != null ? currentChat.width  : 519;
+		int h = currentChat != null ? currentChat.height : 200;
 		Rectangle bounds = new Rectangle(0, 0, w, h);
 
+		if (!bounds.equals(layout.getChatboxBounds()))
+		{
+			layout.setChatboxBounds(new Rectangle(bounds));
+			layout.markDirty();
+		}
 		if (layout.isDirty()) computeHorizLayout(layout, bounds, activeProfile.reserveBoostDockWhenHidden);
 
 		drawAll(g, state, layout, bounds, normal, small, false);
@@ -381,6 +420,20 @@ public class PvpHudOverlay extends Overlay
 	/** Mark the cached anchor stale; next render frame will recompute it. */
 	void invalidateInventoryHugAnchor()
 	{
+		inventoryHugAnchorDirty = true;
+	}
+
+	static GameframeType detectGameframe(boolean resized, int topLevelId)
+	{
+		if (!resized) return GameframeType.FIXED;
+		if (topLevelId == InterfaceID.TOPLEVEL_OSRS_STRETCH) return GameframeType.RESIZABLE_CLASSIC;
+		if (topLevelId == InterfaceID.TOPLEVEL_PRE_EOC)      return GameframeType.RESIZABLE_MODERN;
+		return GameframeType.RESIZABLE_CLASSIC;
+	}
+
+	void onGameframeChanged()
+	{
+		plugin.getHudState().getLayout().markDirty();
 		inventoryHugAnchorDirty = true;
 	}
 
