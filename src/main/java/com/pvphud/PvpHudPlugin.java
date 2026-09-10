@@ -70,8 +70,8 @@ import net.runelite.client.ui.overlay.OverlayManager;
 import net.runelite.client.ui.overlay.OverlayPosition;
 import net.runelite.client.util.HotkeyListener;
 import net.runelite.client.util.Text;
-import net.runelite.http.api.item.ItemEquipmentStats;
-import net.runelite.http.api.item.ItemStats;
+import net.runelite.client.game.ItemEquipmentStats;
+import net.runelite.client.game.ItemStats;
 
 @Slf4j
 @PluginDescriptor(
@@ -1003,7 +1003,7 @@ public class PvpHudPlugin extends Plugin
 		if (equipment == null) return 4;
 		Item weapon = equipment.getItem(EquipmentInventorySlot.WEAPON.getSlotIdx());
 		if (weapon == null) return 4;
-		ItemStats stats = itemManager.getItemStats(weapon.getId(), false);
+		ItemStats stats = itemManager.getItemStats(weapon.getId());
 		if (stats == null) return 4;
 		ItemEquipmentStats eq = stats.getEquipment();
 		if (eq == null) return 4;
