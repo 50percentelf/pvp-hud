@@ -11,9 +11,28 @@ import static org.junit.Assert.*;
  *   Path G: startUp() while already LOGGED_IN
  *
  * Both paths must leave the plugin in a coherent, renderable state.
- * Client-dependent methods (updateEnvironment, initSelfState) call live RuneLite
- * APIs and cannot be exercised here; this suite covers the state-layer contracts
- * they must satisfy, and validates shouldShowHud() across the resulting states.
+ *
+ * ASYNC HYDRATION CONTRACT
+ * startUp() performs only lifecycle/setup work that is safe to call on the Swing
+ * EDT (overlay registration, key listeners, icon loading).  It does NOT call any
+ * client-thread-only APIs directly.  Instead it ends with:
+ *
+ *     clientThread.invoke(this::rehydrateFromClient);
+ *
+ * rehydrateFromClient() is the single method that reads live client state
+ * (updateEnvironment, initSelfState).  It is called:
+ *   - by the clientThread.invoke() scheduled during startUp(), and
+ *   - directly by onGameStateChanged(LOGGED_IN), which already fires on the
+ *     client thread.
+ *
+ * Because rehydrateFromClient() guards with `client.getGameState() != LOGGED_IN`,
+ * the invoke() scheduled during a LOGIN_SCREEN startup is a safe no-op; hydration
+ * only fires for real when onGameStateChanged(LOGGED_IN) arrives.
+ *
+ * The tests below exercise the state-layer contracts that rehydrateFromClient()
+ * must satisfy, and validate computeShouldShow() across the resulting states.
+ * They cannot exercise the scheduling itself (no live Client), but they prove
+ * that the state machine is correct once hydration completes.
  *
  * Architectural rules verified:
  *   - The overlay is registered for the plugin lifetime; it returns null to hide.

@@ -156,14 +156,12 @@ public class PvpHudPlugin extends Plugin
 	protected void startUp() throws Exception
 	{
 		lookedUp.clear();
-		pendingOpponentName  = null;
-		pendingOpponentActor = null;
+		pendingOpponentName   = null;
+		pendingOpponentActor  = null;
+		prevMenaphiteVarbit   = -1;
+		lastFreezeGraphicId   = -1;
+		lastFreezeGraphicTick = -1;
 		hudState.fullReset();
-		if (client.getGameState() == GameState.LOGGED_IN)
-		{
-			updateEnvironment();
-		}
-		initSelfState();
 		applyOverlayPosition();
 		overlay.invalidateInventoryHugAnchor();
 		overlay.loadIcons();
@@ -171,6 +169,7 @@ public class PvpHudPlugin extends Plugin
 		keyManager.registerKeyListener(hudToggleListener);
 		keyManager.registerKeyListener(timer1Listener);
 		keyManager.registerKeyListener(timer2Listener);
+		clientThread.invoke(this::rehydrateFromClient);
 		log.info("PvP HUD started");
 	}
 
@@ -265,6 +264,15 @@ public class PvpHudPlugin extends Plugin
 		// At startup we can't know remaining time, so we don't initialize the timer.
 	}
 
+	private void rehydrateFromClient()
+	{
+		if (client.getGameState() != GameState.LOGGED_IN) return;
+		updateEnvironment();
+		initSelfState();
+		hudState.getLayout().markDirty();
+		overlay.invalidateInventoryHugAnchor();
+	}
+
 	// ── Config / game-state events ────────────────────────────────────────────
 
 	@Subscribe
@@ -320,10 +328,7 @@ public class PvpHudPlugin extends Plugin
 		}
 		else if (event.getGameState() == GameState.LOGGED_IN)
 		{
-			hudState.getLayout().markDirty();
-			overlay.invalidateInventoryHugAnchor();
-			updateEnvironment();
-			initSelfState();
+			rehydrateFromClient();
 		}
 	}
 
