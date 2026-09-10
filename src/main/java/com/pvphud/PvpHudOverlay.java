@@ -397,10 +397,13 @@ public class PvpHudOverlay extends Overlay
 
 	/**
 	 * Walks the widget parent chain from the ITEMS widget to find the side-panel
-	 * container that also holds the tab row. Returns the first ancestor that:
-	 *   (a) is not hidden and has a positive width,
-	 *   (b) has its top edge above items.y (it wraps the tab row), and
-	 *   (c) is not unreasonably tall (not a full-viewport root — stop if > 200 px taller).
+	 * container that also holds the tab row.
+	 *
+	 * In Fixed mode the immediate parent is the inventory pane (tab row + items).
+	 * In Resizable modes one or more hidden intermediate wrappers may sit between
+	 * ITEMS and the actual pane, so hidden widgets are skipped (not a break) and
+	 * only visible candidates are evaluated. The first visible ancestor that starts
+	 * above items.y (wraps the tab row) and is not unreasonably tall is returned.
 	 */
 	private Widget findInventoryPane(Widget invWidget)
 	{
@@ -408,7 +411,8 @@ public class PvpHudOverlay extends Overlay
 		int maxH = items.height + 200;
 		for (Widget w = invWidget.getParent(); w != null; w = w.getParent())
 		{
-			if (w.isHidden() || w.getWidth() <= 0) break;
+			if (w.getWidth() <= 0) break;
+			if (w.isHidden()) continue; // skip hidden intermediate wrappers (Resizable mode)
 			Rectangle wb = w.getBounds();
 			if (wb.height > maxH) break;
 			if (wb.y < items.y && wb.width >= items.width)
@@ -438,13 +442,25 @@ public class PvpHudOverlay extends Overlay
 	}
 
 	/**
+	 * Standard OSRS stone-tablet tab-row height in all three gamemodes.
+	 * Used as a fallback when widget traversal cannot locate the pane container.
+	 */
+	private static final int STONE_TABLET_TAB_H = 38;
+
+	/**
 	 * Recomputes the inventory-hug anchor by locating the side-panel container widget.
 	 * Called at most once per invalidation cycle; the result is cached until the next
 	 * invalidation (canvas resize, login, layout switch, gameframe reload).
 	 *
-	 * If the required widgets are not yet available (e.g. called before the client has
-	 * finished loading), the dirty flag stays true so the next render frame retries.
-	 * The previously cached geometry is preserved on failure so the HUD can still render.
+	 * In Fixed mode the widget traversal reliably returns the pane.
+	 * In Resizable Classic / Modern the traversal may fail (e.g. the first visible
+	 * ancestor above ITEMS is the full-height sidebar, exceeding the height guard).
+	 * In that case a synthetic pane is derived from the ITEMS widget bounds plus the
+	 * fixed 38-px tab-row height, which is consistent across all gamemodes.
+	 *
+	 * If the required widgets are not yet available, the dirty flag stays true so
+	 * the next render frame retries. Previously cached geometry is preserved on
+	 * failure so the HUD can still render between invalidation cycles.
 	 */
 	private void recalculateInventoryHugAnchor()
 	{
@@ -453,15 +469,23 @@ public class PvpHudOverlay extends Overlay
 			return; // widget not yet loaded; remain dirty and retry
 
 		Widget paneWidget = findInventoryPane(invWidget);
-		if (paneWidget == null
-			|| paneWidget.isHidden()
-			|| paneWidget.getWidth() <= 0
-			|| paneWidget.getHeight() <= 0)
-		{
-			return; // full menu pane not available yet; remain dirty and retry
-		}
 
-		Rectangle pane = paneWidget.getBounds();
+		Rectangle pane;
+		if (paneWidget != null && !paneWidget.isHidden()
+			&& paneWidget.getWidth() > 0 && paneWidget.getHeight() > 0)
+		{
+			pane = paneWidget.getBounds();
+		}
+		else
+		{
+			// Traversal failed (Resizable mode: hidden intermediate wrappers or
+			// oversized sidebar as the first visible ancestor above ITEMS).
+			// Synthesize pane bounds from the ITEMS widget using the fixed tab-row height.
+			Rectangle inv = invWidget.getBounds();
+			if (inv.width <= 0 || inv.height <= 0) return; // remain dirty and retry
+			pane = new Rectangle(inv.x, inv.y - STONE_TABLET_TAB_H,
+				inv.width, STONE_TABLET_TAB_H + inv.height);
+		}
 
 		boolean invActive = !invWidget.isHidden() && invWidget.getWidth() > 0;
 		Rectangle items   = invActive ? invWidget.getBounds() : pane;
