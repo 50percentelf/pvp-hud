@@ -247,7 +247,9 @@ public class PvpHudPlugin extends Plugin
 		// client.getEnergy() returns 0-10000; divide by 100 for 0-100%
 		self.setRunEnergy(client.getEnergy() / 100);
 		// Vengeance tracking deferred post-v0.1 — do not initialise vengActive.
-		self.setTeleBlockTicksRemaining(decodeTeleblockTicks(client.getVarbitValue(Varbits.TELEBLOCK)));
+		int tbRaw = client.getVarbitValue(Varbits.TELEBLOCK);
+		self.setTeleBlockTicksRemaining(decodeTeleblockTicks(tbRaw));
+		self.setTbImmunityActive(tbRaw > 0 && tbRaw <= 100);
 
 		EffectState fx   = hudState.getEffects();
 		int         tick = client.getTickCount();
@@ -256,6 +258,10 @@ public class PvpHudPlugin extends Plugin
 		fx.setDivineMagicTicks(client.getVarbitValue(Varbits.DIVINE_MAGIC));
 		fx.setDivineBastionTicks(client.getVarbitValue(Varbits.DIVINE_BASTION));
 		fx.setDivineBattlemageTicks(client.getVarbitValue(Varbits.DIVINE_BATTLEMAGE));
+		fx.setDivineSuperAttackTicks(client.getVarbitValue(Varbits.DIVINE_SUPER_ATTACK));
+		fx.setDivineSuperStrengthTicks(client.getVarbitValue(Varbits.DIVINE_SUPER_STRENGTH));
+		fx.setDivineSuperDefenceTicks(client.getVarbitValue(Varbits.DIVINE_SUPER_DEFENCE));
+		fx.setImbuedHeartCooldownTicks(client.getVarbitValue(Varbits.IMBUED_HEART_COOLDOWN));
 		int menVal = client.getVarbitValue(Varbits.MENAPHITE_REMEDY);
 		fx.getMenaphite().setTotalTicksRemaining(menVal * 25);
 		prevMenaphiteVarbit = menVal;
@@ -469,6 +475,7 @@ public class PvpHudPlugin extends Plugin
 		if (varbitId == Varbits.TELEBLOCK)
 		{
 			hudState.getSelf().setTeleBlockTicksRemaining(decodeTeleblockTicks(value));
+			hudState.getSelf().setTbImmunityActive(value > 0 && value <= 100);
 		}
 		else if (varbitId == Varbits.DIVINE_SUPER_COMBAT)
 		{
@@ -489,6 +496,22 @@ public class PvpHudPlugin extends Plugin
 		else if (varbitId == Varbits.DIVINE_BATTLEMAGE)
 		{
 			hudState.getEffects().setDivineBattlemageTicks(value);
+		}
+		else if (varbitId == Varbits.DIVINE_SUPER_ATTACK)
+		{
+			hudState.getEffects().setDivineSuperAttackTicks(value);
+		}
+		else if (varbitId == Varbits.DIVINE_SUPER_STRENGTH)
+		{
+			hudState.getEffects().setDivineSuperStrengthTicks(value);
+		}
+		else if (varbitId == Varbits.DIVINE_SUPER_DEFENCE)
+		{
+			hudState.getEffects().setDivineSuperDefenceTicks(value);
+		}
+		else if (varbitId == Varbits.IMBUED_HEART_COOLDOWN)
+		{
+			hudState.getEffects().setImbuedHeartCooldownTicks(value);
 		}
 		else if (varbitId == Varbits.MENAPHITE_REMEDY)
 		{
@@ -604,7 +627,7 @@ public class PvpHudPlugin extends Plugin
 
 		SelfState self = hudState.getSelf();
 
-		// Movement while frozen proves the freeze has expired — clear immediately.
+		// Movement while frozen proves the freeze has expired.
 		// Guard against the tick the freeze was applied (position may be stale).
 		Player localPlayer = client.getLocalPlayer();
 		if (localPlayer != null)
@@ -612,9 +635,13 @@ public class PvpHudPlugin extends Plugin
 			WorldPoint pos = localPlayer.getWorldLocation();
 			if (self.isFrozen(tick) && lastPlayerPos != null && !pos.equals(lastPlayerPos)
 				&& tick != self.getFreezeStartTick())
-				self.clearFreeze();
+				self.thaw(tick);
 			lastPlayerPos = pos;
 		}
+
+		// Natural freeze expiry: timer ran out but thaw hasn't been called yet.
+		if (!self.isFrozen(tick) && self.getFreezeStartTick() >= 0)
+			self.thaw(tick);
 
 		if (self.getHpRegenTicksRemaining() > 0)
 			self.setHpRegenTicksRemaining(self.getHpRegenTicksRemaining() - 1);
@@ -1125,10 +1152,17 @@ public class PvpHudPlugin extends Plugin
 	{
 		if (event.getType() != ChatMessageType.SPAM) return;
 		String msg = Text.removeTags(event.getMessage());
-		if (!msg.equals("You have been frozen!") && !msg.equals("You are frozen.")) return;
 
 		int       tick  = client.getTickCount();
 		SelfState self  = hudState.getSelf();
+
+		if (msg.contains("protection prayers have been disabled"))
+		{
+			self.applyPrayerLock(tick);
+			return;
+		}
+
+		if (!msg.equals("You have been frozen!") && !msg.equals("You are frozen.")) return;
 
 		// Try live spot anims first (most reliable when graphic fires before message)
 		int graphicId = -1;

@@ -101,6 +101,10 @@ public class PvpHudOverlay extends Overlay
 	private BufferedImage superAntifireIcon;  // super antifire + extended super antifire
 	private BufferedImage antiPoisonItemIcon; // anti-poison potion (immunity display)
 	private BufferedImage antiVenomItemIcon;  // anti-venom potion (immunity display)
+	private BufferedImage dsaIcon;            // divine super attack
+	private BufferedImage dssIcon;            // divine super strength
+	private BufferedImage dsdIcon;            // divine super defence
+	private BufferedImage imbuedHeartIcon;    // imbued heart
 
 	// ── Cached skill icons for inventory-hug bars (HP / Prayer / Run) ──────
 	private volatile BufferedImage hpSkillIcon;
@@ -178,6 +182,10 @@ public class PvpHudOverlay extends Overlay
 		superAntifireIcon  = itemManager.getImage(ItemID._4DOSE3ANTIDRAGON);
 		antiPoisonItemIcon = itemManager.getImage(ItemID._4DOSEANTIPOISON);
 		antiVenomItemIcon  = itemManager.getImage(ItemID.ANTIVENOM_4);
+		dsaIcon            = itemManager.getImage(ItemID._4DOSEDIVINEATTACK);
+		dssIcon            = itemManager.getImage(ItemID._4DOSEDIVINESTRENGTH);
+		dsdIcon            = itemManager.getImage(ItemID._4DOSEDIVINEDEFENCE);
+		imbuedHeartIcon    = itemManager.getImage(ItemID.IMBUED_HEART);
 
 		// SpriteID.SPELL_VENGEANCE not loaded — Vengeance display deferred post-v0.1.
 		spriteManager.getSpriteAsync(SpriteID.SPELL_TELE_BLOCK,              0, img -> tbIcon         = img);
@@ -1547,6 +1555,22 @@ public class PvpHudOverlay extends Overlay
 		else if (poison.isPoisoned())
 			effectScratch.add(new ActiveEffectView(debugIcon(poisonIcon), "",  "POISON", TOXIC_GREEN, EffectGroup.CRITICAL));
 
+		if (self.isTbImmunityActive())
+			effectScratch.add(new ActiveEffectView(debugIcon(tbIcon), "IMM", "TB-IMM", ORANGE, EffectGroup.CRITICAL));
+
+		int refreezeImm = self.getRefreezeImmunityTicks(currentTick);
+		if (refreezeImm > 0 && (debugRendering || config.showFreezeTimer()))
+		{
+			String t = ticksToSecs(refreezeImm);
+			effectScratch.add(new ActiveEffectView(
+				debugIcon(iceBarrageIcon), t, "REFRZ " + t, LIGHT_BLUE, EffectGroup.CRITICAL));
+		}
+
+		int prayerLockTicks = self.getPrayerLockTicksRemaining(currentTick);
+		if (prayerLockTicks > 0)
+			effectScratch.add(new ActiveEffectView(null, String.valueOf(prayerLockTicks),
+				"PLOCK " + prayerLockTicks, RED, EffectGroup.CRITICAL));
+
 		// ── PROTECTION ────────────────────────────────────────────────────────
 		if (poison.isAntiVenomActive())
 			addTimedEffect("ANTI-V", poison.getImmunityTicksRemaining(currentTick), antiVenomItemIcon, EffectGroup.PROTECTION);
@@ -1560,9 +1584,14 @@ public class PvpHudOverlay extends Overlay
 			addTimedEffect("DMG", fx.getDivineMagicTicks(),       dmgIcon, EffectGroup.PROTECTION);
 			addTimedEffect("BAS", fx.getDivineBastionTicks(),     basIcon, EffectGroup.PROTECTION);
 			addTimedEffect("BTM", fx.getDivineBattlemageTicks(),  btmIcon, EffectGroup.PROTECTION);
+			addTimedEffect("DSA", fx.getDivineSuperAttackTicks(),   dsaIcon, EffectGroup.PROTECTION);
+			addTimedEffect("DSS", fx.getDivineSuperStrengthTicks(), dssIcon, EffectGroup.PROTECTION);
+			addTimedEffect("DSD", fx.getDivineSuperDefenceTicks(),  dsdIcon, EffectGroup.PROTECTION);
 			if (fx.getMenaphite().isActive())
 				addTimedEffect("MEN", fx.getMenaphite().getTotalTicksRemaining(), menIcon, EffectGroup.PROTECTION);
 		}
+
+		addTimedEffect("IH-CD", fx.getImbuedHeartCooldownTicks(), imbuedHeartIcon, EffectGroup.PROTECTION);
 
 		if (fx.getStaminaEffectTicks() > 0)
 			addTimedEffect("STAM", fx.getStaminaEffectTicks(), staminaIcon, EffectGroup.PROTECTION);

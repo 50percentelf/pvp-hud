@@ -21,8 +21,23 @@ public class SelfState
 	/** SpriteID of the spell that froze the player (0 = unknown / not frozen). */
 	@Getter @Setter private int freezeSpriteId;
 
+	/**
+	 * Game tick when post-thaw refreeze immunity expires (-1 = not immune).
+	 * Set to (thawTick + freezeDuration/2) by {@link #thaw(int)}.
+	 */
+	private int refreezeImmunityEndTick = -1;
+
 	/** Ticks remaining on the local player's Tele Block (0 = not TB'd). */
 	@Getter @Setter private int teleBlockTicksRemaining;
+
+	/** True when in the post-TB reapplication immunity window (raw varbit 1–100). */
+	@Getter @Setter private boolean tbImmunityActive;
+
+	/**
+	 * Game tick when Dragon scimitar Sever's protection-prayer lock expires (-1 = not locked).
+	 * Duration: 8 ticks.
+	 */
+	private int prayerLockEndTick = -1;
 
 	@Getter @Setter private int currentHp;
 	@Getter @Setter private int maxHp;
@@ -69,18 +84,70 @@ public class SelfState
 		freezeSpriteId  = spriteId;
 	}
 
-	/** Clears the freeze unconditionally (logout, world-hop, explicit cancellation). */
-	public void clearFreeze()
+	/**
+	 * Thaws the freeze naturally (timer expiry) or by movement detection.
+	 * Grants refreeze immunity = half the original freeze duration, starting now.
+	 */
+	public void thaw(int currentTick)
 	{
+		if (freezeEndTick > 0 && freezeStartTick >= 0)
+		{
+			int duration = freezeEndTick - freezeStartTick;
+			if (duration > 0)
+				refreezeImmunityEndTick = currentTick + duration / 2;
+		}
 		freezeStartTick = -1;
 		freezeEndTick   = -1;
 		freezeSpriteId  = 0;
+	}
+
+	/** Clears the freeze without granting immunity (logout, death, world-hop). */
+	public void clearFreeze()
+	{
+		freezeStartTick         = -1;
+		freezeEndTick           = -1;
+		freezeSpriteId          = 0;
+		refreezeImmunityEndTick = -1;
+	}
+
+	// ── Refreeze immunity ─────────────────────────────────────────────────────
+
+	public boolean isRefreezeImmune(int currentTick)
+	{
+		return refreezeImmunityEndTick > currentTick;
+	}
+
+	public int getRefreezeImmunityTicks(int currentTick)
+	{
+		if (refreezeImmunityEndTick < 0) return 0;
+		return Math.max(0, refreezeImmunityEndTick - currentTick);
+	}
+
+	// ── Prayer lock (Dragon scimitar Sever) ───────────────────────────────────
+
+	/** Applies an 8-tick protection-prayer lock starting at {@code currentTick}. */
+	public void applyPrayerLock(int currentTick)
+	{
+		prayerLockEndTick = currentTick + 8;
+	}
+
+	public boolean isPrayerLocked(int currentTick)
+	{
+		return prayerLockEndTick > currentTick;
+	}
+
+	public int getPrayerLockTicksRemaining(int currentTick)
+	{
+		if (prayerLockEndTick < 0) return 0;
+		return Math.max(0, prayerLockEndTick - currentTick);
 	}
 
 	public void reset()
 	{
 		vengActive = false;
 		clearFreeze();
+		tbImmunityActive        = false;
+		prayerLockEndTick       = -1;
 		teleBlockTicksRemaining = 0;
 		currentHp               = 0;
 		maxHp                   = 0;

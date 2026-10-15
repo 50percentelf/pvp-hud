@@ -248,6 +248,8 @@ class DebugStateBuilder
 		self.setVengActive(true);
 		self.applyFreeze(currentTick - 1, 25, SpriteID.SPELL_ICE_BARRAGE);
 		self.setTeleBlockTicksRemaining(300);
+		self.setTbImmunityActive(false);
+		self.applyPrayerLock(currentTick - 2); // 6 ticks remaining
 
 		EffectState fx = state.getEffects();
 		fx.setSpecEnergy(75);
@@ -256,6 +258,10 @@ class DebugStateBuilder
 		fx.setDivineMagicTicks(360);
 		fx.setDivineBastionTicks(480);
 		fx.setDivineBattlemageTicks(310);
+		fx.setDivineSuperAttackTicks(280);
+		fx.setDivineSuperStrengthTicks(240);
+		fx.setDivineSuperDefenceTicks(320);
+		fx.setImbuedHeartCooldownTicks(400);
 		fx.getMenaphite().setTotalTicksRemaining(300);
 		fx.getMenaphite().setNextProcTicks(20);
 		fx.setStaminaEffectTicks(200);

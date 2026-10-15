@@ -30,6 +30,12 @@ public class EffectState
 	@Getter @Setter private int divineMagicTicks;
 	@Getter @Setter private int divineBastionTicks;
 	@Getter @Setter private int divineBattlemageTicks;
+	@Getter @Setter private int divineSuperAttackTicks;
+	@Getter @Setter private int divineSuperStrengthTicks;
+	@Getter @Setter private int divineSuperDefenceTicks;
+
+	/** Imbued Heart recharge cooldown — varbit counts down from ~800 ticks (8 min). */
+	@Getter @Setter private int imbuedHeartCooldownTicks;
 
 	// ── Menaphite Remedy — periodic effect ───────────────────────────────────
 	// totalTicksRemaining is updated from the server varbit each tick.
@@ -92,11 +98,15 @@ public class EffectState
 		lightbearer             = false;
 		weaponSpeedTicks        = 0;
 		staminaEffectTicks      = 0;
-		divineSupercombatTicks  = 0;
-		divineRangingTicks      = 0;
-		divineMagicTicks        = 0;
-		divineBastionTicks      = 0;
-		divineBattlemageTicks   = 0;
+		divineSupercombatTicks   = 0;
+		divineRangingTicks       = 0;
+		divineMagicTicks         = 0;
+		divineBastionTicks       = 0;
+		divineBattlemageTicks    = 0;
+		divineSuperAttackTicks   = 0;
+		divineSuperStrengthTicks = 0;
+		divineSuperDefenceTicks  = 0;
+		imbuedHeartCooldownTicks = 0;
 		menaphite.reset();
 		nextAntifireTick         = -1;
 		antifireVarbitValue      = 0;
