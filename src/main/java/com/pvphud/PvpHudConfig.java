@@ -1,5 +1,9 @@
 package com.pvphud;
 
+import com.pvphud.debug.DebugAntifireType;
+import com.pvphud.debug.DebugFreezeType;
+import com.pvphud.debug.DebugOpponentPrayer;
+import com.pvphud.debug.DebugPoisonType;
 import java.awt.Color;
 import net.runelite.client.config.Config;
 import net.runelite.client.config.ConfigGroup;
@@ -18,7 +22,8 @@ public interface PvpHudConfig extends Config
 	@ConfigSection(
 		name = "General",
 		description = "Plugin-wide behaviour settings shared across all layouts",
-		position = 0
+		position = 0,
+		closedByDefault = true
 	)
 	String generalSection = "general";
 
@@ -191,6 +196,18 @@ public interface PvpHudConfig extends Config
 		return null;
 	}
 
+	@ConfigItem(
+		keyName = "hudBackgroundColor",
+		name = "HUD Background Colour",
+		description = "Base fill colour for all HUD panel backgrounds. Opacity is controlled per-layout.",
+		section = generalSection,
+		position = 14
+	)
+	default Color hudBackgroundColor()
+	{
+		return new Color(20, 20, 20);
+	}
+
 	// ── Chat Locked section ──────────────────────────────────────────────────
 	// Key names intentionally match the previous (unsectioned) release so that
 	// existing user settings survive the refactor without a migration step.
@@ -198,7 +215,8 @@ public interface PvpHudConfig extends Config
 	@ConfigSection(
 		name = "Chat Locked",
 		description = "Presentation settings for the Chat Locked layout",
-		position = 10
+		position = 10,
+		closedByDefault = true
 	)
 	String chatLockedSection = "chatLocked";
 
@@ -304,7 +322,8 @@ public interface PvpHudConfig extends Config
 	@ConfigSection(
 		name = "Horizontal Float",
 		description = "Presentation settings for the Horizontal Float layout",
-		position = 20
+		position = 20,
+		closedByDefault = true
 	)
 	String horizFloatSection = "horizFloat";
 
@@ -422,7 +441,8 @@ public interface PvpHudConfig extends Config
 	@ConfigSection(
 		name = "Vertical Float",
 		description = "Presentation settings for the Vertical Float layout",
-		position = 30
+		position = 30,
+		closedByDefault = true
 	)
 	String vertFloatSection = "vertFloat";
 
@@ -540,7 +560,8 @@ public interface PvpHudConfig extends Config
 	@ConfigSection(
 		name = "Inventory Hug",
 		description = "Presentation settings for the Inventory Hug layout",
-		position = 40
+		position = 40,
+		closedByDefault = true
 	)
 	String invyHugSection = "invyHug";
 
@@ -692,6 +713,549 @@ public interface PvpHudConfig extends Config
 		position = 1
 	)
 	default boolean showCombatLocks()
+	{
+		return false;
+	}
+
+	// ── Debug section ─────────────────────────────────────────────────────────
+	// Enables a separate overlay showing all 4 layouts simultaneously with
+	// injected state so rendering bugs can be identified without going in-game.
+	// All keys are prefixed "dbg_" to avoid clashing with real config keys.
+
+	@ConfigSection(
+		name = "Debug — Layout Preview",
+		description = "Renders all 4 HUD layouts simultaneously with injected state. "
+			+ "Use this to identify rendering bugs without being in combat.",
+		position = 100,
+		closedByDefault = true
+	)
+	String debugSection = "debug";
+
+	@ConfigItem(
+		keyName = "dbg_enabled",
+		name = "Enable Debug Preview",
+		description = "Show the debug overlay with all 4 layouts rendered at once.",
+		section = debugSection,
+		position = 0
+	)
+	default boolean debugMode()
+	{
+		return false;
+	}
+
+	@ConfigItem(
+		keyName = "dbg_buffStyle",
+		name = "Buff Display Style (all panels)",
+		description = "Which buff style to use across all debug panels.",
+		section = debugSection,
+		position = 1
+	)
+	default BuffStyle debugBuffStyle()
+	{
+		return BuffStyle.VERTICAL_BAR;
+	}
+
+	@ConfigItem(
+		keyName = "dbg_presetAll",
+		name = "Preset: All Effects",
+		description = "When checked, forces all effects on at representative values. Overrides all other debug sliders.",
+		section = debugSection,
+		position = 2
+	)
+	default boolean debugPresetAllEffects()
+	{
+		return false;
+	}
+
+	@ConfigItem(
+		keyName = "dbg_injectHits",
+		name = "Inject Fake Combat Events",
+		description = "Populate the fight event log with sample hits (outgoing, incoming, smite drain, CHANCE!).",
+		section = debugSection,
+		position = 3
+	)
+	default boolean debugInjectHits()
+	{
+		return false;
+	}
+
+	// ── Self: HP / Prayer / Run ───────────────────────────────────────────────
+
+	@Range(min = 1, max = 99)
+	@ConfigItem(
+		keyName = "dbg_hp",
+		name = "Current HP",
+		description = "Injected current HP for the YOU panel.",
+		section = debugSection,
+		position = 10
+	)
+	default int debugHp()
+	{
+		return 99;
+	}
+
+	@Range(min = 1, max = 99)
+	@ConfigItem(
+		keyName = "dbg_maxHp",
+		name = "Max HP",
+		description = "Injected max HP for the YOU panel.",
+		section = debugSection,
+		position = 11
+	)
+	default int debugMaxHp()
+	{
+		return 99;
+	}
+
+	@Range(min = 0, max = 99)
+	@ConfigItem(
+		keyName = "dbg_prayer",
+		name = "Current Prayer",
+		description = "Injected current prayer points for the YOU panel.",
+		section = debugSection,
+		position = 12
+	)
+	default int debugPrayer()
+	{
+		return 99;
+	}
+
+	@Range(min = 1, max = 99)
+	@ConfigItem(
+		keyName = "dbg_maxPrayer",
+		name = "Max Prayer",
+		description = "Injected max prayer points for the YOU panel.",
+		section = debugSection,
+		position = 13
+	)
+	default int debugMaxPrayer()
+	{
+		return 99;
+	}
+
+	@Range(min = 0, max = 100)
+	@ConfigItem(
+		keyName = "dbg_run",
+		name = "Run Energy",
+		description = "Injected run energy 0–100 for the YOU panel.",
+		section = debugSection,
+		position = 14
+	)
+	default int debugRunEnergy()
+	{
+		return 100;
+	}
+
+	@Range(min = 0, max = 100)
+	@ConfigItem(
+		keyName = "dbg_spec",
+		name = "Spec Energy",
+		description = "Injected special attack energy 0–100.",
+		section = debugSection,
+		position = 15
+	)
+	default int debugSpecEnergy()
+	{
+		return 100;
+	}
+
+	// ── Self: Status effects ──────────────────────────────────────────────────
+
+	@ConfigItem(
+		keyName = "dbg_freezeType",
+		name = "Freeze Type",
+		description = "Inject a freeze of the selected spell type.",
+		section = debugSection,
+		position = 20
+	)
+	default DebugFreezeType debugFreezeType()
+	{
+		return DebugFreezeType.NONE;
+	}
+
+	@Range(min = 0, max = 32)
+	@ConfigItem(
+		keyName = "dbg_freezeTicks",
+		name = "Freeze Ticks Remaining",
+		description = "How many ticks remain on the injected freeze.",
+		section = debugSection,
+		position = 21
+	)
+	default int debugFreezeTicks()
+	{
+		return 24;
+	}
+
+	@ConfigItem(
+		keyName = "dbg_teleblock",
+		name = "Inject Teleblock",
+		description = "Show a 3-minute teleblock timer in the buff strip.",
+		section = debugSection,
+		position = 22
+	)
+	default boolean debugTeleblock()
+	{
+		return false;
+	}
+
+	@ConfigItem(
+		keyName = "dbg_vengeance",
+		name = "Vengeance Ready",
+		description = "Show the vengeance-ready indicator.",
+		section = debugSection,
+		position = 23
+	)
+	default boolean debugVengeance()
+	{
+		return false;
+	}
+
+	@ConfigItem(
+		keyName = "dbg_poison",
+		name = "Poison / Immunity State",
+		description = "Inject the selected poison or immunity state.",
+		section = debugSection,
+		position = 24
+	)
+	default DebugPoisonType debugPoisonState()
+	{
+		return DebugPoisonType.NONE;
+	}
+
+	// ── Potions ───────────────────────────────────────────────────────────────
+
+	@ConfigItem(
+		keyName = "dbg_dsc",
+		name = "Divine Super Combat",
+		description = "Show a Divine Super Combat timer.",
+		section = debugSection,
+		position = 30
+	)
+	default boolean debugDivineSupercombat()
+	{
+		return false;
+	}
+
+	@ConfigItem(
+		keyName = "dbg_drg",
+		name = "Divine Ranging",
+		description = "Show a Divine Ranging timer.",
+		section = debugSection,
+		position = 31
+	)
+	default boolean debugDivineRanging()
+	{
+		return false;
+	}
+
+	@ConfigItem(
+		keyName = "dbg_dmg",
+		name = "Divine Magic",
+		description = "Show a Divine Magic timer.",
+		section = debugSection,
+		position = 32
+	)
+	default boolean debugDivineMagic()
+	{
+		return false;
+	}
+
+	@ConfigItem(
+		keyName = "dbg_bas",
+		name = "Divine Bastion",
+		description = "Show a Divine Bastion timer.",
+		section = debugSection,
+		position = 33
+	)
+	default boolean debugDivineBastion()
+	{
+		return false;
+	}
+
+	@ConfigItem(
+		keyName = "dbg_btm",
+		name = "Divine Battlemage",
+		description = "Show a Divine Battlemage timer.",
+		section = debugSection,
+		position = 34
+	)
+	default boolean debugDivineBattlemage()
+	{
+		return false;
+	}
+
+	@ConfigItem(
+		keyName = "dbg_men",
+		name = "Menaphite Remedy",
+		description = "Show a Menaphite Remedy timer.",
+		section = debugSection,
+		position = 35
+	)
+	default boolean debugMenaphiteRemedy()
+	{
+		return false;
+	}
+
+	@ConfigItem(
+		keyName = "dbg_stamina",
+		name = "Stamina Potion",
+		description = "Show a Stamina Potion timer.",
+		section = debugSection,
+		position = 36
+	)
+	default boolean debugStamina()
+	{
+		return false;
+	}
+
+	@ConfigItem(
+		keyName = "dbg_antifire",
+		name = "Antifire",
+		description = "Inject the selected antifire protection type.",
+		section = debugSection,
+		position = 37
+	)
+	default DebugAntifireType debugAntifire()
+	{
+		return DebugAntifireType.NONE;
+	}
+
+	// ── Stat boosts ───────────────────────────────────────────────────────────
+
+	@Range(min = -15, max = 20)
+	@ConfigItem(
+		keyName = "dbg_atkBoost",
+		name = "Attack Boost Delta",
+		description = "ATK boost relative to base 99. Negative = debuff.",
+		section = debugSection,
+		position = 40
+	)
+	default int debugBoostAtk()
+	{
+		return 0;
+	}
+
+	@Range(min = -15, max = 20)
+	@ConfigItem(
+		keyName = "dbg_strBoost",
+		name = "Strength Boost Delta",
+		description = "STR boost relative to base 99. Negative = debuff.",
+		section = debugSection,
+		position = 41
+	)
+	default int debugBoostStr()
+	{
+		return 0;
+	}
+
+	@Range(min = -15, max = 20)
+	@ConfigItem(
+		keyName = "dbg_defBoost",
+		name = "Defence Boost Delta",
+		description = "DEF boost relative to base 99. Negative = debuff.",
+		section = debugSection,
+		position = 42
+	)
+	default int debugBoostDef()
+	{
+		return 0;
+	}
+
+	@Range(min = -15, max = 20)
+	@ConfigItem(
+		keyName = "dbg_rngBoost",
+		name = "Ranged Boost Delta",
+		description = "RNG boost relative to base 99. Negative = debuff.",
+		section = debugSection,
+		position = 43
+	)
+	default int debugBoostRng()
+	{
+		return 0;
+	}
+
+	@Range(min = -15, max = 20)
+	@ConfigItem(
+		keyName = "dbg_magBoost",
+		name = "Magic Boost Delta",
+		description = "MAG boost relative to base 99. Negative = debuff.",
+		section = debugSection,
+		position = 44
+	)
+	default int debugBoostMag()
+	{
+		return 0;
+	}
+
+	// ── Action clocks ─────────────────────────────────────────────────────────
+
+	@Range(min = 0, max = 10)
+	@ConfigItem(
+		keyName = "dbg_atkDelay",
+		name = "Attack Delay (ticks)",
+		description = "Injected attack delay ticks for the action strip dot counter.",
+		section = debugSection,
+		position = 50
+	)
+	default int debugAttackDelay()
+	{
+		return 0;
+	}
+
+	@Range(min = 0, max = 3)
+	@ConfigItem(
+		keyName = "dbg_eatCooldown",
+		name = "Eat Cooldown (ticks)",
+		description = "Injected eat cooldown ticks.",
+		section = debugSection,
+		position = 51
+	)
+	default int debugEatCooldown()
+	{
+		return 0;
+	}
+
+	@Range(min = 0, max = 3)
+	@ConfigItem(
+		keyName = "dbg_potCooldown",
+		name = "Pot Cooldown (ticks)",
+		description = "Injected potion cooldown ticks.",
+		section = debugSection,
+		position = 52
+	)
+	default int debugPotCooldown()
+	{
+		return 0;
+	}
+
+	// ── Opponent ──────────────────────────────────────────────────────────────
+
+	@ConfigItem(
+		keyName = "dbg_oppName",
+		name = "Opponent Name",
+		description = "Name shown in the opponent panel.",
+		section = debugSection,
+		position = 60
+	)
+	default String debugOpponentName()
+	{
+		return "Opponent";
+	}
+
+	@Range(min = 0, max = 99)
+	@ConfigItem(
+		keyName = "dbg_oppHp",
+		name = "Opponent Current HP",
+		description = "Injected current HP for the opponent panel.",
+		section = debugSection,
+		position = 61
+	)
+	default int debugOpponentHp()
+	{
+		return 75;
+	}
+
+	@Range(min = 1, max = 99)
+	@ConfigItem(
+		keyName = "dbg_oppMaxHp",
+		name = "Opponent Max HP",
+		description = "Injected max HP for the opponent panel.",
+		section = debugSection,
+		position = 62
+	)
+	default int debugOpponentMaxHp()
+	{
+		return 99;
+	}
+
+	@ConfigItem(
+		keyName = "dbg_oppPrayer",
+		name = "Opponent Overhead Prayer",
+		description = "Overhead prayer shown for the opponent.",
+		section = debugSection,
+		position = 63
+	)
+	default DebugOpponentPrayer debugOpponentPrayer()
+	{
+		return DebugOpponentPrayer.NONE;
+	}
+
+	@ConfigItem(
+		keyName = "dbg_oppVeng",
+		name = "Opponent Vengeance Ready",
+		description = "Show the opponent vengeance-ready indicator.",
+		section = debugSection,
+		position = 64
+	)
+	default boolean debugOpponentVengeance()
+	{
+		return false;
+	}
+
+	// ── Protection timers ─────────────────────────────────────────────────────
+
+	@Range(min = 0, max = 20)
+	@ConfigItem(
+		keyName = "dbg_pjTimer",
+		name = "PJ Safe Ticks",
+		description = "Injected PJ-safe ticks remaining (requires Show Combat Locks to be enabled).",
+		section = debugSection,
+		position = 70
+	)
+	default int debugPjTimer()
+	{
+		return 0;
+	}
+
+	@Range(min = 0, max = 16)
+	@ConfigItem(
+		keyName = "dbg_combatLock",
+		name = "Combat Logout Lock Ticks",
+		description = "Injected combat logout lock ticks (requires Show Combat Locks).",
+		section = debugSection,
+		position = 71
+	)
+	default int debugCombatLogoutLock()
+	{
+		return 0;
+	}
+
+	@Range(min = 0, max = 20)
+	@ConfigItem(
+		keyName = "dbg_atkLock",
+		name = "Under-Attack Lock Ticks",
+		description = "Injected under-attack lock ticks (requires Show Combat Locks).",
+		section = debugSection,
+		position = 72
+	)
+	default int debugUnderAttackLock()
+	{
+		return 0;
+	}
+
+	// ── Zone info ─────────────────────────────────────────────────────────────
+
+	@Range(min = 0, max = 56)
+	@ConfigItem(
+		keyName = "dbg_wildLevel",
+		name = "Wilderness Level",
+		description = "Injected wilderness level (0 = not in wilderness). Requires Show Zone Info.",
+		section = debugSection,
+		position = 80
+	)
+	default int debugWildernessLevel()
+	{
+		return 0;
+	}
+
+	@ConfigItem(
+		keyName = "dbg_multiCombat",
+		name = "Multi-Combat Zone",
+		description = "Show the MLT multi-combat indicator. Requires Show Zone Info.",
+		section = debugSection,
+		position = 81
+	)
+	default boolean debugMultiCombat()
 	{
 		return false;
 	}

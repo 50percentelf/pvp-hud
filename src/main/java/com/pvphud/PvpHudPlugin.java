@@ -81,15 +81,16 @@ import net.runelite.client.game.ItemStats;
 )
 public class PvpHudPlugin extends Plugin
 {
-	@Inject private Client         client;
-	@Inject private PvpHudConfig   config;
-	@Inject private ConfigManager  configManager;
-	@Inject private OverlayManager overlayManager;
-	@Inject private PvpHudOverlay  overlay;
-	@Inject private ItemManager    itemManager;
-	@Inject private KeyManager     keyManager;
-	@Inject private HiscoreClient  hiscoreClient;
-	@Inject private ClientThread   clientThread;
+	@Inject private Client              client;
+	@Inject private PvpHudConfig        config;
+	@Inject private ConfigManager       configManager;
+	@Inject private OverlayManager      overlayManager;
+	@Inject private PvpHudOverlay       overlay;
+	@Inject private PvpHudDebugOverlay  debugOverlay;
+	@Inject private ItemManager         itemManager;
+	@Inject private KeyManager          keyManager;
+	@Inject private HiscoreClient       hiscoreClient;
+	@Inject private ClientThread        clientThread;
 
 	@Getter
 	private final PvpHudState hudState = new PvpHudState();
@@ -171,6 +172,7 @@ public class PvpHudPlugin extends Plugin
 		overlay.invalidateInventoryHugAnchor();
 		overlay.loadIcons();
 		overlayManager.add(overlay);
+		overlayManager.add(debugOverlay);
 		keyManager.registerKeyListener(hudToggleListener);
 		keyManager.registerKeyListener(timer1Listener);
 		keyManager.registerKeyListener(timer2Listener);
@@ -185,6 +187,7 @@ public class PvpHudPlugin extends Plugin
 		keyManager.unregisterKeyListener(timer1Listener);
 		keyManager.unregisterKeyListener(timer2Listener);
 		overlayManager.remove(overlay);
+		overlayManager.remove(debugOverlay);
 		hudState.fullReset();
 		log.info("PvP HUD stopped");
 	}

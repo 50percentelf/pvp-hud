@@ -33,6 +33,12 @@ public class ProtectionState
 	public int  getUnderAttackLockTicksRemaining()    { return underAttackLockTicksRemaining; }
 	public int  getLmsImmuneTicksRemaining()          { return lmsImmuneTicksRemaining; }
 
+	/** Direct setters used only by debug state injection — not for normal game logic. */
+	public void setPjSafeTicksRemaining(int v)           { pjSafeTicksRemaining = Math.max(0, v); }
+	public void setCombatLogoutTicksRemaining(int v)     { combatLogoutTicksRemaining = Math.max(0, v); }
+	public void setUnderAttackLockTicksRemaining(int v)  { underAttackLockTicksRemaining = Math.max(0, v); }
+	public void setLmsImmuneTicksRemaining(int v)        { lmsImmuneTicksRemaining = Math.max(0, v); }
+
 	public boolean isPjSafe()            { return pjSafeTicksRemaining > 0; }
 	public boolean isInCombatLogoutLock(){ return combatLogoutTicksRemaining > 0; }
 	public boolean isUnderAttackLocked() { return underAttackLockTicksRemaining > 0; }

@@ -27,26 +27,32 @@ public final class ActiveEffectView
 	 */
 	public final Color highlightColor;
 
-	/** Entry where TEXT and icon-mode labels differ, with optional icon highlight. */
-	public ActiveEffectView(BufferedImage icon, String label, String textLabel, Color color, Color highlightColor)
+	/** Semantic category: drives display order, group separators, and overflow priority. */
+	public final EffectGroup group;
+
+	/** Full constructor. */
+	public ActiveEffectView(BufferedImage icon, String label, String textLabel,
+		Color color, Color highlightColor, EffectGroup group)
 	{
 		this.icon           = icon;
 		this.label          = label;
 		this.textLabel      = textLabel;
 		this.color          = color;
 		this.highlightColor = highlightColor;
+		this.group          = group;
 	}
 
-	/** Entry where TEXT and icon-mode labels differ, no highlight. */
-	public ActiveEffectView(BufferedImage icon, String label, String textLabel, Color color)
+	/** No highlight. */
+	public ActiveEffectView(BufferedImage icon, String label, String textLabel,
+		Color color, EffectGroup group)
 	{
-		this(icon, label, textLabel, color, null);
+		this(icon, label, textLabel, color, null, group);
 	}
 
-	/** Entry where TEXT and icon-mode labels are identical, no highlight. */
-	public ActiveEffectView(BufferedImage icon, String label, Color color)
+	/** label == textLabel, no highlight. */
+	public ActiveEffectView(BufferedImage icon, String label, Color color, EffectGroup group)
 	{
-		this(icon, label, null, color, null);
+		this(icon, label, null, color, null, group);
 	}
 
 	/** Returns the label to use in TEXT mode. */
