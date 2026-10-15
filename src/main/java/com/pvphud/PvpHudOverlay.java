@@ -1360,7 +1360,7 @@ public class PvpHudOverlay extends Overlay
 		BoostState  boosts = state.getBoosts();
 		PoisonState poison = state.getPoison();
 
-		drawHpPrayerBars(g, smFm, self, fx, rx, cy, p.width);
+		cy = drawHpPrayerBars(g, smFm, self, fx, rx, cy, p.width);
 
 		if (horizontal && activeProfile.showBoostRow)
 		{
