@@ -308,7 +308,7 @@ public class PvpHudOverlay extends Overlay
 			layout.setChatboxBounds(new Rectangle(local));
 			layout.markDirty();
 		}
-		if (layout.isDirty()) computeHorizLayout(layout, local, false);  // Chat Locked always collapses
+		if (layout.isDirty()) computeHorizLayout(layout, local, activeProfile.showBoostRow, false);  // Chat Locked always collapses
 
 		drawAll(g, state, layout, local, normal, small, false);
 		return new Dimension(bounds.width, bounds.height);
@@ -327,7 +327,7 @@ public class PvpHudOverlay extends Overlay
 			layout.setChatboxBounds(new Rectangle(bounds));
 			layout.markDirty();
 		}
-		if (layout.isDirty()) computeHorizLayout(layout, bounds, activeProfile.reserveBoostDockWhenHidden);
+		if (layout.isDirty()) computeHorizLayout(layout, bounds, activeProfile.showBoostRow, activeProfile.reserveBoostDockWhenHidden);
 
 		drawAll(g, state, layout, bounds, normal, small, false);
 		return new Dimension(w, h);
@@ -337,7 +337,7 @@ public class PvpHudOverlay extends Overlay
 		HudLayoutState layout, Font normal, Font small)
 	{
 		Rectangle bounds = new Rectangle(0, 0, VERT_W, VERT_H);
-		if (layout.isDirty()) computeVertLayout(layout, bounds, activeProfile.reserveBoostDockWhenHidden);
+		if (layout.isDirty()) computeVertLayout(layout, bounds, activeProfile.showBoostRow, activeProfile.reserveBoostDockWhenHidden);
 
 		drawAll(g, state, layout, bounds, normal, small, true);
 		return new Dimension(VERT_W, VERT_H);
@@ -565,7 +565,8 @@ public class PvpHudOverlay extends Overlay
 
 		// ── Corner (above left rail): attack clock + eat/pot dots ─────────────
 		ActionClockState clock = state.getActionClock();
-		int atk = clock.getAttackDelayTicks();
+		int tick = client.getTickCount();
+		int atk  = clock.getAttackDelayTicks(tick);
 		{
 			final int DOT_SZ  = 4;
 			final int DOT_GAP = 2;
@@ -584,8 +585,8 @@ public class PvpHudOverlay extends Overlay
 					DOT_SZ, DOT_SZ);
 			}
 			int epY = dotY + 2 * DOT_SZ + DOT_GAP + 4;
-			int eat = clock.getEatCooldownTicks();
-			int pot = clock.getPotCooldownTicks();
+			int eat = clock.getEatCooldownTicks(tick);
+			int pot = clock.getPotCooldownTicks(tick);
 			int px  = PAD;
 			g.setColor(eat > 0 ? ORANGE : DIVIDER);
 			g.drawString("E", px, epY + fm.getAscent());
@@ -981,10 +982,10 @@ public class PvpHudOverlay extends Overlay
 
 	// ── Layout computation ────────────────────────────────────────────────────
 
-	private void computeHorizLayout(HudLayoutState layout, Rectangle b, boolean reserveDock)
+	// Package-private and static so HudLayoutBoundsTest can call them without a RuneLite client.
+	static void computeHorizLayout(HudLayoutState layout, Rectangle b, boolean showBoostRow, boolean reserveDock)
 	{
-		boolean showBoost = activeProfile.showBoostRow;
-		int boostH = (showBoost || reserveDock) ? BOOST_ROW_H : 0;
+		int boostH = (showBoostRow || reserveDock) ? BOOST_ROW_H : 0;
 		int mainH  = b.height - ACTION_STRIP_H - boostH;
 		int third  = b.width / 3;
 		int right  = b.width - third;
@@ -998,10 +999,9 @@ public class PvpHudOverlay extends Overlay
 		layout.setDirty(false);
 	}
 
-	private void computeVertLayout(HudLayoutState layout, Rectangle b, boolean reserveDock)
+	static void computeVertLayout(HudLayoutState layout, Rectangle b, boolean showBoostRow, boolean reserveDock)
 	{
-		boolean showBoost = activeProfile.showBoostRow;
-		int boostH = (showBoost || reserveDock) ? BOOST_ROW_H : 0;
+		int boostH = (showBoostRow || reserveDock) ? BOOST_ROW_H : 0;
 		int mainH  = b.height - ACTION_STRIP_H - boostH;
 		// Opponent and event each take ~22% of mainH (⅓ × ⅔ ≈ 33% reduction vs the old ⅓ each).
 		// Self panel gets the rest — more room for effect timers.
@@ -1805,7 +1805,9 @@ public class PvpHudOverlay extends Overlay
 			if (!effects.isEmpty())
 			{
 				g.setFont(small);
-				int cy   = p.y + (p.height - ICON_SIZE) / 2;
+				FontMetrics fm2 = g.getFontMetrics();
+				// Vertically center the icon+label block so it stays within boost row bounds.
+				int cy   = p.y + Math.max(1, (p.height - ICON_SIZE - fm2.getHeight()) / 2);
 				int lx   = p.x + PAD;
 				int maxX = p.x + p.width - PAD;
 				drawEffectsIconTray(g, effects, lx, cy, maxX);
@@ -1885,8 +1887,9 @@ public class PvpHudOverlay extends Overlay
 		Rectangle p = layout.getActionStrip();
 		if (p == null) return;
 
-		ActionClockState clock = state.getActionClock();
-		int atk    = clock.getAttackDelayTicks();
+		ActionClockState clock  = state.getActionClock();
+		int              ctick  = client.getTickCount();
+		int atk    = clock.getAttackDelayTicks(ctick);
 		int atkMax = clock.getLastWeaponSpeedTicks();
 
 		// Vertical layout: compact dots on the left, T1/T2 timer text on the right.
@@ -1962,8 +1965,8 @@ public class PvpHudOverlay extends Overlay
 		FontMetrics fm = g.getFontMetrics();
 		int baseline = p.y + (p.height + fm.getAscent() - fm.getDescent()) / 2;
 
-		int eat = state.getActionClock().getEatCooldownTicks();
-		int pot = state.getActionClock().getPotCooldownTicks();
+		int eat = state.getActionClock().getEatCooldownTicks(ctick);
+		int pot = state.getActionClock().getPotCooldownTicks(ctick);
 
 		// Dot section: [ATK dots] [EAT dots × 3] [POT dots × 3]
 		final int DOT_SZ  = 5;
@@ -2198,11 +2201,11 @@ public class PvpHudOverlay extends Overlay
 			{
 				case CHAT_LOCKED:
 				case HORIZONTAL_FLOAT:
-					computeHorizLayout(tempLayout, bounds, false);
+					computeHorizLayout(tempLayout, bounds, profile.showBoostRow, false);
 					drawAll(g, state, tempLayout, bounds, normal, small, false);
 					break;
 				case VERTICAL_FLOAT:
-					computeVertLayout(tempLayout, bounds, false);
+					computeVertLayout(tempLayout, bounds, profile.showBoostRow, false);
 					drawAll(g, state, tempLayout, bounds, normal, small, true);
 					break;
 				case INVENTORY_HUG:

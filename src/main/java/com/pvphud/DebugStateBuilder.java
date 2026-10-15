@@ -43,7 +43,7 @@ class DebugStateBuilder
 		applyEffects(config, state, currentTick);
 		applyPoison(config, state, currentTick);
 		applyBoosts(config, state);
-		applyActionClocks(config, state);
+		applyActionClocks(config, state, currentTick);
 		applyOpponent(config, state);
 		applyProtection(config, state);
 		applyContext(config, state);
@@ -170,13 +170,14 @@ class DebugStateBuilder
 		boosts.setMagicBoosted(base + config.debugBoostMag());
 	}
 
-	private static void applyActionClocks(PvpHudConfig config, PvpHudState state)
+	private static void applyActionClocks(PvpHudConfig config, PvpHudState state, int currentTick)
 	{
-		ActionClockState clock = state.getActionClock();
-		clock.setAttackDelayTicks(config.debugAttackDelay());
-		clock.setLastWeaponSpeedTicks(Math.max(config.debugAttackDelay(), 5));
-		clock.setEatCooldownTicks(config.debugEatCooldown());
-		clock.setPotCooldownTicks(config.debugPotCooldown());
+		ActionClockState clock   = state.getActionClock();
+		int              delay   = config.debugAttackDelay();
+		int              speed   = Math.max(delay, 5);
+		clock.forceAttackDelay(currentTick, delay, speed);
+		clock.forceEatCooldown(currentTick, config.debugEatCooldown());
+		clock.forcePotCooldown(currentTick, config.debugPotCooldown());
 	}
 
 	private static void applyOpponent(PvpHudConfig config, PvpHudState state)
@@ -274,10 +275,9 @@ class DebugStateBuilder
 		boosts.setMagicReal(99);    boosts.setMagicBoosted(99);
 
 		ActionClockState clock = state.getActionClock();
-		clock.setAttackDelayTicks(3);
-		clock.setLastWeaponSpeedTicks(5);
-		clock.setEatCooldownTicks(2);
-		clock.setPotCooldownTicks(1);
+		clock.forceAttackDelay(currentTick, 3, 5);
+		clock.forceEatCooldown(currentTick, 2);
+		clock.forcePotCooldown(currentTick, 1);
 
 		OpponentState opp = state.getOpponent();
 		opp.setName("DragonSlayer99");

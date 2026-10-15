@@ -1,6 +1,5 @@
 package com.pvphud;
 
-import com.pvphud.state.ActionClockState;
 import com.pvphud.state.EffectState;
 import java.awt.Color;
 import java.awt.Dimension;
@@ -205,11 +204,8 @@ public class PvpHudDebugOverlay extends Overlay
 		// Protection timers (PJ, combat logout, under-attack lock)
 		state.getProtection().tick();
 
-		// Action clocks
-		ActionClockState clock = state.getActionClock();
-		if (clock.getAttackDelayTicks()  > 0) clock.setAttackDelayTicks(clock.getAttackDelayTicks()   - 1);
-		if (clock.getEatCooldownTicks()  > 0) clock.setEatCooldownTicks(clock.getEatCooldownTicks()   - 1);
-		if (clock.getPotCooldownTicks()  > 0) clock.setPotCooldownTicks(clock.getPotCooldownTicks()   - 1);
+		// Action clock deadlines are absolute tick values — they count down automatically
+		// as client.getTickCount() advances. No explicit decrement needed here.
 	}
 
 	/**

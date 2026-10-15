@@ -14,7 +14,9 @@ import com.pvphud.state.PrayerEffect;
 import com.pvphud.state.ProtectionState;
 import com.pvphud.state.PvpFightSession;
 import com.pvphud.state.SelfState;
+import java.util.ArrayList;
 import java.util.HashSet;
+import java.util.Iterator;
 import java.util.List;
 import java.util.Set;
 import javax.inject.Inject;
@@ -48,6 +50,7 @@ import net.runelite.api.events.GameTick;
 import net.runelite.api.events.GraphicChanged;
 import net.runelite.api.events.HitsplatApplied;
 import net.runelite.api.events.InteractingChanged;
+import net.runelite.api.events.ItemContainerChanged;
 import net.runelite.api.events.MenuOptionClicked;
 import net.runelite.api.events.ResizeableChanged;
 import net.runelite.api.events.StatChanged;
@@ -97,6 +100,9 @@ public class PvpHudPlugin extends Plugin
 
 	/** Names already queued for a hiscores lookup this session (case-lowered). */
 	private final Set<String> lookedUp = new HashSet<>();
+
+	/** Eat/drink intents awaiting inventory-change confirmation. */
+	private final List<PendingConsumable> pendingConsumables = new ArrayList<>();
 
 	/**
 	 * Candidate opponent waiting for combat confirmation.
@@ -161,6 +167,7 @@ public class PvpHudPlugin extends Plugin
 	protected void startUp() throws Exception
 	{
 		lookedUp.clear();
+		pendingConsumables.clear();
 		pendingOpponentName   = null;
 		pendingOpponentActor  = null;
 		prevMenaphiteVarbit   = -1;
@@ -328,6 +335,7 @@ public class PvpHudPlugin extends Plugin
 			|| event.getGameState() == GameState.HOPPING)
 		{
 			lookedUp.clear();
+			pendingConsumables.clear();
 			pendingOpponentName  = null;
 			pendingOpponentActor = null;
 			prevMenaphiteVarbit  = -1;
@@ -619,10 +627,9 @@ public class PvpHudPlugin extends Plugin
 		fxTick.getMenaphite().tick();
 		hudState.getPoison().tick();
 
-		ActionClockState clock = hudState.getActionClock();
-		if (clock.getAttackDelayTicks() > 0) clock.setAttackDelayTicks(clock.getAttackDelayTicks() - 1);
-		if (clock.getEatCooldownTicks() > 0) clock.setEatCooldownTicks(clock.getEatCooldownTicks() - 1);
-		if (clock.getPotCooldownTicks() > 0) clock.setPotCooldownTicks(clock.getPotCooldownTicks() - 1);
+		// Action clock uses absolute tick deadlines — no decrement needed.
+		// Expire any pending consumable intents that were never confirmed.
+		pendingConsumables.removeIf(pc -> pc.isExpired(tick));
 
 		// Run energy: polled each tick (no reliable varbit event fires for it)
 		hudState.getSelf().setRunEnergy(client.getEnergy() / 100);
@@ -646,11 +653,25 @@ public class PvpHudPlugin extends Plugin
 	@Subscribe
 	public void onMenuOptionClicked(MenuOptionClicked event)
 	{
-		ActionClockState clock = hudState.getActionClock();
-		switch (event.getMenuOption())
+		String option = event.getMenuOption();
+		switch (option)
 		{
-			case "Eat":   clock.setEatCooldownTicks(3); break;
-			case "Drink": clock.setPotCooldownTicks(3); break;
+			case "Eat":
+			case "Drink":
+			{
+				ItemContainer inv = client.getItemContainer(InventoryID.INVENTORY);
+				if (inv == null) break;
+				int slot = event.getMenuEntry().getParam0();
+				Item item = inv.getItem(slot);
+				if (item == null) break;
+				ConsumableType type = ConsumableType.classify(option, item.getId());
+				if (type.isKnown())
+				{
+					long now = client.getTickCount();
+					pendingConsumables.add(new PendingConsumable(item.getId(), slot, now, type));
+				}
+				break;
+			}
 			case "Attack":
 			{
 				// Confirm combat immediately on an explicit Attack click on a player.
@@ -665,6 +686,37 @@ public class PvpHudPlugin extends Plugin
 		}
 	}
 
+	// ── Inventory change — consumable confirmation ───────────────────────────
+
+	@Subscribe
+	public void onItemContainerChanged(ItemContainerChanged event)
+	{
+		if (event.getContainerId() != InventoryID.INVENTORY.getId()) return;
+		if (pendingConsumables.isEmpty()) return;
+
+		ItemContainer    inv         = event.getItemContainer();
+		long             currentTick = client.getTickCount();
+		ActionClockState clock       = hudState.getActionClock();
+
+		Iterator<PendingConsumable> it = pendingConsumables.iterator();
+		while (it.hasNext())
+		{
+			PendingConsumable pc = it.next();
+			if (pc.isConfirmed() || pc.isExpired(currentTick))
+			{
+				it.remove();
+				continue;
+			}
+			Item slotItem = inv.getItem(pc.slot);
+			if (slotItem == null || slotItem.getId() != pc.itemId)
+			{
+				pc.markConfirmed();
+				clock.applyConsumable(currentTick, pc.type);
+				it.remove();
+			}
+		}
+	}
+
 	// ── Animation — attack delay ─────────────────────────────────────────────
 
 	@Subscribe
@@ -673,12 +725,13 @@ public class PvpHudPlugin extends Plugin
 		Actor actor = event.getActor();
 		if (actor == client.getLocalPlayer())
 		{
-			int anim = client.getLocalPlayer().getAnimation();
-			if (anim != -1 && client.getLocalPlayer().getInteracting() != null)
+			int   anim        = client.getLocalPlayer().getAnimation();
+			Actor interacting = client.getLocalPlayer().getInteracting();
+			if (!AttackAnimations.isBlocked(anim) && interacting instanceof Player)
 			{
-				int speed = getWeaponSpeed();
-				hudState.getActionClock().setAttackDelayTicks(speed);
-				hudState.getActionClock().setLastWeaponSpeedTicks(speed);
+				long tick  = client.getTickCount();
+				int  speed = getWeaponSpeed();
+				hudState.getActionClock().setAttack(tick, speed);
 			}
 		}
 		// Opponent Vengeance animation detection removed — deferred post-v0.1.
