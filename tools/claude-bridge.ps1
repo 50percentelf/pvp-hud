@@ -157,7 +157,7 @@ function Invoke-ClaudeTask($issue, $worktree, $entry) {
     try {
         $claudeArgs = @(
             "-p", $prompt,
-            "--output-format", "json",
+            "--output-format", "stream-json",
             "--json-schema", $schema,
             "--permission-mode", "bypassPermissions",
             "--allowedTools", "Bash,Read,Edit,Write,Glob,Grep",
@@ -168,16 +168,46 @@ function Invoke-ClaudeTask($issue, $worktree, $entry) {
             $claudeArgs = @("--resume", [string]$entry.session_id) + $claudeArgs
         }
 
-        $raw = & claude @claudeArgs
-        if ($LASTEXITCODE -ne 0) { throw "Claude exited with code $LASTEXITCODE" }
-        if (-not $raw) { throw "Claude returned no output" }
+        # Stream Claude output line-by-line so Electron can display live progress.
+        $claudeExe = (Get-Command claude -ErrorAction Stop).Source
+        $psi = [System.Diagnostics.ProcessStartInfo]::new($claudeExe)
+        $psi.Arguments          = ($claudeArgs | ForEach-Object { if ($_ -match '\s') { "`"$_`"" } else { $_ } }) -join " "
+        $psi.RedirectStandardOutput = $true
+        $psi.RedirectStandardError  = $true
+        $psi.UseShellExecute        = $false
+        $psi.WorkingDirectory       = $worktree.Path
 
-        $outer = ($raw -join "`n") | ConvertFrom-Json
-        if (-not $outer.structured_output) { throw "Claude returned JSON without structured_output" }
+        $proc = [System.Diagnostics.Process]::Start($psi)
+
+        $lines = [System.Collections.Generic.List[string]]::new()
+        while (-not $proc.StandardOutput.EndOfStream) {
+            $line = $proc.StandardOutput.ReadLine()
+            $lines.Add($line)
+            Write-Host $line  # streamed to Electron log panel
+        }
+        $proc.WaitForExit()
+
+        # Drain stderr to log as well
+        $stderr = $proc.StandardError.ReadToEnd()
+        if ($stderr) { Write-Warning $stderr }
+
+        if ($proc.ExitCode -ne 0) { throw "Claude exited with code $($proc.ExitCode)" }
+        if ($lines.Count -eq 0)   { throw "Claude returned no output" }
+
+        # stream-json: find the result event line
+        $resultLine = $null
+        for ($i = $lines.Count - 1; $i -ge 0; $i--) {
+            try {
+                $candidate = $lines[$i] | ConvertFrom-Json
+                if ($candidate.type -eq "result") { $resultLine = $candidate; break }
+            } catch {}
+        }
+        if (-not $resultLine)                { throw "Claude stream contained no result event" }
+        if (-not $resultLine.structured_output) { throw "Claude result missing structured_output" }
 
         return @{
-            SessionId = $outer.session_id
-            Result = $outer.structured_output
+            SessionId = $resultLine.session_id
+            Result    = $resultLine.structured_output
         }
     }
     finally {
