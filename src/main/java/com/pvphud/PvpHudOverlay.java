@@ -105,6 +105,12 @@ public class PvpHudOverlay extends Overlay
 	private BufferedImage dssIcon;            // divine super strength
 	private BufferedImage dsdIcon;            // divine super defence
 	private BufferedImage imbuedHeartIcon;    // imbued heart
+	private BufferedImage prayerRegenIcon;    // prayer regeneration potion
+	private BufferedImage sotdIcon;           // staff of the dead
+	private BufferedImage surgeIcon;          // surge potion
+	private volatile BufferedImage corruptIcon;   // greater corruption sprite
+	private volatile BufferedImage wardIcon;      // ward of arceuus sprite
+	private volatile BufferedImage markIcon;      // mark of darkness sprite
 
 	// ── Cached skill icons for inventory-hug bars (HP / Prayer / Run) ──────
 	private volatile BufferedImage hpSkillIcon;
@@ -182,10 +188,14 @@ public class PvpHudOverlay extends Overlay
 		superAntifireIcon  = itemManager.getImage(ItemID._4DOSE3ANTIDRAGON);
 		antiPoisonItemIcon = itemManager.getImage(ItemID._4DOSEANTIPOISON);
 		antiVenomItemIcon  = itemManager.getImage(ItemID.ANTIVENOM_4);
-		dsaIcon            = itemManager.getImage(ItemID._4DOSEDIVINEATTACK);
-		dssIcon            = itemManager.getImage(ItemID._4DOSEDIVINESTRENGTH);
-		dsdIcon            = itemManager.getImage(ItemID._4DOSEDIVINEDEFENCE);
-		imbuedHeartIcon    = itemManager.getImage(ItemID.IMBUED_HEART);
+		dsaIcon         = itemManager.getImage(ItemID._4DOSEDIVINEATTACK);
+		dssIcon         = itemManager.getImage(ItemID._4DOSEDIVINESTRENGTH);
+		dsdIcon         = itemManager.getImage(ItemID._4DOSEDIVINEDEFENCE);
+		imbuedHeartIcon = itemManager.getImage(ItemID.IMBUED_HEART);
+		prayerRegenIcon = itemManager.getImage(ItemID._4DOSE1PRAYER_REGENERATION);
+		sotdIcon        = itemManager.getImage(ItemID.SOTD);
+		surgeIcon       = itemManager.getImage(ItemID._4DOSESURGE);
+		// corruptIcon, wardIcon, markIcon: SpriteID.MagicNecroOn not in API jar — text-only display.
 
 		// SpriteID.SPELL_VENGEANCE not loaded — Vengeance display deferred post-v0.1.
 		spriteManager.getSpriteAsync(SpriteID.SPELL_TELE_BLOCK,              0, img -> tbIcon         = img);
@@ -1571,6 +1581,22 @@ public class PvpHudOverlay extends Overlay
 			effectScratch.add(new ActiveEffectView(null, String.valueOf(prayerLockTicks),
 				"PLOCK " + prayerLockTicks, RED, EffectGroup.CRITICAL));
 
+		// Corruption — dangerous, show with remaining iterations × base damage
+		if (fx.isCorruptionActive())
+		{
+			int iters = fx.getCorruptionIterationsRemaining();
+			int total = fx.getCorruptionTotalTicks(currentTick);
+			String label     = total > 0 ? ticksToMSS(total) : iters + "x";
+			String textLabel = "CORRUPT " + label;
+			effectScratch.add(new ActiveEffectView(debugIcon(corruptIcon), label, textLabel,
+				RED, EffectGroup.CRITICAL));
+		}
+
+		// Burn damage counters
+		if (fx.getBurnDamageTotal() > 0)
+			effectScratch.add(new ActiveEffectView(null, String.valueOf(fx.getBurnDamageTotal()),
+				"BURN " + fx.getBurnDamageTotal(), RED, EffectGroup.CRITICAL));
+
 		// ── PROTECTION ────────────────────────────────────────────────────────
 		if (poison.isAntiVenomActive())
 			addTimedEffect("ANTI-V", poison.getImmunityTicksRemaining(currentTick), antiVenomItemIcon, EffectGroup.PROTECTION);
@@ -1593,6 +1619,42 @@ public class PvpHudOverlay extends Overlay
 
 		addTimedEffect("IH-CD", fx.getImbuedHeartCooldownTicks(), imbuedHeartIcon, EffectGroup.PROTECTION);
 
+		// Staff of the Dead melee protection
+		int sotdTicks = fx.getStaffProtTicks(currentTick);
+		if (sotdTicks > 0)
+			addTimedEffect("SOTD", sotdTicks, sotdIcon, EffectGroup.PROTECTION);
+
+		// Prayer Regeneration potion
+		if (fx.getPrayerRegen().isActive())
+			addTimedEffect("PRYR", fx.getPrayerRegen().getTotalTicksRemaining(), prayerRegenIcon, EffectGroup.PROTECTION);
+
+		// Ward of Arceuus
+		int wardTicks = fx.getWardOfArceuusTicks(currentTick);
+		if (wardTicks > 0)
+			addTimedEffect("WARD", wardTicks, wardIcon, EffectGroup.PROTECTION);
+		else
+		{
+			int wardCd = fx.getWardCooldownTicks(currentTick);
+			if (wardCd > 0)
+				addTimedEffect("WARD-CD", wardCd, wardIcon, EffectGroup.PROTECTION);
+		}
+
+		// Mark of Darkness
+		int markTicks = fx.getMarkOfDarknessTicks(currentTick);
+		if (markTicks > 0)
+			addTimedEffect("MARK", markTicks, markIcon, EffectGroup.PROTECTION);
+		else
+		{
+			int markCd = fx.getMarkCooldownTicks(currentTick);
+			if (markCd > 0)
+				addTimedEffect("MARK-CD", markCd, markIcon, EffectGroup.PROTECTION);
+		}
+
+		// Surge potion cooldown
+		int surgeTicks = fx.getSurgePotionTicks(currentTick);
+		if (surgeTicks > 0)
+			addTimedEffect("SURGE", surgeTicks, surgeIcon, EffectGroup.PROTECTION);
+
 		if (fx.getStaminaEffectTicks() > 0)
 			addTimedEffect("STAM", fx.getStaminaEffectTicks(), staminaIcon, EffectGroup.PROTECTION);
 
@@ -1604,6 +1666,23 @@ public class PvpHudOverlay extends Overlay
 		// ── CYCLE ─────────────────────────────────────────────────────────────
 		if ((debugRendering || config.showDivineTimers()) && fx.getMenaphite().isActive())
 			addTimedEffect("NXT", fx.getMenaphite().getNextProcTicks(), menIcon, EffectGroup.CYCLE);
+
+		// Prayer Regen next proc
+		if (fx.getPrayerRegen().isActive() && fx.getPrayerRegen().getNextProcTicks() > 0)
+			addTimedEffect("P-NXT", fx.getPrayerRegen().getNextProcTicks(), prayerRegenIcon, EffectGroup.CYCLE);
+
+		// Corruption next drain
+		if (fx.isCorruptionActive() && fx.getCorruptionNextDrainTicks(currentTick) > 0)
+		{
+			String label = "-" + fx.getCorruptionBaseDamage() + " " + fx.getCorruptionNextDrainTicks(currentTick) + "t";
+			effectScratch.add(new ActiveEffectView(debugIcon(corruptIcon), label, "NXDRAIN " + label,
+				RED, EffectGroup.CYCLE));
+		}
+
+		// Burn next hit
+		if (fx.getBurnDamageNextHit() > 0)
+			effectScratch.add(new ActiveEffectView(null, "BURN+" + fx.getBurnDamageNextHit(),
+				"BURN NXT " + fx.getBurnDamageNextHit(), RED, EffectGroup.CYCLE));
 
 		int drainTicks = self.getBoostDecay().getTicksRemaining();
 		if (drainTicks > 0 && self.getBoostDecay().isCalibrated() && boosts.hasAnyBoost())

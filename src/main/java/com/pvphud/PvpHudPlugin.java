@@ -56,6 +56,8 @@ import net.runelite.api.events.ResizeableChanged;
 import net.runelite.api.events.StatChanged;
 import net.runelite.api.events.WidgetLoaded;
 import net.runelite.api.gameval.InterfaceID;
+import net.runelite.api.gameval.ItemID;
+import net.runelite.api.gameval.VarbitID;
 import net.runelite.api.events.VarbitChanged;
 import net.runelite.client.callback.ClientThread;
 import net.runelite.client.config.ConfigManager;
@@ -125,10 +127,18 @@ public class PvpHudPlugin extends Plugin
 	/** Last known Menaphite Remedy varbit value; -1 = not yet observed. */
 	private int prevMenaphiteVarbit = -1;
 
+	/** Last known Corruption current-iterations value; used to detect each drain. */
+	private int prevCorruptionIterations = -1;
+
 	/** Player position from the previous game tick; used to detect movement while frozen. */
 	private WorldPoint lastPlayerPos = null;
 
 	// SPOTANIM_VENGEANCE and ANIM_VENGEANCE_IDS removed — Vengeance tracking deferred post-v0.1.
+
+	private static final String SOTD_SPEC_ON_MSG  = "Spirits of deceased evildoers offer you their protection";
+	private static final String SOTD_SPEC_OFF_MSG = "Your protection fades away";
+	private static final String WARD_ON_MSG        = "Your defence against Arceuus magic has been strengthened.";
+	private static final String MARK_ON_MSG        = "You have placed a Mark of Darkness upon yourself.";
 
 	private final HotkeyListener hudToggleListener = new HotkeyListener(() -> config.hudToggleKey())
 	{
@@ -168,12 +178,13 @@ public class PvpHudPlugin extends Plugin
 	{
 		lookedUp.clear();
 		pendingConsumables.clear();
-		pendingOpponentName   = null;
-		pendingOpponentActor  = null;
-		prevMenaphiteVarbit   = -1;
-		lastFreezeGraphicId   = -1;
-		lastFreezeGraphicTick = -1;
-		lastPlayerPos         = null;
+		pendingOpponentName       = null;
+		pendingOpponentActor      = null;
+		prevMenaphiteVarbit       = -1;
+		prevCorruptionIterations  = -1;
+		lastFreezeGraphicId       = -1;
+		lastFreezeGraphicTick     = -1;
+		lastPlayerPos             = null;
 		hudState.fullReset();
 		applyOverlayPosition();
 		overlay.invalidateInventoryHugAnchor();
@@ -262,6 +273,18 @@ public class PvpHudPlugin extends Plugin
 		fx.setDivineSuperStrengthTicks(client.getVarbitValue(Varbits.DIVINE_SUPER_STRENGTH));
 		fx.setDivineSuperDefenceTicks(client.getVarbitValue(Varbits.DIVINE_SUPER_DEFENCE));
 		fx.setImbuedHeartCooldownTicks(client.getVarbitValue(Varbits.IMBUED_HEART_COOLDOWN));
+		fx.updatePrayerRegen(client.getVarbitValue(Varbits.BUFF_PRAYER_REGENERATION));
+		fx.updateSurgePotionFromVarbit(client.getVarbitValue(VarbitID.SURGE_POTION_TIMER), tick);
+		fx.setBurnDamageTotal(client.getVarbitValue(VarbitID.PLAYER_OWN_BURN_DAMAGE_TOTAL));
+		fx.setBurnDamageNextHit(client.getVarbitValue(VarbitID.PLAYER_OWN_BURN_DAMAGE_HITSPLAT_SIZE));
+		fx.setCorruptionTargetIterations(client.getVarbitValue(VarbitID.CORRUPTION_TARGET_ITERATIONS));
+		fx.setCorruptionCurrentIterations(client.getVarbitValue(VarbitID.CORRUPTION_CURRENT_ITERATIONS));
+		fx.setCorruptionBaseDamage(client.getVarbitValue(VarbitID.CORRUPTION_BASE_DAMAGE));
+		prevCorruptionIterations = client.getVarbitValue(VarbitID.CORRUPTION_CURRENT_ITERATIONS);
+		if (client.getVarbitValue(Varbits.WARD_OF_ARCEUUS_COOLDOWN) > 0)
+			fx.applyWardCooldown(tick);
+		if (client.getVarbitValue(VarbitID.BUFF_MARK_OF_DARKNESS_DISABLED) > 0)
+			fx.applyMarkCooldown(tick);
 		int menVal = client.getVarbitValue(Varbits.MENAPHITE_REMEDY);
 		fx.getMenaphite().setTotalTicksRemaining(menVal * 25);
 		prevMenaphiteVarbit = menVal;
@@ -342,10 +365,11 @@ public class PvpHudPlugin extends Plugin
 		{
 			lookedUp.clear();
 			pendingConsumables.clear();
-			pendingOpponentName  = null;
-			pendingOpponentActor = null;
-			prevMenaphiteVarbit  = -1;
-			lastPlayerPos        = null;
+			pendingOpponentName      = null;
+			pendingOpponentActor     = null;
+			prevMenaphiteVarbit      = -1;
+			prevCorruptionIterations = -1;
+			lastPlayerPos            = null;
 			hudState.fullReset();
 			overlay.invalidateInventoryHugAnchor();
 		}
@@ -513,6 +537,58 @@ public class PvpHudPlugin extends Plugin
 		{
 			hudState.getEffects().setImbuedHeartCooldownTicks(value);
 		}
+		else if (varbitId == Varbits.BUFF_PRAYER_REGENERATION)
+		{
+			hudState.getEffects().updatePrayerRegen(value);
+		}
+		else if (varbitId == VarbitID.SURGE_POTION_TIMER)
+		{
+			hudState.getEffects().updateSurgePotionFromVarbit(value, client.getTickCount());
+		}
+		else if (varbitId == VarbitID.PLAYER_OWN_BURN_DAMAGE_TOTAL)
+		{
+			hudState.getEffects().setBurnDamageTotal(value);
+		}
+		else if (varbitId == VarbitID.PLAYER_OWN_BURN_DAMAGE_HITSPLAT_SIZE)
+		{
+			hudState.getEffects().setBurnDamageNextHit(value);
+		}
+		else if (varbitId == VarbitID.CORRUPTION_BASE_DAMAGE)
+		{
+			hudState.getEffects().setCorruptionBaseDamage(value);
+		}
+		else if (varbitId == VarbitID.CORRUPTION_TARGET_ITERATIONS)
+		{
+			hudState.getEffects().setCorruptionTargetIterations(value);
+		}
+		else if (varbitId == VarbitID.CORRUPTION_CURRENT_ITERATIONS)
+		{
+			int tick = client.getTickCount();
+			if (prevCorruptionIterations >= 0 && value != prevCorruptionIterations)
+				hudState.getEffects().onCorruptionIterationChanged(tick);
+			hudState.getEffects().setCorruptionCurrentIterations(value);
+			prevCorruptionIterations = value;
+			if (value >= hudState.getEffects().getCorruptionTargetIterations()
+				&& hudState.getEffects().getCorruptionTargetIterations() > 0)
+			{
+				hudState.getEffects().clearCorruption();
+				prevCorruptionIterations = -1;
+			}
+		}
+		else if (varbitId == Varbits.WARD_OF_ARCEUUS_COOLDOWN)
+		{
+			if (value > 0)
+				hudState.getEffects().applyWardCooldown(client.getTickCount());
+			else
+				hudState.getEffects().clearWardCooldown();
+		}
+		else if (varbitId == VarbitID.BUFF_MARK_OF_DARKNESS_DISABLED)
+		{
+			if (value > 0)
+				hudState.getEffects().applyMarkCooldown(client.getTickCount());
+			else
+				hudState.getEffects().clearMarkCooldown();
+		}
 		else if (varbitId == Varbits.MENAPHITE_REMEDY)
 		{
 			PeriodicEffect men = hudState.getEffects().getMenaphite();
@@ -652,6 +728,7 @@ public class PvpHudPlugin extends Plugin
 		if (fxTick.getStaminaEffectTicks() > 0)
 			fxTick.setStaminaEffectTicks(fxTick.getStaminaEffectTicks() - 1);
 		fxTick.getMenaphite().tick();
+		fxTick.getPrayerRegen().tick();
 		hudState.getPoison().tick();
 
 		// Action clock uses absolute tick deadlines — no decrement needed.
@@ -713,11 +790,27 @@ public class PvpHudPlugin extends Plugin
 		}
 	}
 
-	// ── Inventory change — consumable confirmation ───────────────────────────
+	// ── Inventory change — consumable confirmation + SOTD unequip ──────────
+
+	private static boolean isSotdFamily(int itemId)
+	{
+		return itemId == ItemID.SOTD
+			|| itemId == ItemID.TOXIC_SOTD
+			|| itemId == ItemID.TOXIC_SOTD_CHARGED
+			|| itemId == ItemID.BR_SOTD
+			|| itemId == ItemID.STAFF_OF_LIGHT
+			|| itemId == ItemID.STAFF_OF_BALANCE;
+	}
 
 	@Subscribe
 	public void onItemContainerChanged(ItemContainerChanged event)
 	{
+		if (event.getContainerId() == InventoryID.EQUIPMENT.getId())
+		{
+			Item weapon = event.getItemContainer().getItem(EquipmentInventorySlot.WEAPON.getSlotIdx());
+			if (weapon == null || !isSotdFamily(weapon.getId()))
+				hudState.getEffects().clearStaffProt();
+		}
 		if (event.getContainerId() != InventoryID.INVENTORY.getId()) return;
 		if (pendingConsumables.isEmpty()) return;
 
@@ -1150,12 +1243,34 @@ public class PvpHudPlugin extends Plugin
 	@Subscribe
 	public void onChatMessage(ChatMessage event)
 	{
-		if (event.getType() != ChatMessageType.SPAM) return;
-		String msg = Text.removeTags(event.getMessage());
+		ChatMessageType type = event.getType();
+		if (type != ChatMessageType.SPAM && type != ChatMessageType.GAMEMESSAGE) return;
 
-		int       tick  = client.getTickCount();
-		SelfState self  = hudState.getSelf();
+		String      msg  = Text.removeTags(event.getMessage());
+		int         tick = client.getTickCount();
+		SelfState   self = hudState.getSelf();
+		EffectState fx   = hudState.getEffects();
 
+		if (type == ChatMessageType.GAMEMESSAGE)
+		{
+			if (msg.contains(SOTD_SPEC_ON_MSG))
+				fx.applyStaffProt(tick);
+			else if (msg.contains(SOTD_SPEC_OFF_MSG))
+				fx.clearStaffProt();
+			else if (msg.endsWith(WARD_ON_MSG))
+			{
+				fx.applyWardOfArceuus(tick, client.getRealSkillLevel(Skill.MAGIC));
+				fx.applyWardCooldown(tick);
+			}
+			else if (msg.endsWith(MARK_ON_MSG))
+			{
+				fx.applyMarkOfDarkness(tick, client.getRealSkillLevel(Skill.MAGIC));
+				fx.applyMarkCooldown(tick);
+			}
+			return;
+		}
+
+		// ChatMessageType.SPAM below:
 		if (msg.contains("protection prayers have been disabled"))
 		{
 			self.applyPrayerLock(tick);

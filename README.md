@@ -58,11 +58,22 @@ Displayed in the YOU panel. Three display styles: **Text**, **Vertical Bar** (ic
 |---|---|
 | `ICE Xs` | Self-freeze timer. Ice spells (Rush/Burst/Blitz/Barrage) start from the "You have been frozen!" game message, using the same-tick impact graphic to select the duration; repeated ice hits while already frozen do not extend it. Bind/Snare/Entangle start directly from their local impact graphics. Clears immediately when movement is detected. Covers Rush (8t), Burst (16t), Blitz (24t), Barrage (32t), Bind (8t), Snare (16t), Entangle (24t). |
 | `TB M:SS` | Tele Block countdown from the varbit. |
-| `DSC / DRG / DMG / BAS / BTM / MEN` | Divine potion timers (can be hidden). |
+| `DSC / DRG / DMG / BAS / BTM / DSA / DSS / DSD / MEN` | Divine potion timers (can be hidden). DSC = Supercombat, DRG = Ranging, DMG = Magic, BAS = Bastion, BTM = Battlemage, DSA = Super Attack, DSS = Super Strength, DSD = Super Defence, MEN = Menaphite Remedy. |
 | `STAM M:SS` | Stamina potion effect (self-tracked: 200 ticks / dose). |
+| `IH CD Xs` | Imbued Heart recharge cooldown from the varbit (~800 ticks). |
+| `SOTD Xs` | Staff of the Dead / Staff of Light / Staff of Balance melee-damage reduction buff — 100 ticks (60 s). Activated by the weapon special, cleared on weapon unequip. |
+| `PR-REG M:SS` | Prayer Regeneration potion total time remaining (varbit × 12 ticks). |
+| `SURGE Xs` | Surge potion cooldown (varbit × 10 ticks). |
+| `WARD Xs / WARD CD Xs` | Ward of Arceuus buff (magicLevel ticks) and 50-tick cooldown. |
+| `MARK Xs / MARK CD Xs` | Mark of Darkness buff (magicLevel × 3 ticks) and 10-tick cooldown. |
+| `CORRUPT Xt` | Corruption total ticks remaining (requires two drain events to detect interval). Shows `N drains` until interval is known. |
+| `BURN X` | Active burn total damage accumulated (from Soulreaper Axe Burn). |
 | `VENOM / POISON` | Status indicator. |
 | `ANTI-V / ANTI-P M:SS` | Anti-venom / anti-poison protection countdown. |
 | `drain Xt` | Ticks to next expected stat drain, self-calibrated from observed drain intervals. |
+| `pr-reg Xt` | Ticks to next Prayer Regeneration proc (12-tick interval). |
+| `crpt -NMt` | Ticks to next Corruption prayer drain (shown in CYCLE section once interval is detected). |
+| `burn +N` | Next individual burn hitsplat size. |
 
 ### Action strip (bottom bar)
 
@@ -108,6 +119,18 @@ ATK / STR / DEF / RNG / MAG skill icons with current boost level. Configurable a
 ## Smite tracking
 
 When the local player has Smite active, outgoing hits show `-Np` in the fight log where N = `floor(damage / 4)`. When the opponent has Smite, incoming hits show the same drain.
+
+---
+
+## Not detectable
+
+These effects have no accessible varbit or game message that reliably encodes their state. They will not be tracked unless Jagex exposes a detection point in a future update.
+
+| Effect | Reason |
+|---|---|
+| AGS Blood Sacrifice buff | No varbit found in VarbitID or Varbits for the post-spec prayer restoration mechanic. |
+| Spear stun / post-Shove immunity | No varbit for the stun duration or the brief immunity window after a Shove. |
+| Soulflame Horn Entice | Only a player-has-equipped varbit exists (`PLAYER_HAS_EQUIPPED_SOULFLAME_HORN`); no buff-duration varbit. |
 
 ---
 

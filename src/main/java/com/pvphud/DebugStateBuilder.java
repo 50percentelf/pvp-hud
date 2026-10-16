@@ -267,6 +267,20 @@ class DebugStateBuilder
 		fx.setStaminaEffectTicks(200);
 		fx.setNextSuperAntifireTick(currentTick + 20);
 		fx.setSuperAntifireVarbitValue(15);
+		fx.applyStaffProt(currentTick - 40); // ~60 ticks remaining
+		fx.updatePrayerRegen(3);             // varbit 3 → 36 ticks remaining
+		fx.updateSurgePotionFromVarbit(8, currentTick); // 80-tick cooldown
+		fx.applyWardOfArceuus(currentTick - 59, 99); // ~40 ticks remaining
+		fx.applyWardCooldown(currentTick - 25);       // ~25 ticks remaining
+		fx.applyMarkOfDarkness(currentTick - 257, 99); // ~40 ticks remaining
+		fx.applyMarkCooldown(currentTick - 5);          // ~5 ticks remaining
+		fx.setCorruptionTargetIterations(8);
+		fx.setCorruptionCurrentIterations(2);
+		fx.setCorruptionBaseDamage(3);
+		fx.onCorruptionIterationChanged(currentTick - 15); // seeds first data point
+		fx.onCorruptionIterationChanged(currentTick);      // detects 15-tick interval
+		fx.setBurnDamageTotal(12);
+		fx.setBurnDamageNextHit(2);
 
 		PoisonState poison = state.getPoison();
 		poison.setAntiVenomActive(true);
