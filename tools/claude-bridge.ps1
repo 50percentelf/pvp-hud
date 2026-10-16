@@ -138,8 +138,7 @@ function Invoke-ClaudeTask($issue, $worktree, $entry) {
             "-p", $prompt,
             "--output-format", "json",
             "--json-schema", $schema,
-            "--permission-mode", "dontAsk",
-            "--permission-prompts", "none",
+            "--permission-mode", "bypassPermissions",
             "--allowedTools", "Bash,Read,Edit,Write,Glob,Grep",
             "--disallowedTools", "Bash(git push *)", "Bash(git commit *)", "Bash(gh *)"
         )
