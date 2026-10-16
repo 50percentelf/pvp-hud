@@ -134,7 +134,7 @@ function Invoke-ClaudeTask($issue, $worktree, $entry) {
     $prompt = Build-Prompt $issue
     Push-Location $worktree.Path
     try {
-        $args = @(
+        $claudeArgs = @(
             "-p", $prompt,
             "--output-format", "json",
             "--json-schema", $schema,
@@ -144,10 +144,10 @@ function Invoke-ClaudeTask($issue, $worktree, $entry) {
         )
 
         if ($entry -and $entry.session_id) {
-            $args = @("--resume", [string]$entry.session_id) + $args
+            $claudeArgs = @("--resume", [string]$entry.session_id) + $claudeArgs
         }
 
-        $raw = & claude @args
+        $raw = & claude @claudeArgs
         if ($LASTEXITCODE -ne 0) { throw "Claude exited with code $LASTEXITCODE" }
         if (-not $raw) { throw "Claude returned no output" }
 
