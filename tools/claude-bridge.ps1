@@ -45,6 +45,27 @@ function Save-State {
     $state | ConvertTo-Json -Depth 8 | Set-Content -Encoding UTF8 $statePath
 }
 
+function Write-Dashboard {
+    $issuesMap = @{}
+    foreach ($k in $state.Keys) {
+        $e = $state[$k]
+        $issuesMap[$k] = @{
+            number        = [int]$k
+            title         = if ($e.title)          { [string]$e.title }          else { "" }
+            url           = if ($e.url)             { [string]$e.url }            else { "" }
+            status        = if ($e.last_status)     { [string]$e.last_status }    else { "unknown" }
+            summary       = if ($e.summary)         { [string]$e.summary }        else { "" }
+            branch        = if ($e.branch)          { [string]$e.branch }         else { "" }
+            commitSha     = if ($e.commit_sha)      { [string]$e.commit_sha }     else { $null }
+            questions     = if ($e.questions)       { @($e.questions) }           else { @() }
+            blockers      = if ($e.blockers)        { @($e.blockers) }            else { @() }
+            lastProcessed = if ($e.last_processed)  { [string]$e.last_processed } else { "" }
+        }
+    }
+    $dashboard = @{ lastUpdated = (Get-Date -Format "o"); issues = $issuesMap }
+    $dashboard | ConvertTo-Json -Depth 8 | Set-Content -Encoding UTF8 (Join-Path $stateRoot "dashboard.json")
+}
+
 $schema = @'
 {"type":"object","properties":{"status":{"type":"string","enum":["completed","needs_input","blocked","failed"]},"summary":{"type":"string"},"questions":{"type":"array","items":{"type":"string"}},"changed_files":{"type":"array","items":{"type":"string"}},"tests":{"type":"array","items":{"type":"string"}},"blockers":{"type":"array","items":{"type":"string"}},"review_notes":{"type":"array","items":{"type":"string"}}},"required":["status","summary","questions","changed_files","tests","blockers","review_notes"]}
 '@
@@ -281,13 +302,21 @@ while ($true) {
             # Re-read after our own comment so the bridge does not trigger itself.
             $fresh = Get-IssueSnapshot $issue.number
             $state[$key] = @{
-                session_id = $run.SessionId
-                comment_count = @($fresh.comments).Count
+                session_id       = $run.SessionId
+                comment_count    = @($fresh.comments).Count
                 issue_updated_at = $fresh.updatedAt
-                branch = $worktree.Branch
-                last_status = $result.status
+                branch           = $worktree.Branch
+                last_status      = $result.status
+                title            = $issue.title
+                url              = $issue.url
+                summary          = $result.summary
+                questions        = @($result.questions)
+                blockers         = @($result.blockers)
+                commit_sha       = if ($commitSha) { $commitSha } else { $null }
+                last_processed   = (Get-Date -Format "o")
             }
             Save-State
+            Write-Dashboard
 
             Write-Host "Finished issue #$($issue.number): $($result.status)" -ForegroundColor Green
         }
