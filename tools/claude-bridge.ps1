@@ -24,10 +24,21 @@ $worktreeRoot = Join-Path $stateRoot "worktrees"
 $statePath = Join-Path $stateRoot "state.json"
 New-Item -ItemType Directory -Force -Path $stateRoot, $worktreeRoot | Out-Null
 
+# PowerShell 5.1-compatible state loading. ConvertFrom-Json -AsHashtable is PowerShell 7+ only.
+$state = @{}
 if (Test-Path $statePath) {
-    $state = Get-Content $statePath -Raw | ConvertFrom-Json -AsHashtable
-} else {
-    $state = @{}
+    try {
+        $parsedState = Get-Content $statePath -Raw | ConvertFrom-Json
+        if ($parsedState) {
+            foreach ($prop in $parsedState.PSObject.Properties) {
+                $state[$prop.Name] = $prop.Value
+            }
+        }
+    }
+    catch {
+        Write-Warning "Could not read existing bridge state; starting fresh. $($_.Exception.Message)"
+        $state = @{}
+    }
 }
 
 function Save-State {
@@ -40,13 +51,19 @@ $schema = @'
 
 function Get-IssueSnapshot([int]$Number) {
     $json = gh issue view $Number --repo $Repo --json number,title,body,comments,state,updatedAt,url
+    if ($LASTEXITCODE -ne 0) { throw "gh issue view failed for issue #$Number" }
     return $json | ConvertFrom-Json
 }
 
 function Get-OpenClaudeIssues {
-    $json = gh issue list --repo $Repo --state open --search 'in:title "[CLAUDE]"' --limit 100 --json number,title,updatedAt,url
+    # Avoid GitHub search parsing of square brackets. List open issues and filter titles locally.
+    $json = gh issue list --repo $Repo --state open --limit 100 --json number,title,updatedAt,url
+    if ($LASTEXITCODE -ne 0) { throw "gh issue list failed" }
     if (-not $json) { return @() }
-    return @($json | ConvertFrom-Json)
+    $issues = @($json | ConvertFrom-Json)
+    return @($issues | Where-Object {
+        $_.title -and $_.title.StartsWith("[CLAUDE]", [System.StringComparison]::OrdinalIgnoreCase)
+    })
 }
 
 function Ensure-Worktree([int]$Number) {
@@ -54,6 +71,7 @@ function Ensure-Worktree([int]$Number) {
     $path = Join-Path $worktreeRoot "issue-$Number"
 
     git -C $repoRoot fetch origin $BaseBranch --quiet
+    if ($LASTEXITCODE -ne 0) { throw "git fetch origin $BaseBranch failed" }
 
     if (-not (Test-Path $path)) {
         $remoteExists = $false
@@ -62,13 +80,16 @@ function Ensure-Worktree([int]$Number) {
 
         if ($remoteExists) {
             git -C $repoRoot fetch origin $branch --quiet
-            git -C $repoRoot worktree add $path $branch
+            git -C $repoRoot worktree add $path $branch *> $null
             if ($LASTEXITCODE -ne 0) {
                 git -C $repoRoot worktree add -b $branch $path "origin/$branch"
             }
-        } else {
+        }
+        else {
             git -C $repoRoot worktree add -b $branch $path "origin/$BaseBranch"
         }
+
+        if ($LASTEXITCODE -ne 0) { throw "Failed to create worktree for issue #$Number" }
     }
 
     return @{ Branch = $branch; Path = $path }
@@ -77,6 +98,8 @@ function Ensure-Worktree([int]$Number) {
 function Build-Prompt($issue) {
     $commentText = @()
     foreach ($c in @($issue.comments)) {
+        # Do not echo the bridge's own machine-generated comments back as requirements.
+        if ($c.body -and $c.body.Contains("<!-- CLAUDE_BRIDGE -->")) { continue }
         $commentText += "--- COMMENT by $($c.author.login) at $($c.createdAt) ---`n$($c.body)"
     }
 
@@ -111,13 +134,27 @@ function Invoke-ClaudeTask($issue, $worktree, $entry) {
     $prompt = Build-Prompt $issue
     Push-Location $worktree.Path
     try {
+        $args = @(
+            "-p", $prompt,
+            "--output-format", "json",
+            "--json-schema", $schema,
+            "--permission-mode", "dontAsk",
+            "--permission-prompts", "none",
+            "--allowedTools", "Bash,Read,Edit,Write,Glob,Grep",
+            "--disallowedTools", "Bash(git push *)", "Bash(git commit *)", "Bash(gh *)"
+        )
+
         if ($entry -and $entry.session_id) {
-            $raw = & claude --resume $entry.session_id -p $prompt --output-format json --json-schema $schema --allowedTools "Read,Edit,Bash"
-        } else {
-            $raw = & claude -p $prompt --output-format json --json-schema $schema --allowedTools "Read,Edit,Bash"
+            $args = @("--resume", [string]$entry.session_id) + $args
         }
+
+        $raw = & claude @args
         if ($LASTEXITCODE -ne 0) { throw "Claude exited with code $LASTEXITCODE" }
-        $outer = $raw | ConvertFrom-Json
+        if (-not $raw) { throw "Claude returned no output" }
+
+        $outer = ($raw -join "`n") | ConvertFrom-Json
+        if (-not $outer.structured_output) { throw "Claude returned JSON without structured_output" }
+
         return @{
             SessionId = $outer.session_id
             Result = $outer.structured_output
@@ -135,6 +172,8 @@ function Commit-And-Push($issue, $worktree) {
         if (-not $changes) { return $null }
 
         git add -A
+        if ($LASTEXITCODE -ne 0) { throw "git add failed" }
+
         git commit -m "Claude task #$($issue.number): $($issue.title)"
         if ($LASTEXITCODE -ne 0) { throw "git commit failed" }
 
@@ -150,14 +189,21 @@ function Commit-And-Push($issue, $worktree) {
 
 function Post-BridgeComment([int]$Number, [string]$Body) {
     gh issue comment $Number --repo $Repo --body $Body | Out-Null
+    if ($LASTEXITCODE -ne 0) { throw "Failed to post bridge comment on issue #$Number" }
 }
 
+$gitVersion = (git --version) -join " "
+$ghVersion = ((gh --version | Select-Object -First 1) -join " ")
+$claudeVersion = ((claude --version | Select-Object -First 1) -join " ")
 Write-Host "PvP HUD Claude bridge running. Repo=$Repo Poll=${PollSeconds}s" -ForegroundColor Green
-Write-Host "Watching open issues whose title contains [CLAUDE]. Ctrl+C to stop." -ForegroundColor DarkGray
+Write-Host "Repo root: $repoRoot" -ForegroundColor DarkGray
+Write-Host "$gitVersion | $ghVersion | Claude $claudeVersion" -ForegroundColor DarkGray
+Write-Host "Watching open issues whose title starts with [CLAUDE]. Ctrl+C to stop." -ForegroundColor DarkGray
 
 while ($true) {
     try {
-        foreach ($summary in Get-OpenClaudeIssues) {
+        $claudeIssues = Get-OpenClaudeIssues
+        foreach ($summary in $claudeIssues) {
             $key = [string]$summary.number
             $issue = Get-IssueSnapshot $summary.number
             $commentCount = @($issue.comments).Count
@@ -165,12 +211,15 @@ while ($true) {
             $entry = $null
             if ($state.ContainsKey($key)) { $entry = $state[$key] }
 
-            if ($entry -and [int]$entry.comment_count -eq $commentCount -and $entry.issue_updated_at -eq $issue.updatedAt) {
+            if ($entry -and [int]$entry.comment_count -eq $commentCount -and [string]$entry.issue_updated_at -eq [string]$issue.updatedAt) {
                 continue
             }
 
             Write-Host "Processing issue #$($issue.number): $($issue.title)" -ForegroundColor Cyan
             $worktree = Ensure-Worktree $issue.number
+            Write-Host "  worktree: $($worktree.Path)" -ForegroundColor DarkGray
+            Write-Host "  branch:   $($worktree.Branch)" -ForegroundColor DarkGray
+
             $run = Invoke-ClaudeTask $issue $worktree $entry
             $result = $run.Result
 
@@ -181,35 +230,51 @@ while ($true) {
 
             $lines = @(
                 "<!-- CLAUDE_BRIDGE -->",
-                "**Bridge status:** `$($result.status)`",
+                "**Bridge status:** ``$($result.status)``",
                 "",
                 $result.summary
             )
 
-            if ($result.questions.Count -gt 0) {
+            if (@($result.questions).Count -gt 0) {
                 $lines += ""
                 $lines += "**Questions for product owner / reviewer:**"
-                foreach ($q in $result.questions) { $lines += "- $q" }
+                foreach ($q in @($result.questions)) { $lines += "- $q" }
             }
 
-            if ($result.tests.Count -gt 0) {
+            if (@($result.changed_files).Count -gt 0) {
+                $lines += ""
+                $lines += "**Changed files:**"
+                foreach ($f in @($result.changed_files)) { $lines += "- $f" }
+            }
+
+            if (@($result.tests).Count -gt 0) {
                 $lines += ""
                 $lines += "**Tests:**"
-                foreach ($t in $result.tests) { $lines += "- $t" }
+                foreach ($t in @($result.tests)) { $lines += "- $t" }
             }
 
-            if ($result.blockers.Count -gt 0) {
+            if (@($result.blockers).Count -gt 0) {
                 $lines += ""
                 $lines += "**Blockers:**"
-                foreach ($b in $result.blockers) { $lines += "- $b" }
+                foreach ($b in @($result.blockers)) { $lines += "- $b" }
+            }
+
+            if (@($result.review_notes).Count -gt 0) {
+                $lines += ""
+                $lines += "**Review notes:**"
+                foreach ($n in @($result.review_notes)) { $lines += "- $n" }
             }
 
             if ($commitSha) {
                 $lines += ""
-                $lines += "**Task branch:** `$($worktree.Branch)`"
-                $lines += "**Commit:** `$commitSha`"
+                $lines += "**Task branch:** ``$($worktree.Branch)``"
+                $lines += "**Commit:** ``$commitSha``"
                 $lines += ""
                 $lines += "No merge was performed. Review before merging."
+            }
+            elseif ($result.status -eq "completed") {
+                $lines += ""
+                $lines += "No files changed; no commit or remote task branch was created."
             }
 
             Post-BridgeComment $issue.number ($lines -join "`n")
@@ -224,10 +289,12 @@ while ($true) {
                 last_status = $result.status
             }
             Save-State
+
+            Write-Host "Finished issue #$($issue.number): $($result.status)" -ForegroundColor Green
         }
     }
     catch {
-        Write-Warning $_
+        Write-Warning ("Bridge loop error: " + $_.Exception.Message)
     }
 
     Start-Sleep -Seconds $PollSeconds
