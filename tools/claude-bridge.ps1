@@ -158,16 +158,17 @@ function Invoke-ClaudeTask($issue, $worktree, $entry) {
         $claudeArgs = @(
             "-p", $prompt,
             "--output-format", "stream-json",
-            "--verbose",
+            "--json-schema", $schema,
             "--permission-mode", "bypassPermissions",
             "--allowedTools", "Bash,Read,Edit,Write,Glob,Grep",
-            "--disallowedTools", "Bash(git push *),Bash(git commit *),Bash(gh *)"
+            "--disallowedTools", "Bash(git push *)", "Bash(git commit *)", "Bash(gh *)"
         )
 
         if ($entry -and $entry.session_id) {
             $claudeArgs = @("--resume", [string]$entry.session_id) + $claudeArgs
         }
 
+        # Stream Claude output line-by-line via pipeline so Electron sees live progress.
         $lines = [System.Collections.Generic.List[string]]::new()
         & claude @claudeArgs | ForEach-Object {
             Write-Host $_
@@ -184,25 +185,12 @@ function Invoke-ClaudeTask($issue, $worktree, $entry) {
                 if ($candidate.type -eq "result") { $resultLine = $candidate; break }
             } catch {}
         }
-        if (-not $resultLine) { throw "Claude stream contained no result event" }
-
-        # Parse structured status from the result text
-        $resultText = $resultLine.result
-        if (-not $resultText) { throw "Claude result event has no result text" }
-
-        $structured = $null
-        try { $structured = $resultText | ConvertFrom-Json } catch {}
-        if (-not $structured) {
-            # Try to extract JSON block from the text
-            if ($resultText -match '(?s)\{.*\}') {
-                try { $structured = $Matches[0] | ConvertFrom-Json } catch {}
-            }
-        }
-        if (-not $structured) { throw "Could not parse structured output from Claude result: $resultText" }
+        if (-not $resultLine)                   { throw "Claude stream contained no result event" }
+        if (-not $resultLine.structured_output) { throw "Claude result missing structured_output" }
 
         return @{
             SessionId = $resultLine.session_id
-            Result    = $structured
+            Result    = $resultLine.structured_output
         }
     }
     finally {
