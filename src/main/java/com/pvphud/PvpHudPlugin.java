@@ -100,6 +100,10 @@ public class PvpHudPlugin extends Plugin
 	@Getter
 	private final PvpHudState hudState = new PvpHudState();
 
+	/** Synthetic state used by the debug overlay and fed to the live HUD when debugMode is on. */
+	@Getter
+	private final PvpHudState debugHudState = new PvpHudState();
+
 	/** Names already queued for a hiscores lookup this session (case-lowered). */
 	private final Set<String> lookedUp = new HashSet<>();
 

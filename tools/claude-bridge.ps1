@@ -158,10 +158,10 @@ function Invoke-ClaudeTask($issue, $worktree, $entry) {
         $claudeArgs = @(
             "-p", $prompt,
             "--output-format", "stream-json",
-            "--json-schema", $schema,
+            "--verbose",
             "--permission-mode", "bypassPermissions",
             "--allowedTools", "Bash,Read,Edit,Write,Glob,Grep",
-            "--disallowedTools", "Bash(git push *)", "Bash(git commit *)", "Bash(gh *)"
+            "--disallowedTools", "Bash(git push *),Bash(git commit *),Bash(gh *)"
         )
 
         if ($entry -and $entry.session_id) {
