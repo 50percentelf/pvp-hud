@@ -226,8 +226,9 @@ public class PvpHudOverlay extends Overlay
 	@Override
 	public Dimension render(Graphics2D g)
 	{
-		PvpHudState state = plugin.getHudState();
-		if (!plugin.shouldShowHud())
+		boolean debugMode = config.debugMode();
+		PvpHudState state = debugMode ? plugin.getDebugHudState() : plugin.getHudState();
+		if (!debugMode && !plugin.shouldShowHud())
 		{
 			return null;
 		}
@@ -1394,9 +1395,9 @@ public class PvpHudOverlay extends Overlay
 				int maxY = p.y + p.height - PAD;
 				BuffStyle style = activeProfile.buffStyle;
 				if (style == BuffStyle.VERTICAL_BAR)
-					drawEffectsVertBar(g, effects, lx, cy, maxY);
+					drawEffectsVertBar(g, effects, lx, cy, maxY, debugRendering);
 				else if (style == BuffStyle.ICON_TRAY)
-					drawEffectsIconTray(g, effects, lx, cy, p.x + p.width - PAD);
+					drawEffectsIconTray(g, effects, lx, cy, p.x + p.width - PAD, debugRendering);
 				else
 					drawEffectsText(g, normal, effects, lx, cy, maxY);
 			}
@@ -1695,6 +1696,159 @@ public class PvpHudOverlay extends Overlay
 		return effectScratch;
 	}
 
+	/**
+	 * Headless effect builder for offline snapshots and tests.
+	 * Shows every tracked effect regardless of config; uses null icons (text-only rendering).
+	 */
+	static List<ActiveEffectView> buildEffectsHeadless(PvpHudState state, int tick)
+	{
+		List<ActiveEffectView> out = new ArrayList<>(24);
+		com.pvphud.state.SelfState   self   = state.getSelf();
+		com.pvphud.state.EffectState fx     = state.getEffects();
+		com.pvphud.state.PoisonState poison = state.getPoison();
+		com.pvphud.state.BoostState  boosts = state.getBoosts();
+
+		// ── CRITICAL ──────────────────────────────────────────────────────────
+		int freeze = self.getFreezeTicksRemaining(tick);
+		if (freeze > 0)
+		{
+			String t = ticksToSecs(freeze);
+			out.add(new ActiveEffectView(null, t, "ICE " + t, LIGHT_BLUE, EffectGroup.CRITICAL));
+		}
+
+		int tb = self.getTeleBlockTicksRemaining();
+		if (tb > 0)
+		{
+			String t = ticksToMSS(tb);
+			out.add(new ActiveEffectView(null, t, "TB " + t, ORANGE, EffectGroup.CRITICAL));
+		}
+
+		if (poison.isVenomed())
+			out.add(new ActiveEffectView(null, "", "VENOM", TOXIC_GREEN, EffectGroup.CRITICAL));
+		else if (poison.isPoisoned())
+			out.add(new ActiveEffectView(null, "", "POISON", TOXIC_GREEN, EffectGroup.CRITICAL));
+
+		if (self.isTbImmunityActive())
+			out.add(new ActiveEffectView(null, "IMM", "TB-IMM", ORANGE, EffectGroup.CRITICAL));
+
+		int refreezeImm = self.getRefreezeImmunityTicks(tick);
+		if (refreezeImm > 0)
+		{
+			String t = ticksToSecs(refreezeImm);
+			out.add(new ActiveEffectView(null, t, "REFRZ " + t, LIGHT_BLUE, EffectGroup.CRITICAL));
+		}
+
+		int prayerLockTicks = self.getPrayerLockTicksRemaining(tick);
+		if (prayerLockTicks > 0)
+			out.add(new ActiveEffectView(null, String.valueOf(prayerLockTicks),
+				"PLOCK " + prayerLockTicks, RED, EffectGroup.CRITICAL));
+
+		if (fx.isCorruptionActive())
+		{
+			int iters = fx.getCorruptionIterationsRemaining();
+			int total = fx.getCorruptionTotalTicks(tick);
+			String label = total > 0 ? ticksToMSS(total) : iters + "x";
+			out.add(new ActiveEffectView(null, label, "CORRUPT " + label, RED, EffectGroup.CRITICAL));
+		}
+
+		if (fx.getBurnDamageTotal() > 0)
+			out.add(new ActiveEffectView(null, String.valueOf(fx.getBurnDamageTotal()),
+				"BURN " + fx.getBurnDamageTotal(), RED, EffectGroup.CRITICAL));
+
+		// ── PROTECTION ────────────────────────────────────────────────────────
+		if (poison.isAntiVenomActive())
+			hlAddTimedEffect(out, "ANTI-V", poison.getImmunityTicksRemaining(tick), EffectGroup.PROTECTION);
+		else if (poison.isAntiPoisonActive())
+			hlAddTimedEffect(out, "ANTI-P", poison.getImmunityTicksRemaining(tick), EffectGroup.PROTECTION);
+
+		hlAddTimedEffect(out, "DSC", fx.getDivineSupercombatTicks(),   EffectGroup.PROTECTION);
+		hlAddTimedEffect(out, "DRG", fx.getDivineRangingTicks(),       EffectGroup.PROTECTION);
+		hlAddTimedEffect(out, "DMG", fx.getDivineMagicTicks(),         EffectGroup.PROTECTION);
+		hlAddTimedEffect(out, "BAS", fx.getDivineBastionTicks(),       EffectGroup.PROTECTION);
+		hlAddTimedEffect(out, "BTM", fx.getDivineBattlemageTicks(),    EffectGroup.PROTECTION);
+		hlAddTimedEffect(out, "DSA", fx.getDivineSuperAttackTicks(),   EffectGroup.PROTECTION);
+		hlAddTimedEffect(out, "DSS", fx.getDivineSuperStrengthTicks(), EffectGroup.PROTECTION);
+		hlAddTimedEffect(out, "DSD", fx.getDivineSuperDefenceTicks(),  EffectGroup.PROTECTION);
+
+		if (fx.getMenaphite().isActive())
+			hlAddTimedEffect(out, "MEN", fx.getMenaphite().getTotalTicksRemaining(), EffectGroup.PROTECTION);
+
+		hlAddTimedEffect(out, "IH-CD", fx.getImbuedHeartCooldownTicks(), EffectGroup.PROTECTION);
+
+		int sotdTicks = fx.getStaffProtTicks(tick);
+		if (sotdTicks > 0)
+			hlAddTimedEffect(out, "SOTD", sotdTicks, EffectGroup.PROTECTION);
+
+		if (fx.getPrayerRegen().isActive())
+			hlAddTimedEffect(out, "PRYR", fx.getPrayerRegen().getTotalTicksRemaining(), EffectGroup.PROTECTION);
+
+		int wardTicks = fx.getWardOfArceuusTicks(tick);
+		if (wardTicks > 0)
+			hlAddTimedEffect(out, "WARD", wardTicks, EffectGroup.PROTECTION);
+		else
+		{
+			int wardCd = fx.getWardCooldownTicks(tick);
+			if (wardCd > 0)
+				hlAddTimedEffect(out, "WARD-CD", wardCd, EffectGroup.PROTECTION);
+		}
+
+		int markTicks = fx.getMarkOfDarknessTicks(tick);
+		if (markTicks > 0)
+			hlAddTimedEffect(out, "MARK", markTicks, EffectGroup.PROTECTION);
+		else
+		{
+			int markCd = fx.getMarkCooldownTicks(tick);
+			if (markCd > 0)
+				hlAddTimedEffect(out, "MARK-CD", markCd, EffectGroup.PROTECTION);
+		}
+
+		int surgeTicks = fx.getSurgePotionTicks(tick);
+		if (surgeTicks > 0)
+			hlAddTimedEffect(out, "SURGE", surgeTicks, EffectGroup.PROTECTION);
+
+		if (fx.getStaminaEffectTicks() > 0)
+			hlAddTimedEffect(out, "STAM", fx.getStaminaEffectTicks(), EffectGroup.PROTECTION);
+
+		int afTicks  = fx.getAntifireTicks(tick);
+		int safTicks = fx.getSuperAntifireTicks(tick);
+		if (afTicks  > 0) hlAddTimedEffect(out, "AF",  afTicks,  EffectGroup.PROTECTION);
+		if (safTicks > 0) hlAddTimedEffect(out, "SAF", safTicks, EffectGroup.PROTECTION);
+
+		// ── CYCLE ─────────────────────────────────────────────────────────────
+		if (fx.getMenaphite().isActive())
+			hlAddTimedEffect(out, "NXT", fx.getMenaphite().getNextProcTicks(), EffectGroup.CYCLE);
+
+		if (fx.getPrayerRegen().isActive() && fx.getPrayerRegen().getNextProcTicks() > 0)
+			hlAddTimedEffect(out, "P-NXT", fx.getPrayerRegen().getNextProcTicks(), EffectGroup.CYCLE);
+
+		if (fx.isCorruptionActive() && fx.getCorruptionNextDrainTicks(tick) > 0)
+		{
+			String label = "-" + fx.getCorruptionBaseDamage() + " " + fx.getCorruptionNextDrainTicks(tick) + "t";
+			out.add(new ActiveEffectView(null, label, "NXDRAIN " + label, RED, EffectGroup.CYCLE));
+		}
+
+		if (fx.getBurnDamageNextHit() > 0)
+			out.add(new ActiveEffectView(null, "BURN+" + fx.getBurnDamageNextHit(),
+				"BURN NXT " + fx.getBurnDamageNextHit(), RED, EffectGroup.CYCLE));
+
+		int drainTicks = self.getBoostDecay().getTicksRemaining();
+		if (drainTicks > 0 && self.getBoostDecay().isCalibrated() && boosts.hasAnyBoost())
+			out.add(new ActiveEffectView(null, "drain " + drainTicks + "t", YELLOW, EffectGroup.CYCLE));
+
+		int rstTicks2 = self.getDebuffRestore().getTicksRemaining();
+		if (rstTicks2 > 0 && self.getDebuffRestore().isCalibrated() && boosts.hasAnyDebuff())
+			out.add(new ActiveEffectView(null, "rst " + rstTicks2 + "t", YELLOW, EffectGroup.CYCLE));
+
+		return out;
+	}
+
+	private static void hlAddTimedEffect(List<ActiveEffectView> out, String label, int ticks, EffectGroup group)
+	{
+		if (ticks <= 0) return;
+		String t = ticksToMSS(ticks);
+		out.add(new ActiveEffectView(null, t, label + " " + t, timerColor(ticks), group));
+	}
+
 	/** Icon modes show just the time; TEXT mode prefixes the effect label. */
 	private void addTimedEffect(String label, int ticks, BufferedImage icon, EffectGroup group)
 	{
@@ -1754,7 +1908,7 @@ public class PvpHudOverlay extends Overlay
 
 	// ── TEXT: one label per line, colour-coded ────────────────────────────────
 
-	private void drawEffectsText(Graphics2D g, Font font, List<ActiveEffectView> effects, int lx, int cy, int maxY)
+	static int drawEffectsText(Graphics2D g, Font font, List<ActiveEffectView> effects, int lx, int cy, int maxY)
 	{
 		g.setFont(font);
 		FontMetrics fm = g.getFontMetrics();
@@ -1772,11 +1926,13 @@ public class PvpHudOverlay extends Overlay
 			g.drawString(e.getTextLabel(), lx, cy + fm.getAscent());
 			cy += fm.getHeight() + 1;
 		}
+		return cy;
 	}
 
 	// ── VERTICAL_BAR: icon + optional timer, one per row ────────────────────
 
-	private void drawEffectsVertBar(Graphics2D g, List<ActiveEffectView> effects, int lx, int cy, int maxY)
+	static int drawEffectsVertBar(Graphics2D g, List<ActiveEffectView> effects, int lx, int cy, int maxY,
+		boolean textFallback)
 	{
 		FontMetrics fm = g.getFontMetrics();
 		int lineH = Math.max(ICON_SIZE, fm.getHeight()) + 2;
@@ -1792,7 +1948,7 @@ public class PvpHudOverlay extends Overlay
 			if (cy + lineH > maxY) break;
 			if (e.icon == null)
 			{
-				if (debugRendering)
+				if (textFallback)
 				{
 					g.setColor(e.color);
 					g.drawString(e.getTextLabel(), lx, cy + fm.getAscent());
@@ -1810,6 +1966,7 @@ public class PvpHudOverlay extends Overlay
 			}
 			cy += lineH;
 		}
+		return cy;
 	}
 
 	// ── 2-COLUMN GRID: icon above timer, two entries per row (Inventory Hug) ──
@@ -1859,10 +2016,14 @@ public class PvpHudOverlay extends Overlay
 
 	// ── ICON_TRAY: horizontal strip, icon + optional timer below ─────────────
 
-	private void drawEffectsIconTray(Graphics2D g, List<ActiveEffectView> effects, int lx, int cy, int maxX)
+	static void drawEffectsIconTray(Graphics2D g, List<ActiveEffectView> effects, int lx, int cy, int maxX,
+		boolean textFallback)
 	{
 		FontMetrics fm = g.getFontMetrics();
-		int slotW = ICON_SIZE + ICON_GAP;
+		int maxLabelW = 0;
+		for (ActiveEffectView e : effects)
+			if (!e.label.isEmpty()) maxLabelW = Math.max(maxLabelW, fm.stringWidth(e.label));
+		int slotW = Math.max(ICON_SIZE, maxLabelW) + ICON_GAP;
 		int col   = 0;
 		EffectGroup lastGroup = null;
 		for (ActiveEffectView e : effects)
@@ -1873,7 +2034,7 @@ public class PvpHudOverlay extends Overlay
 			if (lx + col * slotW + ICON_SIZE > maxX) break;
 			if (e.icon == null)
 			{
-				if (debugRendering)
+				if (textFallback)
 				{
 					g.setColor(e.color);
 					g.drawString(e.label.isEmpty() ? "?" : e.label,
@@ -1918,7 +2079,7 @@ public class PvpHudOverlay extends Overlay
 				int cy   = p.y + Math.max(1, (p.height - ICON_SIZE - fm2.getHeight()) / 2);
 				int lx   = p.x + PAD;
 				int maxX = p.x + p.width - PAD;
-				drawEffectsIconTray(g, effects, lx, cy, maxX);
+				drawEffectsIconTray(g, effects, lx, cy, maxX, debugRendering);
 			}
 		}
 		else

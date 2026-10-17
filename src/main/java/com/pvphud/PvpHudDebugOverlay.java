@@ -64,9 +64,7 @@ public class PvpHudDebugOverlay extends Overlay
 	private final Client         client;
 	private final PvpHudConfig   config;
 	private final PvpHudOverlay  overlay;
-
-	/** Synthetic state — applied once on config change, then ticked each game tick. */
-	private final PvpHudState debugState = new PvpHudState();
+	private final PvpHudPlugin   plugin;
 
 	/** False until state has been applied at least once. Guarantees first-render apply even if hash is 0. */
 	private boolean debugStateApplied = false;
@@ -78,11 +76,12 @@ public class PvpHudDebugOverlay extends Overlay
 	private int lastTick = -1;
 
 	@Inject
-	PvpHudDebugOverlay(Client client, PvpHudConfig config, PvpHudOverlay overlay)
+	PvpHudDebugOverlay(Client client, PvpHudConfig config, PvpHudOverlay overlay, PvpHudPlugin plugin)
 	{
 		this.client  = client;
 		this.config  = config;
 		this.overlay = overlay;
+		this.plugin  = plugin;
 		setLayer(OverlayLayer.ABOVE_WIDGETS);
 		setPosition(OverlayPosition.TOP_LEFT);
 	}
@@ -92,6 +91,7 @@ public class PvpHudDebugOverlay extends Overlay
 	{
 		if (!config.debugMode()) return null;
 
+		PvpHudState debugState = plugin.getDebugHudState();
 		int currentTick = client.getTickCount();
 		int configHash  = computeDebugConfigHash();
 

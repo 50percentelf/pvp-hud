@@ -237,7 +237,7 @@ class DebugStateBuilder
 
 	// ── Preset: all effects at representative values ──────────────────────────
 
-	private static void applyPreset(PvpHudState state, int currentTick)
+	static void applyPreset(PvpHudState state, int currentTick)
 	{
 		SelfState self = state.getSelf();
 		self.setCurrentHp(57);
