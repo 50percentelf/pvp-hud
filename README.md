@@ -90,7 +90,7 @@ Displayed in the YOU panel. Three display styles: **Text**, **Vertical Bar** (ic
 | `LCK` | Under-attack lock active (20 ticks after receiving any hit — must fight back at current attacker). |
 | `W#` | Current Wilderness level. |
 | `MULTI` | Multi-combat zone indicator. |
-| `[ammo icon] qty` | Equipped ammo quantity (arrows/bolts from ammo slot). Color: white >25, yellow ≤25, red ≤10. Conventional ammo only — blowpipe darts and thrown-weapon stacks are not tracked. |
+| `[ammo icon] qty` | Equipped ammo quantity (arrows/bolts from ammo slot). Color: white >25, yellow ≤25, red ≤10. Conventional ammo only — blowpipe darts and thrown-weapon stacks are not tracked. In Inventory Hug, quantities ≥1000 are shown in compact form (e.g. `1.2k`, `10k`) to fit the narrow corner; other layouts show the full integer. |
 
 ### Boost row
 

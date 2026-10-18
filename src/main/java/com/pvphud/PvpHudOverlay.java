@@ -718,16 +718,17 @@ public class PvpHudOverlay extends Overlay
 			}
 			int epEndX = px + 2 * (EP_SZ + EP_GAP) + EP_SZ; // right edge of last P dot
 
-			// Ammo chip — right-aligned on the E/P row, text-only (corner too narrow for icon)
+			// Ammo chip — right-aligned on the E/P row with a 10px item icon
 			int cornerAmmoId  = state.getSelf().getAmmoItemId();
 			int cornerAmmoQty = state.getSelf().getAmmoQuantity();
 			if (cornerAmmoId >= 0)
 			{
 				ensureAmmoIcon(cornerAmmoId);
-				int chipRx = INVY_LEFT_W - PAD;
-				int chipW  = ammoChipWidth(fm, cornerAmmoQty, 0);
-				if (chipRx - chipW > epEndX + 2)
-					drawAmmoChip(g, fm, cornerAmmoQty, 0, chipRx, epY + fm.getAscent(), 0);
+				final int cornerIconH   = 10;
+				String    cornerQtyText = formatCompactAmmoQuantity(cornerAmmoQty);
+				int       chipRx        = INVY_LEFT_W - PAD;
+				int       iconY         = epY + (fm.getHeight() - cornerIconH) / 2;
+				drawAmmoChip(g, fm, cornerAmmoQty, cornerQtyText, cornerIconH, chipRx, epY + fm.getAscent(), iconY);
 			}
 		}
 
@@ -2457,58 +2458,77 @@ public class PvpHudOverlay extends Overlay
 			if (stripAmmoId >= 0)
 			{
 				ensureAmmoIcon(stripAmmoId);
-				ammoChipW = ammoChipWidth(fm, stripAmmoQty, stripIconH) + PAD;
-				drawAmmoChip(g, fm, stripAmmoQty, stripIconH,
+				String stripQtyText = String.valueOf(stripAmmoQty);
+				ammoChipW = ammoChipWidth(fm, stripQtyText, stripIconH) + PAD;
+				drawAmmoChip(g, fm, stripAmmoQty, stripQtyText, stripIconH,
 					p.x + p.width - PAD, baseline, p.y + (p.height - stripIconH) / 2);
 			}
 			int textRx = p.x + p.width - PAD - ammoChipW;
 
 			ManualTimerState t1 = state.getTimer1();
-			if (t1.isRunning() && textX < textRx)
+			if (t1.isRunning())
 			{
 				int s = (int)(t1.getRemainingMs() / 1000);
-				g.setColor(s > 30 ? WHITE : RED);
 				String lbl = "T1 " + (s / 60) + ":" + String.format("%02d", s % 60);
-				g.drawString(lbl, textX, baseline);
-				textX += fm.stringWidth(lbl) + 6;
+				if (textX + fm.stringWidth(lbl) <= textRx)
+				{
+					g.setColor(s > 30 ? WHITE : RED);
+					g.drawString(lbl, textX, baseline);
+					textX += fm.stringWidth(lbl) + 6;
+				}
 			}
 			ManualTimerState t2 = state.getTimer2();
-			if (t2.isRunning() && textX < textRx)
+			if (t2.isRunning())
 			{
 				int s = (int)(t2.getRemainingMs() / 1000);
-				g.setColor(s > 30 ? WHITE : RED);
 				String lbl = "T2 " + (s / 60) + ":" + String.format("%02d", s % 60);
-				g.drawString(lbl, textX, baseline);
-				textX += fm.stringWidth(lbl) + 6;
+				if (textX + fm.stringWidth(lbl) <= textRx)
+				{
+					g.setColor(s > 30 ? WHITE : RED);
+					g.drawString(lbl, textX, baseline);
+					textX += fm.stringWidth(lbl) + 6;
+				}
 			}
 			ProtectionState prot     = state.getProtection();
 			boolean         showLcks = debugRendering || config.showCombatLocks();
-			if (showLcks && prot.isPjSafe() && textX < textRx)
+			if (showLcks && prot.isPjSafe())
 			{
 				int s = (int) Math.round(prot.getPjSafeTicksRemaining() * 0.6);
 				String lbl = "PJ " + s;
-				g.setColor(s > 20 ? GREEN : s > 10 ? YELLOW : RED);
-				g.drawString(lbl, textX, baseline);
-				textX += fm.stringWidth(lbl) + 6;
+				if (textX + fm.stringWidth(lbl) <= textRx)
+				{
+					g.setColor(s > 20 ? GREEN : s > 10 ? YELLOW : RED);
+					g.drawString(lbl, textX, baseline);
+					textX += fm.stringWidth(lbl) + 6;
+				}
 			}
-			if (prot.isLmsImmune() && textX < textRx)
+			if (prot.isLmsImmune())
 			{
 				int s = (int) Math.round(prot.getLmsImmuneTicksRemaining() * 0.6);
 				String lbl = "IMM " + s;
-				g.setColor(PRAYER_FG);
-				g.drawString(lbl, textX, baseline);
-				textX += fm.stringWidth(lbl) + 6;
+				if (textX + fm.stringWidth(lbl) <= textRx)
+				{
+					g.setColor(PRAYER_FG);
+					g.drawString(lbl, textX, baseline);
+					textX += fm.stringWidth(lbl) + 6;
+				}
 			}
-			if (showLcks && prot.isInCombatLogoutLock() && textX < textRx)
+			if (showLcks && prot.isInCombatLogoutLock())
 			{
-				g.setColor(ORANGE);
-				g.drawString("LOG", textX, baseline);
-				textX += fm.stringWidth("LOG") + 6;
+				if (textX + fm.stringWidth("LOG") <= textRx)
+				{
+					g.setColor(ORANGE);
+					g.drawString("LOG", textX, baseline);
+					textX += fm.stringWidth("LOG") + 6;
+				}
 			}
-			if (showLcks && prot.isUnderAttackLocked() && textX < textRx)
+			if (showLcks && prot.isUnderAttackLocked())
 			{
-				g.setColor(LIGHT_BLUE);
-				g.drawString("LCK", textX, baseline);
+				if (textX + fm.stringWidth("LCK") <= textRx)
+				{
+					g.setColor(LIGHT_BLUE);
+					g.drawString("LCK", textX, baseline);
+				}
 			}
 			return;
 		}
@@ -2573,8 +2593,9 @@ public class PvpHudOverlay extends Overlay
 		if (horzAmmoId >= 0)
 		{
 			ensureAmmoIcon(horzAmmoId);
-			ammoChipW = ammoChipWidth(fm, horzAmmoQty, horzIconH) + PAD;
-			drawAmmoChip(g, fm, horzAmmoQty, horzIconH,
+			String horzQtyText = String.valueOf(horzAmmoQty);
+			ammoChipW = ammoChipWidth(fm, horzQtyText, horzIconH) + PAD;
+			drawAmmoChip(g, fm, horzAmmoQty, horzQtyText, horzIconH,
 				p.x + p.width - PAD, baseline, p.y + (p.height - horzIconH) / 2);
 		}
 
@@ -2698,24 +2719,37 @@ public class PvpHudOverlay extends Overlay
 		}
 	}
 
-	/** Pixel width of the ammo chip. {@code iconH=0} means text-only (no icon). */
-	static int ammoChipWidth(FontMetrics fm, int qty, int iconH)
+	/**
+	 * Compact quantity label: values below 1000 are shown as-is; thousands use a "k" suffix
+	 * with one decimal place for non-round values (e.g. 1200 → "1.2k", 1000 → "1k").
+	 * Rounds to the nearest 100 so that 99999 displays as "100k".
+	 */
+	static String formatCompactAmmoQuantity(int qty)
 	{
-		return (iconH > 0 ? iconH + 2 : 0) + fm.stringWidth(String.valueOf(qty));
+		if (qty < 1000) return String.valueOf(qty);
+		int tenths = (int) Math.round(qty / 100.0);
+		if (tenths % 10 == 0) return (tenths / 10) + "k";
+		return (tenths / 10) + "." + (tenths % 10) + "k";
+	}
+
+	/** Pixel width of the ammo chip. {@code iconH=0} means text-only (no icon). */
+	static int ammoChipWidth(FontMetrics fm, String qtyText, int iconH)
+	{
+		return (iconH > 0 ? iconH + 2 : 0) + fm.stringWidth(qtyText);
 	}
 
 	/**
 	 * Draws ammo chip right-aligned at {@code chipRx}.
+	 * {@code qtyText} is the display string (may differ from {@code String.valueOf(qty)}).
 	 * {@code iconH=0} renders qty text only; positive also renders a scaled item icon left of text.
 	 * {@code iconY} is the icon top-left Y (ignored when iconH==0).
 	 */
-	private void drawAmmoChip(Graphics2D g, FontMetrics fm, int qty, int iconH,
+	private void drawAmmoChip(Graphics2D g, FontMetrics fm, int qty, String qtyText, int iconH,
 		int chipRx, int baseline, int iconY)
 	{
-		String qtyStr = String.valueOf(qty);
-		int    qtyW   = fm.stringWidth(qtyStr);
+		int qtyW = fm.stringWidth(qtyText);
 		g.setColor(ammoColor(qty));
-		g.drawString(qtyStr, chipRx - qtyW, baseline);
+		g.drawString(qtyText, chipRx - qtyW, baseline);
 		if (iconH > 0 && cachedAmmoIcon != null)
 			g.drawImage(cachedAmmoIcon, chipRx - qtyW - iconH - 2, iconY, iconH, iconH, null);
 	}
