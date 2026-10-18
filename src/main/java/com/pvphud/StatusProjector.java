@@ -182,8 +182,8 @@ public final class StatusProjector
 			{
 				addTimed(out, "menaphite", StatusPriority.SUSTAIN, "MEN",
 					fx.getMenaphite().getTotalTicksRemaining(), false);
-				if (fx.getMenaphite().getNextProcTicks() > 0)
-					addTimed(out, "menaphite_next", StatusPriority.SUSTAIN, "NXT",
+				if (fx.getMenaphite().isNextProcKnown())
+					addTimedPeriodic(out, "menaphite_next", StatusPriority.SUSTAIN, "NXT",
 						fx.getMenaphite().getNextProcTicks(), true);
 			}
 		}
@@ -193,8 +193,8 @@ public final class StatusProjector
 		{
 			addTimed(out, "prayer_regen", StatusPriority.SUSTAIN, "PRYR",
 				fx.getPrayerRegen().getTotalTicksRemaining(), false);
-			if (fx.getPrayerRegen().getNextProcTicks() > 0)
-				addTimed(out, "prayer_regen_next", StatusPriority.SUSTAIN, "P-NXT",
+			if (fx.getPrayerRegen().isNextProcKnown())
+				addTimedPeriodic(out, "prayer_regen_next", StatusPriority.SUSTAIN, "P-NXT",
 					fx.getPrayerRegen().getNextProcTicks(), true);
 		}
 
@@ -227,6 +227,15 @@ public final class StatusProjector
 	{
 		if (ticks <= 0) return;
 		String t         = ticksToMSS(ticks);
+		String textLabel = prefix + " " + t;
+		out.add(new StatusSlot(slotId, priority, t, textLabel, timerColor(ticks), isSecondary));
+	}
+
+	/** Like {@link #addTimed} but emits at ticks=0 as "0t" — used for known cycle boundaries. */
+	private static void addTimedPeriodic(List<StatusSlot> out, String slotId, StatusPriority priority,
+		String prefix, int ticks, boolean isSecondary)
+	{
+		String t         = ticks <= 0 ? "0t" : ticksToMSS(ticks);
 		String textLabel = prefix + " " + t;
 		out.add(new StatusSlot(slotId, priority, t, textLabel, timerColor(ticks), isSecondary));
 	}

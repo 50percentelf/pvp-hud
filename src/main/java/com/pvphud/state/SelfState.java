@@ -59,6 +59,12 @@ public class SelfState
 	/** Run energy 0–100 (polled each game tick from client.getEnergy()). */
 	@Getter @Setter private int runEnergy;
 
+	/** Item ID of equipped ammo (-1 = none or not ranged). */
+	@Getter @Setter private int ammoItemId = -1;
+
+	/** Quantity of equipped ammo (0 when ammoItemId == -1). */
+	@Getter @Setter private int ammoQuantity = 0;
+
 	/** Clock calibrated from observed natural -1 stat ticks above base (boost decay). */
 	@Getter private final BoostDecayClock boostDecay   = new BoostDecayClock();
 
@@ -172,5 +178,7 @@ public class SelfState
 		lastIncomingDamageMs    = -1;
 		lastIncomingDamage      = 0;
 		runEnergy               = 0;
+		ammoItemId              = -1;
+		ammoQuantity            = 0;
 	}
 }

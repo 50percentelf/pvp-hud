@@ -296,6 +296,8 @@ public class PvpHudPlugin extends Plugin
 		prevMenaphiteVarbit = menVal;
 		// nextProcTicks stays 0 — we don't know where in the 25-tick cycle we joined.
 
+		updateAmmo();
+
 		// Antifire: if already active, assume the next boundary is one full interval away.
 		// The varbit handler will correct the phase on the first observed decrement.
 		int antifireVal = client.getVarbitValue(Varbits.ANTIFIRE);
@@ -611,8 +613,7 @@ public class PvpHudPlugin extends Plugin
 			PeriodicEffect men = hudState.getEffects().getMenaphite();
 			if (value == 0)
 			{
-				men.setTotalTicksRemaining(0);
-				men.setNextProcTicks(0);
+				men.reset();
 			}
 			else
 			{
@@ -821,6 +822,36 @@ public class PvpHudPlugin extends Plugin
 
 	// ── Inventory change — consumable confirmation + SOTD unequip ──────────
 
+	private void updateAmmo()
+	{
+		if (client.getGameState() != GameState.LOGGED_IN) return;
+		ItemContainer equipment = client.getItemContainer(InventoryID.EQUIPMENT);
+		SelfState     self      = hudState.getSelf();
+		if (equipment == null)
+		{
+			self.setAmmoItemId(-1);
+			self.setAmmoQuantity(0);
+			return;
+		}
+		Item ammo = equipment.getItem(EquipmentInventorySlot.AMMO.getSlotIdx());
+		if (ammo == null)
+		{
+			self.setAmmoItemId(-1);
+			self.setAmmoQuantity(0);
+			return;
+		}
+		ItemStats         stats = itemManager.getItemStats(ammo.getId());
+		ItemEquipmentStats eq   = stats != null ? stats.getEquipment() : null;
+		if (eq == null || eq.getArange() <= 0)
+		{
+			self.setAmmoItemId(-1);
+			self.setAmmoQuantity(0);
+			return;
+		}
+		self.setAmmoItemId(ammo.getId());
+		self.setAmmoQuantity(ammo.getQuantity());
+	}
+
 	private static boolean isSotdFamily(int itemId)
 	{
 		return itemId == ItemID.SOTD
@@ -839,6 +870,7 @@ public class PvpHudPlugin extends Plugin
 			Item weapon = event.getItemContainer().getItem(EquipmentInventorySlot.WEAPON.getSlotIdx());
 			if (weapon == null || !isSotdFamily(weapon.getId()))
 				hudState.getEffects().clearStaffProt();
+			updateAmmo();
 		}
 		if (event.getContainerId() != InventoryID.INVENTORY.getId()) return;
 		if (pendingConsumables.isEmpty()) return;

@@ -156,6 +156,10 @@ public class PvpHudOverlay extends Overlay
 	private volatile BufferedImage rngSkillIcon;
 	private volatile BufferedImage magSkillIcon;
 
+	// ── Ammo icon cache (updated lazily when ammo item ID changes) ────────────
+	private int            cachedAmmoItemId = -1;
+	private BufferedImage  cachedAmmoIcon;
+
 	private HudLayout    lastLayout;
 	private LayoutProfile activeProfile = null;
 	private boolean      lastHfChatLocked = false;
@@ -708,6 +712,30 @@ public class PvpHudOverlay extends Overlay
 			{
 				g.setColor(i < pot ? POTION_BLUE : DIVIDER);
 				g.fillRect(px + i * (DOT_SZ + DOT_GAP), epY + (fm.getHeight() - DOT_SZ) / 2, DOT_SZ, DOT_SZ);
+			}
+
+			// Ammo chip: [icon] qty — between E/P row and OUT/IN block
+			int ammoId  = state.getSelf().getAmmoItemId();
+			int ammoQty = state.getSelf().getAmmoQuantity();
+			if (ammoId >= 0)
+			{
+				if (ammoId != cachedAmmoItemId)
+				{
+					cachedAmmoItemId = ammoId;
+					cachedAmmoIcon   = itemManager.getImage(ammoId);
+				}
+				int ammoY  = epY + fm.getHeight() + 2;
+				int iconH  = fm.getHeight();
+				String qtyStr = String.valueOf(ammoQty);
+				int totalAmmoW = (cachedAmmoIcon != null ? iconH + 2 : 0) + fm.stringWidth(qtyStr);
+				int ammoX  = (INVY_LEFT_W - totalAmmoW) / 2;
+				if (cachedAmmoIcon != null)
+				{
+					g.drawImage(cachedAmmoIcon, ammoX, ammoY, iconH, iconH, null);
+					ammoX += iconH + 2;
+				}
+				g.setColor(ammoColor(ammoQty));
+				g.drawString(qtyStr, ammoX, ammoY + fm.getAscent());
 			}
 		}
 
@@ -2073,7 +2101,7 @@ public class PvpHudOverlay extends Overlay
 		String text, int cx, int lineTopY, Color color)
 	{
 		int glyphSz = Math.max(4, fm.getHeight() - 4);
-		int gap     = 2;
+		int gap     = 4;
 		int textW   = fm.stringWidth(text);
 		int totalW  = glyphSz + gap + textW;
 		int startX  = cx - totalW / 2;
@@ -2477,6 +2505,31 @@ public class PvpHudOverlay extends Overlay
 				g.setColor(LIGHT_BLUE);
 				g.drawString("LCK", textX, baseline);
 			}
+
+			// Ammo chip at far-right of the vertical strip
+			{
+				int ammoId  = state.getSelf().getAmmoItemId();
+				int ammoQty = state.getSelf().getAmmoQuantity();
+				if (ammoId >= 0)
+				{
+					if (ammoId != cachedAmmoItemId)
+					{
+						cachedAmmoItemId = ammoId;
+						cachedAmmoIcon   = itemManager.getImage(ammoId);
+					}
+					String qtyStr = String.valueOf(ammoQty);
+					int iconH = p.height - 4;
+					int ammoRx = p.x + p.width - PAD;
+					g.setColor(ammoColor(ammoQty));
+					g.drawString(qtyStr, ammoRx - fm.stringWidth(qtyStr), baseline);
+					if (cachedAmmoIcon != null)
+					{
+						int iconY = p.y + (p.height - iconH) / 2;
+						g.drawImage(cachedAmmoIcon, ammoRx - fm.stringWidth(qtyStr) - iconH - 2,
+							iconY, iconH, iconH, null);
+					}
+				}
+			}
 			return;
 		}
 
@@ -2532,6 +2585,33 @@ public class PvpHudOverlay extends Overlay
 		}
 
 		int dotSectionW = dp;
+
+		// Ammo chip at far-right of the horizontal strip
+		int ammoChipW = 0;
+		{
+			int ammoId  = state.getSelf().getAmmoItemId();
+			int ammoQty = state.getSelf().getAmmoQuantity();
+			if (ammoId >= 0)
+			{
+				if (ammoId != cachedAmmoItemId)
+				{
+					cachedAmmoItemId = ammoId;
+					cachedAmmoIcon   = itemManager.getImage(ammoId);
+				}
+				String qtyStr = String.valueOf(ammoQty);
+				int iconH = p.height - 4;
+				ammoChipW = (cachedAmmoIcon != null ? iconH + 2 : 0) + fm.stringWidth(qtyStr) + PAD;
+				int ammoRx = p.x + p.width - PAD;
+				g.setColor(ammoColor(ammoQty));
+				g.drawString(qtyStr, ammoRx - fm.stringWidth(qtyStr), baseline);
+				if (cachedAmmoIcon != null)
+				{
+					int iconY = p.y + (p.height - iconH) / 2;
+					g.drawImage(cachedAmmoIcon, ammoRx - fm.stringWidth(qtyStr) - iconH - 2,
+						iconY, iconH, iconH, null);
+				}
+			}
+		}
 
 		// Text items (spec moved to self panel; strip shows timers + context info only)
 		List<String> labelList = new ArrayList<>(10);
@@ -2595,7 +2675,7 @@ public class PvpHudOverlay extends Overlay
 		String[] labels = labelList.toArray(new String[0]);
 		Color[]  colors = colorList.toArray(new Color[0]);
 
-		int usable = p.width - PAD * 2 - dotSectionW;
+		int usable = p.width - PAD * 2 - dotSectionW - ammoChipW;
 		int count  = labels.length;
 		while (count > 1)
 		{
@@ -2637,6 +2717,11 @@ public class PvpHudOverlay extends Overlay
 	private static void drawRightAligned(Graphics2D g, FontMetrics fm, String text, int rx, int baseline)
 	{
 		g.drawString(text, rx - fm.stringWidth(text), baseline);
+	}
+
+	private static Color ammoColor(int qty)
+	{
+		return qty <= 10 ? RED : qty <= 25 ? YELLOW : WHITE;
 	}
 
 	private static void drawShadowedText(Graphics2D g, FontMetrics fm, String text, int x, int baseline, Color fg)

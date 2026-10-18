@@ -247,13 +247,13 @@ public class StatusProjectorTest
 	{
 		EffectState fx = new EffectState();
 		fx.getMenaphite().setTotalTicksRemaining(300);
-		fx.getMenaphite().setNextProcTicks(20);
+		fx.getMenaphite().setNextProcTicks(20); // also marks phase known
 
 		List<StatusSlot> slots = project(new SelfState(), fx, new PoisonState(), new BoostState());
 		List<String> ids = slotIds(slots);
 
 		assertTrue("menaphite slot must appear", ids.contains("menaphite"));
-		assertTrue("menaphite_next must appear when nextProcTicks > 0", ids.contains("menaphite_next"));
+		assertTrue("menaphite_next must appear when phase is known", ids.contains("menaphite_next"));
 
 		StatusSlot next = find(slots, "menaphite_next");
 		assertNotNull(next);
@@ -261,16 +261,37 @@ public class StatusProjectorTest
 	}
 
 	@Test
-	public void menaphite_withNoNextProcTick_noSecondaryEntry()
+	public void menaphite_unknownPhase_noSecondaryEntry()
 	{
+		// Phase not yet observed (setNextProcTicks never called) — secondary must not appear
 		EffectState fx = new EffectState();
 		fx.getMenaphite().setTotalTicksRemaining(300);
-		fx.getMenaphite().setNextProcTicks(0);
 
 		List<String> ids = slotIds(project(new SelfState(), fx, new PoisonState(), new BoostState()));
 		assertTrue("menaphite slot must appear", ids.contains("menaphite"));
-		assertFalse("menaphite_next must not appear when nextProcTicks == 0",
+		assertFalse("menaphite_next must not appear when phase is unknown",
 			ids.contains("menaphite_next"));
+	}
+
+	@Test
+	public void menaphite_atZeroBoundary_secondaryStillVisible()
+	{
+		// nextProcTicks ticked down to 0 — known zero boundary must still show secondary
+		EffectState fx = new EffectState();
+		fx.getMenaphite().setTotalTicksRemaining(75);
+		fx.getMenaphite().setNextProcTicks(1);
+		fx.getMenaphite().tick(); // ticks nextProcTicks → 0
+
+		List<StatusSlot> slots = project(new SelfState(), fx, new PoisonState(), new BoostState());
+		List<String> ids = slotIds(slots);
+
+		assertTrue("menaphite slot must appear", ids.contains("menaphite"));
+		assertTrue("menaphite_next must appear at zero boundary once phase is known",
+			ids.contains("menaphite_next"));
+
+		StatusSlot next = find(slots, "menaphite_next");
+		assertNotNull(next);
+		assertEquals("zero boundary label must be 0t", "0t", next.label);
 	}
 
 	// ── Compound: Burn + next hit ─────────────────────────────────────────────
