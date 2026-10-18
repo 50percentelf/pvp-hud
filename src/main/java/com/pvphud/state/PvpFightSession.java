@@ -1,5 +1,8 @@
 package com.pvphud.state;
 
+import java.util.ArrayDeque;
+import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
 import lombok.Getter;
 
@@ -14,19 +17,18 @@ import lombok.Getter;
  *   - Logout or world hop
  *   - Explicit eviction (plugin shutdown)
  *
- * Fight totals and the event log live here so they are not wiped by transient
- * InteractingChanged events.
+ * Fight totals and the exchange buffer live here so they are not wiped by
+ * transient InteractingChanged events.
  */
 public class PvpFightSession
 {
 	/** Ticks with no combat in either direction before the session self-expires. ~30 s. */
 	private static final int TIMEOUT_TICKS = 50;
+	private static final int MAX_EXCHANGES = 6;
 
 	@Getter private final String opponentName;
 	@Getter private final int    startTick;
 	@Getter private int          lastCombatTick;
-
-	private final CombatEventState events = new CombatEventState();
 
 	/** Total damage this player dealt to the opponent this session. */
 	@Getter private int totalOutgoing;
@@ -36,65 +38,60 @@ public class PvpFightSession
 	/** True once terminate() has been called; immutable after that. */
 	@Getter private boolean terminated;
 
-	// ── STACK detection — multiple damage sources on the same actor in one tick ─
-	// Outgoing stack: e.g. weapon hit + recoil ring on the opponent.
-	// Incoming stack: e.g. opponent weapon hit + their vengeance on us.
-	private int lastOutgoingHitTick = -1;
-	private int lastIncomingHitTick = -1;
+	/** Tick-keyed exchange records, newest first, capped at MAX_EXCHANGES. */
+	private final ArrayDeque<DamageExchange> exchanges = new ArrayDeque<>(MAX_EXCHANGES);
 
 	public PvpFightSession(String opponentName, int startTick)
 	{
-		this.opponentName  = opponentName;
-		this.startTick     = startTick;
+		this.opponentName   = opponentName;
+		this.startTick      = startTick;
 		this.lastCombatTick = startTick;
 	}
 
-	/** Record an outgoing hit. Updates total, event log, and tracking state. */
-	public void onOutgoingHit(CombatEvent event, int currentTick)
+	/**
+	 * Records an owned outgoing hit. Only call when hitsplat.isMine() is true.
+	 * Updates session totals and the exchange buffer for {@code currentTick}.
+	 */
+	public void onOutgoingHit(int damage, int prayerDrain, int currentTick)
 	{
-		lastCombatTick      = currentTick;
-		lastOutgoingHitTick = currentTick;
-		totalOutgoing       += event.getDamage();
-		events.post(event);
-	}
-
-	/** Record an incoming hit. Updates total, event log, and tracking state. */
-	public void onIncomingHit(CombatEvent event, int currentTick)
-	{
-		lastCombatTick      = currentTick;
-		lastIncomingHitTick = currentTick;
-		totalIncoming       += event.getDamage();
-		events.post(event);
+		lastCombatTick = currentTick;
+		totalOutgoing  += damage;
+		getOrCreate(currentTick).addOutgoing(damage, prayerDrain);
 	}
 
 	/**
-	 * Records an outgoing hit tick and returns true if a second (or later) outgoing
-	 * hitsplat landed on the opponent in the same game tick — indicating a damage
-	 * stack (e.g. weapon hit + recoil ring both resolving at once).
+	 * Records an incoming hit on the local player during an active session.
 	 */
-	public boolean recordAndCheckOutgoingStack(int tick)
+	public void onIncomingHit(int damage, int currentTick)
 	{
-		boolean stack = (tick == lastOutgoingHitTick);
-		lastOutgoingHitTick = tick;
-		return stack;
+		lastCombatTick = currentTick;
+		totalIncoming  += damage;
+		getOrCreate(currentTick).addIncoming(damage);
 	}
 
 	/**
-	 * Records an incoming hit tick and returns true if a second (or later) incoming
-	 * hitsplat landed on the local player in the same game tick — indicating a
-	 * damage stack (e.g. opponent weapon hit + their vengeance both resolving at once).
+	 * Marks combat activity without recording damage — used for 0-splats that
+	 * confirm ongoing engagement without contributing to session totals.
 	 */
-	public boolean recordAndCheckIncomingStack(int tick)
+	public void touchCombat(int currentTick)
 	{
-		boolean stack = (tick == lastIncomingHitTick);
-		lastIncomingHitTick = tick;
-		return stack;
+		lastCombatTick = currentTick;
 	}
 
-	/** Recent events newest-first; never null. */
-	public List<CombatEvent> getRecentEvents()
+	private DamageExchange getOrCreate(int tick)
 	{
-		return events.getRecentEvents();
+		DamageExchange head = exchanges.peekFirst();
+		if (head != null && head.getTick() == tick) return head;
+		if (exchanges.size() >= MAX_EXCHANGES) exchanges.pollLast();
+		DamageExchange ex = new DamageExchange(tick);
+		exchanges.addFirst(ex);
+		return ex;
+	}
+
+	/** Recent exchanges newest-first; never null. */
+	public List<DamageExchange> getRecentExchanges()
+	{
+		return Collections.unmodifiableList(new ArrayList<>(exchanges));
 	}
 
 	/**

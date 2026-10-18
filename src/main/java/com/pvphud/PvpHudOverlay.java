@@ -2,8 +2,7 @@ package com.pvphud;
 
 import com.pvphud.state.ActionClockState;
 import com.pvphud.state.BoostState;
-import com.pvphud.state.CombatEvent;
-import com.pvphud.state.CombatEventType;
+import com.pvphud.state.DamageExchange;
 import com.pvphud.state.EffectState;
 import com.pvphud.state.HudLayoutState;
 import com.pvphud.state.ManualTimerState;
@@ -75,6 +74,8 @@ public class PvpHudOverlay extends Overlay
 	private static final Color TOXIC_GREEN    = new Color(110, 230,  60);
 	/** Stable tint for periodic beneficial next-proc timers (Menaphite, Prayer Regen). */
 	private static final Color BENEFICIAL_PROC = new Color(140, 200, 255);
+	/** Outgoing damage — distinct from health-regen GREEN to avoid confusion. */
+	private static final Color OUT_CYAN        = new Color( 80, 200, 215);
 	private static final Color HP_FG        = new Color( 20, 185,  45);
 	private static final Color HP_BG        = new Color( 75,  15,  15);
 	private static final Color PRAYER_FG    = new Color(150, 140, 255);
@@ -759,6 +760,18 @@ public class PvpHudOverlay extends Overlay
 				g.drawString(prayerShortFor(prayer), prayX, prayIconY + fm.getAscent());
 			}
 		}
+
+		// Transient outgoing splat — shown below opponent HP bar for ~750 ms after we hit
+		{
+			long outMs  = opp.getLastOutgoingHitMs();
+			int  outDmg = opp.getLastOutgoingHit();
+			if (outMs > 0 && outDmg > 0 && System.currentTimeMillis() - outMs < 750)
+			{
+				String s = "-" + outDmg;
+				g.setColor(OUT_CYAN);
+				g.drawString(s, x0, y2 + HUD_BAR_H + fm.getAscent() + 1);
+			}
+		}
 	}
 
 	private void drawInventoryLeftRail(Graphics2D g, PvpHudState state,
@@ -799,8 +812,22 @@ public class PvpHudOverlay extends Overlay
 		}
 
 		// ── Self resource bars (icon left, bar right, number below bar) ────────
+		int hpBarCy = cy;
 		cy = drawInventoryBar(g, fm, cx + shakeX, lx + shakeX, cy, railW, hpSkillIcon,
 			self.getCurrentHp(), self.getMaxHp(), HP_FG, HP_BG, activeProfile.hpBarStyle);
+
+		// Transient incoming splat — shown near HP bar for ~750 ms after taking damage
+		{
+			long inMs  = self.getLastIncomingDamageMs();
+			int  inDmg = self.getLastIncomingDamage();
+			if (inMs > 0 && inDmg > 0 && System.currentTimeMillis() - inMs < 750)
+			{
+				String s = "-" + inDmg;
+				g.setColor(RED);
+				g.drawString(s, lx + railW - fm.stringWidth(s), hpBarCy + fm.getAscent());
+			}
+		}
+
 		cy = drawInventoryBar(g, fm, cx, lx, cy, railW, praySkillIcon,
 			self.getCurrentPrayer(), self.getMaxPrayer(), PRAYER_FG, PRAYER_BG, activeProfile.prayerBarStyle);
 
@@ -808,6 +835,39 @@ public class PvpHudOverlay extends Overlay
 			self.getRunEnergy(), 100, RUN_FG, RUN_BG, activeProfile.runBarStyle);
 		cy = drawInventoryBar(g, fm, cx, lx, cy, railW, specIcon,
 			fx.getSpecEnergy(), 100, YELLOW, HP_BG, activeProfile.specBarStyle);
+
+		// ── Damage row: OUT vs IN totals, always visible ──────────────────────
+		{
+			g.setColor(DIVIDER);
+			g.drawLine(lx, cy, INVY_LEFT_W - lx, cy);
+			cy += 3;
+
+			PvpFightSession dmgSession = state.getCurrentSession();
+			int totalOut = dmgSession != null
+				? dmgSession.getTotalOutgoing() : state.getLastTotalOutgoing();
+			int totalIn  = dmgSession != null
+				? dmgSession.getTotalIncoming() : state.getLastTotalIncoming();
+
+			int halfW  = railW / 2;
+			int outCx  = lx + halfW / 2;
+			int inCx   = lx + halfW + halfW / 2;
+			int gr     = fm.getHeight() / 2 - 1;
+
+			String outStr = totalOut > 0 ? String.valueOf(totalOut) : "-";
+			String inStr  = totalIn  > 0 ? String.valueOf(totalIn)  : "-";
+
+			int outTextX = outCx - fm.stringWidth(outStr) / 2;
+			drawSplatGlyph(g, outTextX - gr - 2, cy + fm.getHeight() / 2, gr, totalOut > 0 ? OUT_CYAN : DIVIDER);
+			g.setColor(totalOut > 0 ? OUT_CYAN : GRAY);
+			g.drawString(outStr, outTextX, cy + fm.getAscent());
+
+			int inTextX = inCx - fm.stringWidth(inStr) / 2;
+			drawSplatGlyph(g, inTextX - gr - 2, cy + fm.getHeight() / 2, gr, totalIn > 0 ? RED : DIVIDER);
+			g.setColor(totalIn > 0 ? RED : GRAY);
+			g.drawString(inStr, inTextX, cy + fm.getAscent());
+
+			cy += fm.getHeight() + 2;
+		}
 
 		// ── Self boost stats (compact: icon + current level, 5 columns) ──
 		if (activeProfile.showBoostRow)
@@ -1291,11 +1351,15 @@ public class PvpHudOverlay extends Overlay
 		drawCentered(g, smFm, "FIGHT", cx, cy + smFm.getAscent());
 		cy += smFm.getHeight() + 2;
 
-		// Column headers: OUT | IN
-		int outX = p.x + p.width / 4;      // centre of left column
-		int inX  = p.x + 3 * p.width / 4;  // centre of right column
-		g.setColor(GREEN);
+		// Column headers with splat glyphs
+		int outX    = p.x + p.width / 4;      // centre of left column
+		int inX     = p.x + 3 * p.width / 4;  // centre of right column
+		int glyphR  = smFm.getHeight() / 2 - 1;
+		int headerY = cy + smFm.getHeight() / 2;
+		drawSplatGlyph(g, outX - smFm.stringWidth("OUT") / 2 - glyphR - 2, headerY, glyphR, OUT_CYAN);
+		g.setColor(OUT_CYAN);
 		drawCentered(g, smFm, "OUT", outX, cy + smFm.getAscent());
+		drawSplatGlyph(g, inX - smFm.stringWidth("IN") / 2 - glyphR - 2, headerY, glyphR, RED);
 		g.setColor(RED);
 		drawCentered(g, smFm, "IN", inX, cy + smFm.getAscent());
 		// vertical divider
@@ -1303,20 +1367,10 @@ public class PvpHudOverlay extends Overlay
 		g.drawLine(mid, cy - 1, mid, p.y + p.height - PAD * 2 - smFm.getHeight());
 		cy += smFm.getHeight() + 2;
 
-		// Split events into out/in lists (newest first)
 		PvpFightSession session = state.getCurrentSession();
-		List<CombatEvent> allEvents = session != null
-			? session.getRecentEvents()
+		List<DamageExchange> exchanges = session != null
+			? session.getRecentExchanges()
 			: java.util.Collections.emptyList();
-		List<CombatEvent> outEvents = new ArrayList<>(3);
-		List<CombatEvent> inEvents  = new ArrayList<>(3);
-		for (CombatEvent ev : allEvents)
-		{
-			if (ev.getType() == CombatEventType.OUTGOING_HIT && outEvents.size() < 3)
-				outEvents.add(ev);
-			else if (ev.getType() == CombatEventType.INCOMING_HIT && inEvents.size() < 3)
-				inEvents.add(ev);
-		}
 
 		g.setFont(normal);
 		FontMetrics fmNorm = g.getFontMetrics();
@@ -1325,39 +1379,30 @@ public class PvpHudOverlay extends Overlay
 
 		int maxRows = 3;
 		int rowH    = fmNorm.getHeight() + 1;
-		for (int row = 0; row < maxRows; row++)
+		for (int row = 0; row < maxRows && row < exchanges.size(); row++)
 		{
 			if (cy + rowH > p.y + p.height - PAD * 2 - smFm.getHeight()) break;
 			boolean isFirst = row == 0;
 			FontMetrics fm = isFirst ? fmNorm : fmSm;
 			g.setFont(isFirst ? normal : small);
 
-			if (row < outEvents.size())
+			DamageExchange ex = exchanges.get(row);
+
+			if (ex.hasOutgoing())
 			{
-				CombatEvent outEv = outEvents.get(row);
-				Color outColor = isFirst
-					? (outEv.isChance() ? YELLOW : GREEN)
-					: GRAY_DIM;
-				g.setColor(outColor);
-				String outLabel = String.valueOf(outEv.getDamage());
-				if (outEv.isChance()) outLabel += "!";
-				if (outEv.isStack())  outLabel = "[" + outLabel + "]";
-				if (outEv.getPrayerDrain() > 0) outLabel += " -" + outEv.getPrayerDrain() + "p";
+				String outLabel = String.valueOf(ex.getOutgoingTotal());
+				if (ex.getOutgoingPrayerDrain() > 0)
+					outLabel += " -" + ex.getOutgoingPrayerDrain() + "p";
+				g.setColor(isFirst ? OUT_CYAN : GRAY_DIM);
 				drawCentered(g, fm, outLabel, outX, cy + fm.getAscent());
 			}
-			if (row < inEvents.size())
+
+			if (ex.hasIncoming())
 			{
-				CombatEvent inEv = inEvents.get(row);
-				Color inColor = isFirst
-					? (inEv.isChance() ? YELLOW : RED)
-					: GRAY_DIM;
-				g.setColor(inColor);
-				String inLabel = String.valueOf(inEv.getDamage());
-				if (inEv.isChance()) inLabel += "!";
-				if (inEv.isStack())  inLabel = "[" + inLabel + "]";
-				if (inEv.getPrayerDrain() > 0) inLabel += " -" + inEv.getPrayerDrain() + "p";
-				drawCentered(g, fm, inLabel, inX, cy + fm.getAscent());
+				g.setColor(isFirst ? RED : GRAY_DIM);
+				drawCentered(g, fm, String.valueOf(ex.getIncomingTotal()), inX, cy + fm.getAscent());
 			}
+
 			cy += isFirst ? fm.getHeight() + 2 : fm.getHeight() + 1;
 		}
 
@@ -1377,16 +1422,16 @@ public class PvpHudOverlay extends Overlay
 		if (totalDealt > 0 || totalReceived > 0)
 		{
 			// Thin divider above totals
+			g.setFont(small);
+			smFm = g.getFontMetrics();
 			int divY = p.y + p.height - PAD - smFm.getHeight() - 3;
 			g.setColor(VERT_DIV);
 			g.drawLine(p.x + PAD, divY, p.x + p.width - PAD, divY);
 
-			g.setFont(small);
-			smFm = g.getFontMetrics();
 			int totY = p.y + p.height - PAD;
 			if (totalDealt > 0)
 			{
-				g.setColor(GREEN);
+				g.setColor(OUT_CYAN);
 				drawCentered(g, smFm, totalDealt + "D", outX, totY);
 			}
 			if (totalReceived > 0)
@@ -1902,6 +1947,23 @@ public class PvpHudOverlay extends Overlay
 		// Arrowhead at arc end (east = right side of circle), pointing south (clockwise direction).
 		g.drawLine(cx + r, cy, cx + r - 2, cy - 3);
 		g.drawLine(cx + r, cy, cx + r + 2, cy - 3);
+	}
+
+	/**
+	 * Draws an 8-pointed star (4 crossing lines) centred at (cx, cy) with radius r.
+	 * Used as the damage-type glyph for outgoing (OUT_CYAN) and incoming (RED) hits.
+	 */
+	static void drawSplatGlyph(Graphics2D g, int cx, int cy, int r, Color color)
+	{
+		if (r < 2) return;
+		g.setColor(color);
+		for (int i = 0; i < 4; i++)
+		{
+			double angle = Math.toRadians(i * 45);
+			int dx = (int) Math.round(Math.cos(angle) * r);
+			int dy = (int) Math.round(Math.sin(angle) * r);
+			g.drawLine(cx - dx, cy - dy, cx + dx, cy + dy);
+		}
 	}
 
 	/**

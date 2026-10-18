@@ -3,15 +3,12 @@ package com.pvphud;
 import com.google.inject.Provides;
 import com.pvphud.state.ActionClockState;
 import com.pvphud.state.BoostState;
-import com.pvphud.state.CombatEvent;
-import com.pvphud.state.CombatEventType;
 import com.pvphud.state.EffectState;
 import com.pvphud.state.ManualTimerState;
 import com.pvphud.state.OpponentState;
 import com.pvphud.state.OpponentStats;
 import com.pvphud.state.PeriodicEffect;
 import com.pvphud.state.PoisonState;
-import com.pvphud.state.PrayerEffect;
 import com.pvphud.state.ProtectionState;
 import com.pvphud.state.PvpFightSession;
 import com.pvphud.state.SelfState;
@@ -976,35 +973,31 @@ public class PvpHudPlugin extends Plugin
 			hudState.getProtection().onAttackExchanged(getPjTimerTicks());
 			hudState.getProtection().onIncomingHit();
 
-			if (dmg <= 0) return;
-			// Only shake on actual damage — 0-splat must not trigger the animation.
-			hudState.getSelf().setLastIncomingDamageMs(System.currentTimeMillis());
-
+			int tick = client.getTickCount();
 			PvpFightSession session = hudState.getCurrentSession();
-			if (session == null) return;
-
-			// Smite drains floor(dmg / 4) — 25% rounded down
-			PrayerEffect effect   = PrayerEffect.NONE;
-			int prayerDrain       = 0;
-			OpponentState opp     = hudState.getOpponent();
-			if (opp.isSmiteActive())
+			if (dmg <= 0)
 			{
-				effect      = PrayerEffect.SMITE;
-				prayerDrain = dmg / 4;
+				// 0-splat keeps the session alive without adding to totals.
+				if (session != null) session.touchCombat(tick);
+				return;
 			}
 
-			int     tick  = client.getTickCount();
-			boolean stack = session.recordAndCheckIncomingStack(tick);
+			// Only shake on actual damage — 0-splat must not trigger the animation.
+			SelfState self = hudState.getSelf();
+			self.setLastIncomingDamageMs(System.currentTimeMillis());
+			self.setLastIncomingDamage(dmg);
 
-			session.onIncomingHit(
-				new CombatEvent(CombatEventType.INCOMING_HIT, dmg,
-					prayerDrain, 0, effect, false, stack, System.currentTimeMillis()),
-				tick);
+			if (session == null) return;
+			session.onIncomingHit(dmg, tick);
 		}
 		else if (actor instanceof Player)
 		{
 			String actorName = actor.getName();
 			if (actorName == null) return;
+
+			// Only process hitsplats that we dealt — filters multi-combat hits
+			// from other players landing on the same opponent.
+			if (!event.getHitsplat().isMine()) return;
 
 			// Outgoing hitsplat on the pending candidate confirms the session.
 			if (pendingOpponentName != null && actorName.equalsIgnoreCase(pendingOpponentName))
@@ -1020,19 +1013,26 @@ public class PvpHudPlugin extends Plugin
 				return;
 			}
 
-			// PJ safe timer refreshes on ANY outgoing attack, including 0-damage.
+			// PJ safe timer refreshes on our attacks, including 0-damage.
 			hudState.getProtection().onAttackExchanged(getPjTimerTicks());
 
-			int dmg = event.getHitsplat().getAmount();
-			if (dmg <= 0) return;
+			int tick = client.getTickCount();
+			int dmg  = event.getHitsplat().getAmount();
+			if (dmg <= 0)
+			{
+				PvpFightSession session = hudState.getCurrentSession();
+				if (session != null) session.touchCombat(tick);
+				return;
+			}
 
-			handleOutgoingHit(opp, dmg);
+			handleOutgoingHit(opp, dmg, tick);
 		}
 	}
 
-	private void handleOutgoingHit(OpponentState opp, int damage)
+	private void handleOutgoingHit(OpponentState opp, int damage, int tick)
 	{
 		opp.setLastOutgoingHit(damage);
+		opp.setLastOutgoingHitMs(System.currentTimeMillis());
 
 		if (opp.getEstimatedHp() > 0)
 			opp.setEstimatedHp(Math.max(0, opp.getEstimatedHp() - damage));
@@ -1040,23 +1040,13 @@ public class PvpHudPlugin extends Plugin
 		PvpFightSession session = hudState.getCurrentSession();
 		if (session == null) return;
 
-		// Outgoing Smite: local player's overhead icon determines if Smite is active
-		PrayerEffect outEffect      = PrayerEffect.NONE;
-		int          outPrayerDrain = 0;
-		Player       local          = client.getLocalPlayer();
+		// Outgoing Smite: local player's overhead icon determines drain amount
+		int prayerDrain = 0;
+		Player local = client.getLocalPlayer();
 		if (local != null && local.getOverheadIcon() == HeadIcon.SMITE)
-		{
-			outEffect      = PrayerEffect.SMITE;
-			outPrayerDrain = damage / 4;
-		}
+			prayerDrain = damage / 4;
 
-		int     tick  = client.getTickCount();
-		boolean stack = session.recordAndCheckOutgoingStack(tick);
-
-		session.onOutgoingHit(
-			new CombatEvent(CombatEventType.OUTGOING_HIT, damage,
-				outPrayerDrain, 0, outEffect, false, stack, System.currentTimeMillis()),
-			tick);
+		session.onOutgoingHit(damage, prayerDrain, tick);
 	}
 
 	// ── HUD visibility predicate ─────────────────────────────────────────────

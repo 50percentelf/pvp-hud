@@ -53,6 +53,9 @@ public class SelfState
 	/** Wall-clock ms of the last incoming hitsplat; -1 = none yet. Used for HP bar shake. */
 	@Getter @Setter private long lastIncomingDamageMs = -1;
 
+	/** Damage amount of the last incoming hit; 0 = none. Used for transient splat display. */
+	@Getter @Setter private int lastIncomingDamage;
+
 	/** Run energy 0–100 (polled each game tick from client.getEnergy()). */
 	@Getter @Setter private int runEnergy;
 
@@ -156,6 +159,7 @@ public class SelfState
 		boostDecay.reset();
 		debuffRestore.reset();
 		lastIncomingDamageMs    = -1;
+		lastIncomingDamage      = 0;
 		runEnergy               = 0;
 	}
 }

@@ -5,15 +5,12 @@ import com.pvphud.debug.DebugFreezeType;
 import com.pvphud.debug.DebugPoisonType;
 import com.pvphud.state.ActionClockState;
 import com.pvphud.state.BoostState;
-import com.pvphud.state.CombatEvent;
-import com.pvphud.state.CombatEventType;
 import com.pvphud.state.EffectState;
 import com.pvphud.state.OpponentState;
 import com.pvphud.state.OpponentStats;
 import com.pvphud.state.PoisonState;
 import com.pvphud.state.ProtectionState;
 import com.pvphud.state.PvpFightSession;
-import com.pvphud.state.PrayerEffect;
 import com.pvphud.state.SelfState;
 import net.runelite.api.HeadIcon;
 import net.runelite.api.SpriteID;
@@ -223,16 +220,11 @@ class DebugStateBuilder
 		if (name == null || name.trim().isEmpty()) name = "Opponent";
 		state.beginSession(name, currentTick - 5);
 		PvpFightSession session = state.getCurrentSession();
-		long now = System.currentTimeMillis();
-		session.onOutgoingHit(CombatEvent.outgoing(42, now - 3600), currentTick - 3);
-		session.onIncomingHit(CombatEvent.incoming(17, now - 3600), currentTick - 3);
-		session.onOutgoingHit(CombatEvent.outgoing(28, now - 2400), currentTick - 2);
-		session.onIncomingHit(
-			new CombatEvent(CombatEventType.INCOMING_HIT, 35, 8, 0, PrayerEffect.SMITE, false, false, now - 2400),
-			currentTick - 2);
-		session.onOutgoingHit(
-			new CombatEvent(CombatEventType.OUTGOING_HIT, 99, 0, 0, PrayerEffect.NONE, true, false, now - 1200),
-			currentTick - 1);
+		session.onOutgoingHit(42, 0, currentTick - 3);
+		session.onIncomingHit(17, currentTick - 3);
+		session.onOutgoingHit(28, 0, currentTick - 2);
+		session.onIncomingHit(35, currentTick - 2);
+		session.onOutgoingHit(99, 0, currentTick - 1);
 	}
 
 	// ── Preset: all effects at representative values ──────────────────────────
@@ -322,15 +314,10 @@ class DebugStateBuilder
 
 		state.beginSession("DragonSlayer99", currentTick - 5);
 		PvpFightSession session = state.getCurrentSession();
-		long now = System.currentTimeMillis();
-		session.onOutgoingHit(CombatEvent.outgoing(42, now - 3600), currentTick - 3);
-		session.onIncomingHit(CombatEvent.incoming(17, now - 3600), currentTick - 3);
-		session.onOutgoingHit(CombatEvent.outgoing(28, now - 2400), currentTick - 2);
-		session.onIncomingHit(
-			new CombatEvent(CombatEventType.INCOMING_HIT, 35, 8, 0, PrayerEffect.SMITE, false, false, now - 2400),
-			currentTick - 2);
-		session.onOutgoingHit(
-			new CombatEvent(CombatEventType.OUTGOING_HIT, 99, 0, 0, PrayerEffect.NONE, true, false, now - 1200),
-			currentTick - 1);
+		session.onOutgoingHit(42, 0, currentTick - 3);
+		session.onIncomingHit(17, currentTick - 3);
+		session.onOutgoingHit(28, 0, currentTick - 2);
+		session.onIncomingHit(35, currentTick - 2);
+		session.onOutgoingHit(99, 0, currentTick - 1);
 	}
 }

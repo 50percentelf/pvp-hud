@@ -38,9 +38,13 @@ public class OpponentState
 	@Getter @Setter
 	private boolean vengActive;
 
-	/** Most recent outgoing hit dealt to the opponent (shown in corner). */
+	/** Most recent outgoing hit dealt to the opponent. -1 = none. */
 	@Getter @Setter
 	private int lastOutgoingHit = -1;
+
+	/** Wall-clock ms when lastOutgoingHit was set; -1 = none. Used for transient splat display. */
+	@Getter @Setter
+	private long lastOutgoingHitMs = -1;
 
 	/** Damage computed from XP drop, shown as an in-flight indicator before HP bar updates. */
 	@Getter private int  pendingHitDamage;
@@ -87,6 +91,7 @@ public class OpponentState
 		maxHp                 = -1;
 		vengActive            = false;
 		lastOutgoingHit       = -1;
+		lastOutgoingHitMs     = -1;
 		overheadPrayer        = null;
 		pendingHitDamage      = 0;
 		pendingHitTimestampMs = -1;

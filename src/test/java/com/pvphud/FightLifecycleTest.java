@@ -1,8 +1,5 @@
 package com.pvphud;
 
-import com.pvphud.state.CombatEvent;
-import com.pvphud.state.CombatEventType;
-import com.pvphud.state.PrayerEffect;
 import com.pvphud.state.PvpFightSession;
 import org.junit.Test;
 import static org.junit.Assert.*;
@@ -48,10 +45,7 @@ public class FightLifecycleTest
 	{
 		PvpFightSession session = new PvpFightSession("Bob", 100);
 		// A hit on tick 130 resets the idle clock to tick 130
-		session.onOutgoingHit(
-			new CombatEvent(CombatEventType.OUTGOING_HIT, 10, 0, 0,
-				PrayerEffect.NONE, false, false, System.currentTimeMillis()),
-			130);
+		session.onOutgoingHit(10, 0, 130);
 		assertFalse("49 ticks after last combat is not stale", session.isStale(179));
 		assertTrue("50 ticks after last combat is stale", session.isStale(180));
 	}
@@ -123,14 +117,8 @@ public class FightLifecycleTest
 		state.getOpponent().setName("Zed");
 
 		PvpFightSession session = state.getCurrentSession();
-		session.onOutgoingHit(
-			new CombatEvent(CombatEventType.OUTGOING_HIT, 42, 0, 0,
-				PrayerEffect.NONE, false, false, System.currentTimeMillis()),
-			1);
-		session.onIncomingHit(
-			new CombatEvent(CombatEventType.INCOMING_HIT, 18, 0, 0,
-				PrayerEffect.NONE, false, false, System.currentTimeMillis()),
-			2);
+		session.onOutgoingHit(42, 0, 1);
+		session.onIncomingHit(18, 2);
 
 		state.endSession();
 		state.getOpponent().reset();
