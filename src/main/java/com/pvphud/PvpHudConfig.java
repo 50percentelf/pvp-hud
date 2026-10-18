@@ -256,18 +256,6 @@ public interface PvpHudConfig extends Config
 	}
 
 	@ConfigItem(
-		keyName = "hf_showBoostRow",
-		name = "Show Boost Row",
-		description = "Show the ATK/STR/DEF/RNG/MAG boost row at the bottom of the HUD.",
-		section = horizFloatSection,
-		position = 2
-	)
-	default boolean hfShowBoostRow()
-	{
-		return true;
-	}
-
-	@ConfigItem(
 		keyName = "hf_boostXOverX",
 		name = "Show Boosts as Boosted/Base",
 		description = "Boost row shows the actual boosted level vs base level (e.g. 115/99) instead of the delta (+16).",
@@ -375,18 +363,6 @@ public interface PvpHudConfig extends Config
 	}
 
 	@ConfigItem(
-		keyName = "vf_showBoostRow",
-		name = "Show Boost Row",
-		description = "Show the ATK/STR/DEF/RNG/MAG boost row at the bottom of the HUD.",
-		section = vertFloatSection,
-		position = 2
-	)
-	default boolean vfShowBoostRow()
-	{
-		return true;
-	}
-
-	@ConfigItem(
 		keyName = "vf_boostXOverX",
 		name = "Show Boosts as Boosted/Base",
 		description = "Boost row shows the actual boosted level vs base level (e.g. 115/99) instead of the delta (+16).",
@@ -491,18 +467,6 @@ public interface PvpHudConfig extends Config
 	default int ihBackgroundOpacity()
 	{
 		return 220;
-	}
-
-	@ConfigItem(
-		keyName = "ih_showBoostRow",
-		name = "Show Boost Row",
-		description = "Show the ATK/STR/DEF/RNG/MAG boost row at the bottom of the HUD.",
-		section = invyHugSection,
-		position = 2
-	)
-	default boolean ihShowBoostRow()
-	{
-		return true;
 	}
 
 	@ConfigItem(

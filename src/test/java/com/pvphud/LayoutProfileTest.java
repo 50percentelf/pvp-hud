@@ -20,7 +20,6 @@ public class LayoutProfileTest
 		@Override public boolean         hfChatLocked()                   { return false; }
 		@Override public BuffStyle       hfBuffStyle()                    { return BuffStyle.ICON_TRAY; }
 		@Override public int             hfBackgroundOpacity()            { return 50; }
-		@Override public boolean         hfShowBoostRow()                 { return true; }
 		@Override public boolean         hfBoostXOverX()                  { return false; }
 		@Override public boolean         hfReserveBoostDockWhenHidden()   { return true; }
 		@Override public BarDisplayStyle hfHpBarStyle()                   { return BarDisplayStyle.NUMBERS_ONLY; }
@@ -31,7 +30,6 @@ public class LayoutProfileTest
 		// ── Vertical Float ───────────────────────────────────────────────────────
 		@Override public BuffStyle       vfBuffStyle()                    { return BuffStyle.VERTICAL_BAR; }
 		@Override public int             vfBackgroundOpacity()            { return 200; }
-		@Override public boolean         vfShowBoostRow()                 { return true; }
 		@Override public boolean         vfBoostXOverX()                  { return false; }
 		@Override public boolean         vfReserveBoostDockWhenHidden()   { return false; }
 		@Override public BarDisplayStyle vfHpBarStyle()                   { return BarDisplayStyle.HIDDEN; }
@@ -42,14 +40,13 @@ public class LayoutProfileTest
 		// ── Inventory Hug ────────────────────────────────────────────────────────
 		@Override public BuffStyle       ihBuffStyle()       { return BuffStyle.TEXT; }
 		@Override public int             ihBackgroundOpacity(){ return 150; }
-		@Override public boolean         ihShowBoostRow()    { return false; }
 		@Override public boolean         ihBoostXOverX()     { return true; }
 		@Override public BarDisplayStyle ihHpBarStyle()      { return BarDisplayStyle.BARS_AND_NUMBERS; }
 		@Override public BarDisplayStyle ihPrayerBarStyle()  { return BarDisplayStyle.HIDDEN; }
 		@Override public BarDisplayStyle ihRunBarStyle()     { return BarDisplayStyle.BARS_ONLY; }
 		@Override public BarDisplayStyle ihSpecBarStyle()    { return BarDisplayStyle.NUMBERS_ONLY; }
 
-		// ── Global (unused by LayoutProfile, defaults are fine) ──────────────────
+		// ── Global ──────────────────────────────────────────────────────────────
 		@Override public HudMode  hudMode()       { return HudMode.MANUAL; }
 		@Override public boolean  hudVisible()    { return false; }
 		@Override public HudLayout hudLayout()   { return HudLayout.HORIZONTAL_FLOAT; }
@@ -69,7 +66,7 @@ public class LayoutProfileTest
 		LayoutProfile p = LayoutProfile.forLayout(HudLayout.HORIZONTAL_FLOAT, CONFIG);
 		assertEquals(BuffStyle.ICON_TRAY, p.buffStyle);
 		assertEquals(50, p.backgroundOpacity);
-		assertTrue(p.showBoostRow);
+		assertFalse(p.showBoostRow);
 		assertFalse(p.boostXOverX);
 		assertTrue(p.reserveBoostDockWhenHidden);
 		assertEquals(BarDisplayStyle.NUMBERS_ONLY, p.hpBarStyle);
@@ -84,7 +81,7 @@ public class LayoutProfileTest
 		LayoutProfile p = LayoutProfile.forLayout(HudLayout.VERTICAL_FLOAT, CONFIG);
 		assertEquals(BuffStyle.VERTICAL_BAR, p.buffStyle);
 		assertEquals(200, p.backgroundOpacity);
-		assertTrue(p.showBoostRow);
+		assertFalse(p.showBoostRow);
 		assertFalse(p.boostXOverX);
 		assertFalse(p.reserveBoostDockWhenHidden);
 		assertEquals(BarDisplayStyle.HIDDEN, p.hpBarStyle);
@@ -99,7 +96,7 @@ public class LayoutProfileTest
 		LayoutProfile p = LayoutProfile.forLayout(HudLayout.INVENTORY_HUG, CONFIG);
 		assertEquals(BuffStyle.TEXT, p.buffStyle);
 		assertEquals(150, p.backgroundOpacity);
-		assertFalse(p.showBoostRow);
+		assertFalse(p.showBoostRow); // global flag; same value for all layouts
 		assertTrue(p.boostXOverX);
 		assertFalse(p.reserveBoostDockWhenHidden); // not applicable
 		assertEquals(BarDisplayStyle.BARS_AND_NUMBERS, p.hpBarStyle);
@@ -145,7 +142,6 @@ public class LayoutProfileTest
 			@Override public boolean hfReserveBoostDockWhenHidden() { return true; }
 			@Override public BuffStyle       hfBuffStyle()          { return BuffStyle.VERTICAL_BAR; }
 			@Override public int             hfBackgroundOpacity()  { return 220; }
-			@Override public boolean         hfShowBoostRow()       { return true; }
 			@Override public boolean         hfBoostXOverX()        { return false; }
 			@Override public BarDisplayStyle hfHpBarStyle()         { return BarDisplayStyle.BARS_AND_NUMBERS; }
 			@Override public BarDisplayStyle hfPrayerBarStyle()     { return BarDisplayStyle.BARS_AND_NUMBERS; }

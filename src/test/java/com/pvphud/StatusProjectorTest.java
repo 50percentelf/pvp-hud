@@ -198,7 +198,7 @@ public class StatusProjectorTest
 	// ── Compound: Menaphite + next proc ──────────────────────────────────────
 
 	@Test
-	public void menaphite_withNextProcTick_includesSecondaryEntry()
+	public void menaphite_withNextProcTick_includesBothEntries()
 	{
 		EffectState fx = new EffectState();
 		fx.getMenaphite().setTotalTicksRemaining(300);
@@ -212,7 +212,7 @@ public class StatusProjectorTest
 
 		StatusSlot next = find(slots, "menaphite_next");
 		assertNotNull(next);
-		assertTrue("menaphite_next must be secondary", next.isSecondary);
+		assertFalse("menaphite_next must be a primary slot so all buff styles show it", next.isSecondary);
 	}
 
 	@Test

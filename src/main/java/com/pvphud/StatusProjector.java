@@ -184,7 +184,7 @@ public final class StatusProjector
 					fx.getMenaphite().getTotalTicksRemaining(), false);
 				if (fx.getMenaphite().getNextProcTicks() > 0)
 					addTimed(out, "menaphite_next", StatusPriority.SUSTAIN, "NXT",
-						fx.getMenaphite().getNextProcTicks(), true);
+						fx.getMenaphite().getNextProcTicks(), false);
 			}
 		}
 

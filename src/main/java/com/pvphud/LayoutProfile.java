@@ -43,7 +43,7 @@ class LayoutProfile
 				return new LayoutProfile(
 					config.hfBuffStyle(),
 					config.hfBackgroundOpacity(),
-					config.hfShowBoostRow(),
+					false,
 					config.hfBoostXOverX(),
 					chatLocked ? false : config.hfReserveBoostDockWhenHidden(),
 					chatLocked,
@@ -57,7 +57,7 @@ class LayoutProfile
 				return new LayoutProfile(
 					config.vfBuffStyle(),
 					config.vfBackgroundOpacity(),
-					config.vfShowBoostRow(),
+					false,
 					config.vfBoostXOverX(),
 					config.vfReserveBoostDockWhenHidden(),
 					false,
@@ -71,7 +71,7 @@ class LayoutProfile
 				return new LayoutProfile(
 					config.ihBuffStyle(),
 					config.ihBackgroundOpacity(),
-					config.ihShowBoostRow(),
+					false,
 					config.ihBoostXOverX(),
 					false,
 					false,

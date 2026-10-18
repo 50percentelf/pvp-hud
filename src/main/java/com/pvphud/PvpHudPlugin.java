@@ -605,7 +605,9 @@ public class PvpHudPlugin extends Plugin
 			else
 			{
 				men.setTotalTicksRemaining(value * 25);
-				if (prevMenaphiteVarbit > 0 && value < prevMenaphiteVarbit)
+				if (prevMenaphiteVarbit <= 0 && value > 0)
+					men.setNextProcTicks(25); // initial drink; first proc in ~25 ticks
+				else if (prevMenaphiteVarbit > 0 && value < prevMenaphiteVarbit)
 					men.setNextProcTicks(25); // proc just fired; next restore in 25 ticks
 			}
 			prevMenaphiteVarbit = value;
