@@ -1850,6 +1850,28 @@ public class PvpHudOverlay extends Overlay
 		}
 	}
 
+	/**
+	 * Returns a compact label for a secondary child entry suitable for the 2-col
+	 * Inventory Hug cell where the parent context is already visible via icon.
+	 * Each case strips the parent-name prefix that would be redundant inside a
+	 * compound cell; unknown children fall back to {@link ActiveEffectView#label}.
+	 */
+	static String compactSecondaryLabel(String childSlotId, ActiveEffectView child)
+	{
+		String lbl = child.label != null ? child.label : "";
+		if (childSlotId == null) return lbl;
+		switch (childSlotId)
+		{
+			case "menaphite_next":    return "NXT " + lbl;           // "NXT 0:09"
+			case "prayer_regen_next": return "NXT " + lbl;           // "NXT 0:04"
+			case "corrupt_next":      return lbl;                    // "-3 5t" (already compact)
+			case "burn_next":
+				// child.label is "BURN+N"; strip "BURN" → "+N"
+				return lbl.startsWith("BURN+") ? lbl.substring(4) : lbl;
+			default:                  return lbl;
+		}
+	}
+
 	static int drawEffects2Col(Graphics2D g, List<ActiveEffectView> effects, int lx, int cy, int maxY)
 	{
 		FontMetrics fm    = g.getFontMetrics();
@@ -1911,11 +1933,15 @@ public class PvpHudOverlay extends Overlay
 						cy + ICON_SIZE + iconGap + fm.getAscent());
 				}
 				// Secondary label — line 2 (only when child was not dropped)
-				if (child != null && !child.label.isEmpty())
+				if (child != null)
 				{
-					g.setColor(child.color);
-					drawCentered(g, fm, child.label, lx + colW,
-						cy + ICON_SIZE + iconGap + lineH + fm.getAscent());
+					String secLabel = compactSecondaryLabel(child.slotId, child);
+					if (!secLabel.isEmpty())
+					{
+						g.setColor(child.color);
+						drawCentered(g, fm, secLabel, lx + colW,
+							cy + ICON_SIZE + iconGap + lineH + fm.getAscent());
+					}
 				}
 				cy += (child != null ? compH : cellH);
 				// col stays 0 — compound row always ends flush

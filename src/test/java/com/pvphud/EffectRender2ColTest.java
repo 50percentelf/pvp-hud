@@ -375,4 +375,78 @@ public class EffectRender2ColTest
 		assertTrue("three effects must advance cy at least as much as two", cySingle >= cyPair);
 		g.dispose();
 	}
+
+	// ── compactSecondaryLabel ─────────────────────────────────────────────────
+
+	private static ActiveEffectView childView(String slotId, String label)
+	{
+		return new ActiveEffectView(slotId, null, label, null, Color.YELLOW,
+			null, StatusPriority.SUSTAIN, true);
+	}
+
+	@Test
+	public void compactSecondaryLabel_menaphite_prefixesNXT()
+	{
+		ActiveEffectView child = childView("menaphite_next", "0:09");
+		String label = PvpHudOverlay.compactSecondaryLabel("menaphite_next", child);
+		assertTrue("menaphite_next compact label must start with NXT",
+			label.startsWith("NXT "));
+		assertFalse("menaphite_next must not be an unlabelled raw timer",
+			label.equals("0:09"));
+	}
+
+	@Test
+	public void compactSecondaryLabel_prayerRegen_prefixesNXT()
+	{
+		ActiveEffectView child = childView("prayer_regen_next", "0:04");
+		String label = PvpHudOverlay.compactSecondaryLabel("prayer_regen_next", child);
+		assertTrue("prayer_regen_next compact label must start with NXT",
+			label.startsWith("NXT "));
+		assertFalse("prayer_regen_next must not retain verbose P-NXT prefix",
+			label.startsWith("P-NXT"));
+	}
+
+	@Test
+	public void compactSecondaryLabel_corruption_remainsCompact()
+	{
+		// corrupt_next label is already "-3 5t" (concise); no prefix should be added.
+		ActiveEffectView child = childView("corrupt_next", "-3 5t");
+		String label = PvpHudOverlay.compactSecondaryLabel("corrupt_next", child);
+		assertEquals("corrupt_next compact label must be the raw label unchanged", "-3 5t", label);
+		assertFalse("corrupt_next must not gain NXDRAIN prefix",
+			label.contains("NXDRAIN"));
+	}
+
+	@Test
+	public void compactSecondaryLabel_burn_stripsRedundantBurnPrefix()
+	{
+		ActiveEffectView child = childView("burn_next", "BURN+3");
+		String label = PvpHudOverlay.compactSecondaryLabel("burn_next", child);
+		assertEquals("burn_next compact label must strip BURN prefix", "+3", label);
+	}
+
+	@Test
+	public void compactSecondaryLabel_burn_nonStandardLabel_fallsBackSafely()
+	{
+		// If burn label doesn't have the expected "BURN+" prefix, return as-is.
+		ActiveEffectView child = childView("burn_next", "3");
+		String label = PvpHudOverlay.compactSecondaryLabel("burn_next", child);
+		assertEquals("burn_next without BURN+ must fall back to raw label", "3", label);
+	}
+
+	@Test
+	public void compactSecondaryLabel_unknown_fallsBackToLabel()
+	{
+		ActiveEffectView child = childView("some_future_slot", "42t");
+		String label = PvpHudOverlay.compactSecondaryLabel("some_future_slot", child);
+		assertEquals("unknown child slot must fall back to child.label", "42t", label);
+	}
+
+	@Test
+	public void compactSecondaryLabel_nullSlotId_fallsBackToLabel()
+	{
+		ActiveEffectView child = childView(null, "0:15");
+		String label = PvpHudOverlay.compactSecondaryLabel(null, child);
+		assertEquals("null slotId must fall back to child.label", "0:15", label);
+	}
 }
