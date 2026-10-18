@@ -11,7 +11,7 @@ A configurable PvP combat HUD for RuneLite. Consolidates fight tracking, buff ti
 | **Chat Locked** | Fills the chatbox region and stays pinned there. Cannot be dragged. |
 | **Horizontal Float** | Same proportions as Chat Locked but freely draggable via Alt+drag. |
 | **Vertical Float** | Narrow stacked panel, freely draggable via Alt+drag. |
-| **Inventory Hug** | Attaches a left rail and top rail flush against the inventory panel without overlapping it. Top rail shows the opponent panel. Left rail shows HP / Prayer / Run / Spec bars, an always-visible damage row (total dealt / received), and optionally the boost stats. |
+| **Inventory Hug** | Attaches a left rail and top rail flush against the inventory panel without overlapping it. Top rail shows the opponent panel. Left rail shows HP / Prayer / Run / Spec bars, and optionally the boost stats. The action corner shows OUT / IN damage totals (dealt / received) below the attack clock. |
 
 Float layouts remember their last dragged position independently per layout and per gameframe (Fixed / Resizable Classic / Resizable Modern).
 
@@ -33,10 +33,10 @@ Float layouts remember their last dragged position independently per layout and 
 
 | Element | Notes |
 |---|---|
-| Hit log | Tick-paired rows newest first. Left column (cyan splat) = damage dealt by you; right column (red splat) = damage received. **IN is not guaranteed to originate from the tracked opponent in multi-combat.** |
+| Hit log | Tick-paired rows newest first. Left column (OUT, cyan) = damage dealt by you; right column (IN, red) = damage received. **IN is not guaranteed to originate from the tracked opponent in multi-combat.** |
 | Stack format | Single hit: `34`. Two same-tick hits: `20+8`. Three or more: `42 (3)`. |
 | Smite drain | `-Np` suffix on outgoing hits where you had Smite active. |
-| Session totals | Cyan splat + dealt total / red splat + received total, pinned to the bottom. |
+| Session totals | OUT (cyan) dealt total and IN (red) received total, pinned to the bottom. |
 | Rows shown | Horizontal Float / Chat Locked: 3 most recent ticks. Vertical Float: 2 most recent ticks. |
 | Fight Over banner | Shown after opponent death or session timeout. |
 

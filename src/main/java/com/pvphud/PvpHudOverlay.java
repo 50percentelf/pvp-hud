@@ -12,9 +12,7 @@ import com.pvphud.state.PoisonState;
 import com.pvphud.state.ProtectionState;
 import com.pvphud.state.PvpFightSession;
 import com.pvphud.state.SelfState;
-import java.awt.AlphaComposite;
 import java.awt.Color;
-import java.awt.Composite;
 import java.awt.Dimension;
 import java.awt.Font;
 import java.awt.FontMetrics;
@@ -39,8 +37,10 @@ import net.runelite.client.game.SpriteManager;
 import net.runelite.client.ui.FontManager;
 import net.runelite.client.ui.overlay.Overlay;
 import net.runelite.client.ui.overlay.OverlayLayer;
+import lombok.extern.slf4j.Slf4j;
 import net.runelite.client.ui.overlay.OverlayPosition;
 
+@Slf4j
 public class PvpHudOverlay extends Overlay
 {
 	// ── Layout constants ──────────────────────────────────────────────────────
@@ -267,6 +267,12 @@ public class PvpHudOverlay extends Overlay
 	{
 		if (ironmanIcon == null || ultimateIronmanIcon == null || hardcoreIronmanIcon == null)
 			loadModIcons();
+	}
+
+	void logBadgeCacheState(String playerName, OpponentStats.AccountType type)
+	{
+		log.debug("PvP HUD badge cache: player={} type={} ironmanIcon={} uimIcon={} hcimIcon={}",
+			playerName, type, ironmanIcon != null, ultimateIronmanIcon != null, hardcoreIronmanIcon != null);
 	}
 
 	private static BufferedImage indexedSpriteToImage(IndexedSprite sprite)
@@ -716,17 +722,17 @@ public class PvpHudOverlay extends Overlay
 			int labelX  = PAD;
 			int valueRx = INVY_LEFT_W - PAD;
 
-			g.setColor(OUT_CYAN);
-			g.drawString("DEALT", labelX, dmgY + fm.getAscent());
+			g.setColor(GRAY_DIM);
+			g.drawString("OUT", labelX, dmgY + fm.getAscent());
 			String outStr = String.valueOf(totalOut);
-			g.setColor(totalOut > 0 ? WHITE : GRAY);
+			g.setColor(totalOut > 0 ? OUT_CYAN : GRAY_DIM);
 			g.drawString(outStr, valueRx - fm.stringWidth(outStr), dmgY + fm.getAscent());
 			dmgY += fm.getHeight() + 1;
 
-			g.setColor(RED);
-			g.drawString("TAKEN", labelX, dmgY + fm.getAscent());
+			g.setColor(GRAY_DIM);
+			g.drawString("IN", labelX, dmgY + fm.getAscent());
 			String inStr = String.valueOf(totalIn);
-			g.setColor(totalIn > 0 ? WHITE : GRAY);
+			g.setColor(totalIn > 0 ? RED : GRAY_DIM);
 			g.drawString(inStr, valueRx - fm.stringWidth(inStr), dmgY + fm.getAscent());
 		}
 
@@ -827,7 +833,7 @@ public class PvpHudOverlay extends Overlay
 			g.fillRect(x0, y2, Math.max(1, (int)(barSz * pct)), HUD_BAR_H);
 			String hpStr = estHp + "/" + maxHp;
 			int    hpY   = y2 + (HUD_BAR_H + fm.getAscent() - fm.getDescent()) / 2;
-			drawBarValueRight(g, fm, hpStr, barEndX - 2, hpY, WHITE);
+			drawShadowedTextRight(g, fm, hpStr, barEndX - 2, hpY, WHITE);
 		}
 		else
 		{
@@ -835,7 +841,7 @@ public class PvpHudOverlay extends Overlay
 			g.fillRect(x0, y2, barSz, HUD_BAR_H);
 			String hpStr = "HP?";
 			int    hpY   = y2 + (HUD_BAR_H + fm.getAscent() - fm.getDescent()) / 2;
-			drawBarValueRight(g, fm, hpStr, barEndX - 2, hpY, GRAY);
+			drawShadowedTextRight(g, fm, hpStr, barEndX - 2, hpY, GRAY);
 		}
 
 		// ── Prayer icon: right column, vertically centred in the content block ──
@@ -1082,7 +1088,7 @@ public class PvpHudOverlay extends Overlay
 			g.fillRect(barX, cy, barSz, barH);
 			g.setColor(barFg);
 			g.fillRect(barX, cy, Math.max(1, (int)(barSz * pct)), barH);
-			drawBarValue(g, fm, String.valueOf(current), barX + 2, cy + fm.getAscent(), WHITE);
+			drawShadowedText(g, fm, String.valueOf(current), barX + 2, cy + fm.getAscent(), WHITE);
 			cy += barH + 1;
 		}
 		else if (showBar(style))
@@ -1303,7 +1309,7 @@ public class PvpHudOverlay extends Overlay
 			g.fillRect(x, cy, contentW, hpBarH);
 			g.setColor(fg);
 			g.fillRect(x, cy, Math.max(1, (int)(contentW * pct)), hpBarH);
-			drawBarValueRight(g, smFm, "~" + estHp + " HP", x + contentW - 2, cy + smFm.getAscent(), WHITE);
+			drawShadowedTextRight(g, smFm, "~" + estHp + " HP", x + contentW - 2, cy + smFm.getAscent(), WHITE);
 			cy += hpBarH + 3;
 		}
 		else
@@ -1311,7 +1317,7 @@ public class PvpHudOverlay extends Overlay
 			int hpBarH = smFm.getHeight();
 			g.setColor(HP_BG);
 			g.fillRect(x, cy, contentW, hpBarH);
-			drawBarValueRight(g, smFm, "HP ?", x + contentW - 2, cy + smFm.getAscent(), GRAY);
+			drawShadowedTextRight(g, smFm, "HP ?", x + contentW - 2, cy + smFm.getAscent(), GRAY);
 			cy += hpBarH + 3;
 		}
 
@@ -1451,10 +1457,10 @@ public class PvpHudOverlay extends Overlay
 		int inX  = p.x + 3 * p.width / 4;  // centre of right column
 
 		// Text column headers
-		g.setColor(OUT_CYAN);
-		drawCentered(g, smFm, "DEALT", outX, cy + smFm.getAscent());
-		g.setColor(RED);
-		drawCentered(g, smFm, "TAKEN", inX, cy + smFm.getAscent());
+		g.setColor(GRAY_DIM);
+		drawCentered(g, smFm, "OUT", outX, cy + smFm.getAscent());
+		g.setColor(GRAY_DIM);
+		drawCentered(g, smFm, "IN", inX, cy + smFm.getAscent());
 		// vertical divider
 		g.setColor(VERT_DIV);
 		g.drawLine(mid, cy - 1, mid, p.y + p.height - PAD * 2 - smFm.getHeight());
@@ -1657,7 +1663,7 @@ public class PvpHudOverlay extends Overlay
 				g.fillRect(barX, cy, barW, tallH);
 				g.setColor(fg);
 				g.fillRect(barX, cy, Math.max(1, (int) (barW * pct)), tallH);
-				drawBarValueRight(g, fm, "HP " + self.getCurrentHp() + "/" + self.getMaxHp(),
+				drawShadowedTextRight(g, fm, "HP " + self.getCurrentHp() + "/" + self.getMaxHp(),
 					effectiveRx - 2, cy + fm.getAscent(), WHITE);
 				cy += tallH + 1;
 			}
@@ -1690,7 +1696,7 @@ public class PvpHudOverlay extends Overlay
 				g.fillRect(barX, cy, barW, tallH);
 				g.setColor(fg);
 				g.fillRect(barX, cy, Math.max(1, (int) (barW * pct)), tallH);
-				drawBarValueRight(g, fm, "PR " + self.getCurrentPrayer() + "/" + self.getMaxPrayer(),
+				drawShadowedTextRight(g, fm, "PR " + self.getCurrentPrayer() + "/" + self.getMaxPrayer(),
 					effectiveRx - 2, cy + fm.getAscent(), WHITE);
 				cy += tallH + 1;
 			}
@@ -1724,7 +1730,7 @@ public class PvpHudOverlay extends Overlay
 				g.fillRect(barX, cy, barW, tallH);
 				g.setColor(runFg);
 				g.fillRect(barX, cy, Math.max(1, (int) (barW * runPct)), tallH);
-				drawBarValueRight(g, fm, "RUN " + run + "%", effectiveRx - 2, cy + fm.getAscent(), WHITE);
+				drawShadowedTextRight(g, fm, "RUN " + run + "%", effectiveRx - 2, cy + fm.getAscent(), WHITE);
 				cy += tallH + 1;
 			}
 			else if (showBar(runStyle))
@@ -1755,7 +1761,7 @@ public class PvpHudOverlay extends Overlay
 				g.fillRect(barX, cy, barW, tallH);
 				g.setColor(YELLOW);
 				g.fillRect(barX, cy, Math.max(1, (int) (barW * specPct)), tallH);
-				drawBarValueRight(g, fm, "SPEC " + spec + "%", effectiveRx - 2, cy + fm.getAscent(), WHITE);
+				drawShadowedTextRight(g, fm, "SPEC " + spec + "%", effectiveRx - 2, cy + fm.getAscent(), WHITE);
 				cy += tallH + 1;
 			}
 			else if (showBar(specStyle))
@@ -2633,32 +2639,17 @@ public class PvpHudOverlay extends Overlay
 		g.drawString(text, rx - fm.stringWidth(text), baseline);
 	}
 
-	/**
-	 * Draws a number over a bar using a compact dark backing plate for contrast.
-	 * The backing rectangle tightly wraps the text with 1px horizontal padding.
-	 * No fuzzy outline — clean white glyph edges.
-	 */
-	private static void drawBarValue(Graphics2D g, FontMetrics fm, String text, int x, int baseline, Color fg)
+	private static void drawShadowedText(Graphics2D g, FontMetrics fm, String text, int x, int baseline, Color fg)
 	{
-		int textW = fm.stringWidth(text);
-		int padX  = 1;
-		int padY  = 1;
-		int boxX  = x - padX;
-		int boxY  = baseline - fm.getAscent() - padY;
-		int boxW  = textW + padX * 2;
-		int boxH  = fm.getHeight() + padY * 2;
-		Composite prev = g.getComposite();
-		g.setComposite(AlphaComposite.getInstance(AlphaComposite.SRC_OVER, 0.65f));
-		g.setColor(Color.BLACK);
-		g.fillRect(boxX, boxY, boxW, boxH);
-		g.setComposite(prev);
+		g.setColor(new Color(0, 0, 0, 180));
+		g.drawString(text, x + 1, baseline + 1);
 		g.setColor(fg);
 		g.drawString(text, x, baseline);
 	}
 
-	private static void drawBarValueRight(Graphics2D g, FontMetrics fm, String text, int rx, int baseline, Color fg)
+	private static void drawShadowedTextRight(Graphics2D g, FontMetrics fm, String text, int rx, int baseline, Color fg)
 	{
-		drawBarValue(g, fm, text, rx - fm.stringWidth(text), baseline, fg);
+		drawShadowedText(g, fm, text, rx - fm.stringWidth(text), baseline, fg);
 	}
 
 	/**

@@ -1423,15 +1423,18 @@ public class PvpHudPlugin extends Plugin
 		String key = playerName.toLowerCase();
 		if (!lookedUp.add(key)) return; // already queued
 
+		log.debug("PvP HUD hiscores lookup started: player={}", playerName);
+
 		hiscoreClient.lookupAsync(playerName, HiscoreEndpoint.NORMAL)
 			.whenComplete((result, ex) ->
 			{
 				if (ex != null || result == null)
 				{
-					log.debug("Hiscores lookup failed for {}: {}", playerName,
+					log.debug("PvP HUD hiscores NORMAL endpoint failed for {}: {}", playerName,
 						ex != null ? ex.getMessage() : "null result");
 					return;
 				}
+				log.debug("PvP HUD hiscores NORMAL endpoint success: player={}", playerName);
 				applyHiscoresResult(playerName, result);
 			});
 
@@ -1440,19 +1443,25 @@ public class PvpHudPlugin extends Plugin
 		hiscoreClient.lookupAsync(playerName, HiscoreEndpoint.IRONMAN)
 			.whenComplete((r, ex) ->
 			{
-				if (ex == null && r != null && skillLevel(r, HiscoreSkill.HITPOINTS) > 0)
+				boolean success = ex == null && r != null && skillLevel(r, HiscoreSkill.HITPOINTS) > 0;
+				log.debug("PvP HUD hiscores IRONMAN endpoint: player={} success={}", playerName, success);
+				if (success)
 					applyAccountType(playerName, OpponentStats.AccountType.IRONMAN);
 			});
 		hiscoreClient.lookupAsync(playerName, HiscoreEndpoint.ULTIMATE_IRONMAN)
 			.whenComplete((r, ex) ->
 			{
-				if (ex == null && r != null && skillLevel(r, HiscoreSkill.HITPOINTS) > 0)
+				boolean success = ex == null && r != null && skillLevel(r, HiscoreSkill.HITPOINTS) > 0;
+				log.debug("PvP HUD hiscores ULTIMATE_IRONMAN endpoint: player={} success={}", playerName, success);
+				if (success)
 					applyAccountType(playerName, OpponentStats.AccountType.ULTIMATE_IRONMAN);
 			});
 		hiscoreClient.lookupAsync(playerName, HiscoreEndpoint.HARDCORE_IRONMAN)
 			.whenComplete((r, ex) ->
 			{
-				if (ex == null && r != null && skillLevel(r, HiscoreSkill.HITPOINTS) > 0)
+				boolean success = ex == null && r != null && skillLevel(r, HiscoreSkill.HITPOINTS) > 0;
+				log.debug("PvP HUD hiscores HARDCORE_IRONMAN endpoint: player={} success={}", playerName, success);
+				if (success)
 					applyAccountType(playerName, OpponentStats.AccountType.HARDCORE_IRONMAN);
 			});
 	}
@@ -1468,6 +1477,7 @@ public class PvpHudPlugin extends Plugin
 				opp.getStats().setAccountType(type);
 				log.debug("AccountType set for {}: {}", playerName, type);
 				overlay.ensureModIconsLoaded();
+				overlay.logBadgeCacheState(playerName, type);
 			}
 		});
 	}
