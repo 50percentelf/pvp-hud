@@ -72,7 +72,9 @@ public class PvpHudOverlay extends Overlay
 	private static final Color LIGHT_BLUE  = new Color(100, 185, 255);
 	private static final Color ORANGE      = new Color(255, 145,   0);
 	private static final Color RED         = new Color(220,  60,  60);
-	private static final Color TOXIC_GREEN = new Color(110, 230,  60);
+	private static final Color TOXIC_GREEN    = new Color(110, 230,  60);
+	/** Stable tint for periodic beneficial next-proc timers (Menaphite, Prayer Regen). */
+	private static final Color BENEFICIAL_PROC = new Color(140, 200, 255);
 	private static final Color HP_FG        = new Color( 20, 185,  45);
 	private static final Color HP_BG        = new Color( 75,  15,  15);
 	private static final Color PRAYER_FG    = new Color(150, 140, 255);
@@ -1851,10 +1853,82 @@ public class PvpHudOverlay extends Overlay
 	}
 
 	/**
+	 * Returns true if a parent slot should always occupy compound-cell height from the
+	 * moment it becomes active, even before its next-proc child timer is first known.
+	 * This prevents visible geometry snapping when the next-proc phase synchronises.
+	 */
+	static boolean reservesSecondaryLine(String parentSlotId)
+	{
+		if (parentSlotId == null) return false;
+		switch (parentSlotId)
+		{
+			case "menaphite":    return true;
+			case "prayer_regen": return true;
+			default:             return false;
+		}
+	}
+
+	/**
+	 * Returns true if the child represents a beneficial periodic proc timer.
+	 * These secondary lines use a stable neutral color instead of urgency-scaled red.
+	 */
+	static boolean isBeneficialPeriodicChild(String childSlotId)
+	{
+		if (childSlotId == null) return false;
+		switch (childSlotId)
+		{
+			case "menaphite_next":    return true;
+			case "prayer_regen_next": return true;
+			default:                  return false;
+		}
+	}
+
+	/**
+	 * Draws a tiny circular-refresh glyph (↻) using an arc and a two-line arrowhead.
+	 * Safe to call every frame; performs no image allocation.
+	 *
+	 * @param cx   horizontal centre of the glyph
+	 * @param cy   vertical centre of the glyph
+	 * @param size diameter in pixels
+	 */
+	static void drawCycleGlyph(Graphics2D g, int cx, int cy, int size, Color color)
+	{
+		if (size < 4) return;
+		g.setColor(color);
+		int r = size / 2;
+		// 300° arc from 60° (upper-right), sweeping clockwise on screen, ending at east (0°).
+		// In AWT, positive arcAngle = CCW in standard math coords = CW on screen (y-down).
+		g.drawArc(cx - r, cy - r, size, size, 60, 300);
+		// Arrowhead at arc end (east = right side of circle), pointing south (clockwise direction).
+		g.drawLine(cx + r, cy, cx + r - 2, cy - 3);
+		g.drawLine(cx + r, cy, cx + r + 2, cy - 3);
+	}
+
+	/**
+	 * Draws a cycle glyph followed by {@code text}, horizontally centred at {@code cx}.
+	 * Used for beneficial periodic secondary timers (Menaphite, Prayer Regen).
+	 */
+	private static void drawBeneficialSecondaryLine(Graphics2D g, FontMetrics fm,
+		String text, int cx, int lineTopY, Color color)
+	{
+		int glyphSz = Math.max(4, fm.getHeight() - 4);
+		int gap     = 2;
+		int textW   = fm.stringWidth(text);
+		int totalW  = glyphSz + gap + textW;
+		int startX  = cx - totalW / 2;
+		int glyphCx = startX + glyphSz / 2;
+		int glyphCy = lineTopY + fm.getHeight() / 2;
+		drawCycleGlyph(g, glyphCx, glyphCy, glyphSz, color);
+		g.setColor(color);
+		g.drawString(text, startX + glyphSz + gap, lineTopY + fm.getAscent());
+	}
+
+	/**
 	 * Returns a compact label for a secondary child entry suitable for the 2-col
 	 * Inventory Hug cell where the parent context is already visible via icon.
-	 * Each case strips the parent-name prefix that would be redundant inside a
-	 * compound cell; unknown children fall back to {@link ActiveEffectView#label}.
+	 * Beneficial periodic children (menaphite, prayer_regen) return just the raw timer;
+	 * the renderer draws a cycle glyph beside it.  Harmful children strip the redundant
+	 * parent-name prefix.  Unknown children fall back to {@link ActiveEffectView#label}.
 	 */
 	static String compactSecondaryLabel(String childSlotId, ActiveEffectView child)
 	{
@@ -1862,8 +1936,8 @@ public class PvpHudOverlay extends Overlay
 		if (childSlotId == null) return lbl;
 		switch (childSlotId)
 		{
-			case "menaphite_next":    return "NXT " + lbl;           // "NXT 0:09"
-			case "prayer_regen_next": return "NXT " + lbl;           // "NXT 0:04"
+			case "menaphite_next":    return lbl;   // "0:09"; cycle glyph drawn by renderer
+			case "prayer_regen_next": return lbl;   // "0:04"; cycle glyph drawn by renderer
 			case "corrupt_next":      return lbl;                    // "-3 5t" (already compact)
 			case "burn_next":
 				// child.label is "BURN+N"; strip "BURN" → "+N"
@@ -1909,16 +1983,25 @@ public class PvpHudOverlay extends Overlay
 			}
 			lastPriority = e.priority;
 
-			if (child != null)
+			// Stable compound: menaphite/prayer_regen always reserve secondary space so
+			// neighboring statuses don't shift when the next-proc phase first synchronises.
+			boolean isCompound = (child != null) || reservesSecondaryLine(e.slotId);
+			if (isCompound)
 			{
-				// Compound entry: force new row, spans full width (both columns)
+				// Force to new row before checking height (compound always full-width)
 				if (col == 1) { cy += cellH; col = 0; }
 				if (cy + compH > maxY)
 				{
 					if (cy + cellH > maxY) break;
-					child = null; // drop secondary, draw primary only
+					// Tight space: discard compound reservation and render primary only
+					isCompound = false;
+					child = null;
 				}
-				// Icon centred over both columns
+			}
+
+			if (isCompound)
+			{
+				// Full compound cell — always advances by compH regardless of child presence
 				if (e.icon != null)
 				{
 					int iconX = lx + (2 * colW - ICON_SIZE) / 2;
@@ -1932,18 +2015,25 @@ public class PvpHudOverlay extends Overlay
 					drawCentered(g, fm, e.label, lx + colW,
 						cy + ICON_SIZE + iconGap + fm.getAscent());
 				}
-				// Secondary label — line 2 (only when child was not dropped)
+				// Secondary line — line 2: glyph+timer for beneficial, plain for harmful, blank when unknown
 				if (child != null)
 				{
 					String secLabel = compactSecondaryLabel(child.slotId, child);
-					if (!secLabel.isEmpty())
+					if (isBeneficialPeriodicChild(child.slotId))
+					{
+						if (!secLabel.isEmpty())
+							drawBeneficialSecondaryLine(g, fm, secLabel, lx + colW,
+								cy + ICON_SIZE + iconGap + lineH, BENEFICIAL_PROC);
+					}
+					else if (!secLabel.isEmpty())
 					{
 						g.setColor(child.color);
 						drawCentered(g, fm, secLabel, lx + colW,
 							cy + ICON_SIZE + iconGap + lineH + fm.getAscent());
 					}
 				}
-				cy += (child != null ? compH : cellH);
+				// child == null → secondary line reserved but blank (proc phase unknown)
+				cy += compH;
 				// col stays 0 — compound row always ends flush
 			}
 			else if (e.icon == null)

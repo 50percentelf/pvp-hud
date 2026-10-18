@@ -191,10 +191,9 @@ public class EffectRender2ColTest
 	public void compoundPair_advancesByCompoundHeight_notDoubleCell()
 	{
 		// Core invariants:
-		// 1. A compound pair advances cy MORE than the primary alone
-		//    (secondary is folded in, not silently dropped).
-		// 2. Two compound pairs advance cy exactly twice as much as one compound pair
-		//    (each occupies one logical row, not merged or split differently).
+		// 1. Menaphite uses stable compound height with or without its child —
+		//    presence of the secondary must NOT change the cell height.
+		// 2. Two compound pairs advance cy exactly twice as much as one.
 		Graphics2D g = makeGraphics();
 
 		// One compound pair
@@ -203,9 +202,9 @@ public class EffectRender2ColTest
 		oneCompound.add(secondary("menaphite_next", "15t"));
 		int cyOne = PvpHudOverlay.drawEffects2Col(g, oneCompound, 0, 0, CANVAS_H);
 
-		// Primary alone without child
+		// Primary alone without child — must be the same height (stable geometry)
 		List<ActiveEffectView> alone = new ArrayList<>();
-		alone.add(primary("menaphite", "4:17")); // no secondary
+		alone.add(primary("menaphite", "4:17"));
 		int cyAlone = PvpHudOverlay.drawEffects2Col(g, alone, 0, 0, CANVAS_H);
 
 		// Two compound pairs (same priority, no separator)
@@ -216,8 +215,8 @@ public class EffectRender2ColTest
 		twoCompound.add(secondary("prayer_regen_next", "8t"));
 		int cyTwo = PvpHudOverlay.drawEffects2Col(g, twoCompound, 0, 0, CANVAS_H);
 
-		assertTrue("compound pair must advance more than primary alone (secondary included)",
-			cyOne > cyAlone);
+		assertEquals("menaphite height must be stable: child presence must not change cell height",
+			cyOne, cyAlone);
 		assertEquals("two compound pairs must advance exactly twice one compound pair",
 			cyOne * 2, cyTwo);
 		g.dispose();
@@ -252,25 +251,25 @@ public class EffectRender2ColTest
 	}
 
 	@Test
-	public void compoundPair_withoutSecondary_rendersSingleCell()
+	public void compoundPair_withoutSecondary_stillUsesCompoundHeight()
 	{
-		// If the secondary is absent (nextProcTicks == 0 → never emitted), the primary
-		// should render as an ordinary cell without any blank placeholder.
+		// Menaphite reserves compound-cell height from the moment it becomes active,
+		// even before the next-proc phase is known (nextProcTicks == 0).
+		// This prevents a geometry snap when the first child entry appears.
 		Graphics2D g = makeGraphics();
-		FontMetrics fm = g.getFontMetrics();
-		final int lineH = fm.getHeight();
 
 		List<ActiveEffectView> primaryOnly = new ArrayList<>();
-		primaryOnly.add(primary("menaphite", "4:17")); // no secondary
+		primaryOnly.add(primary("menaphite", "4:32")); // no secondary
 
-		int cy = PvpHudOverlay.drawEffects2Col(g, primaryOnly, 0, 0, CANVAS_H);
+		int cyNoChild = PvpHudOverlay.drawEffects2Col(g, primaryOnly, 0, 0, CANVAS_H);
 
-		// Must advance exactly like any other single non-compound entry.
-		List<ActiveEffectView> otherSingle = new ArrayList<>();
-		otherSingle.add(primary("dsc", "0:45"));
-		int cyOther = PvpHudOverlay.drawEffects2Col(g, otherSingle, 0, 0, CANVAS_H);
+		List<ActiveEffectView> withChild = new ArrayList<>();
+		withChild.add(primary("menaphite",       "4:17"));
+		withChild.add(secondary("menaphite_next", "0:15"));
+		int cyWithChild = PvpHudOverlay.drawEffects2Col(g, withChild, 0, 0, CANVAS_H);
 
-		assertEquals("primary without child must use normal cell height", cyOther, cy);
+		assertEquals("menaphite without child must occupy the same height as menaphite with child",
+			cyWithChild, cyNoChild);
 		g.dispose();
 	}
 
@@ -328,25 +327,25 @@ public class EffectRender2ColTest
 	}
 
 	@Test
-	public void nonCompoundPrimary_withoutChild_usesNormalHeight_notCompoundHeight()
+	public void corrupt_withoutChild_usesNormalHeight_notCompoundHeight()
 	{
-		// A known compound parent (menaphite) that has NO secondary emitted must NOT
-		// produce compound-height output.  It should render just like any other primary.
+		// Corrupt/Burn are event-driven, not periodic — they do NOT reserve compound
+		// height when their secondary is absent.  Only menaphite and prayer_regen
+		// (periodic beneficial effects) use stable compound geometry.
 		Graphics2D g = makeGraphics();
-		FontMetrics fm = g.getFontMetrics();
 
-		// menaphite without its secondary — no compound folding should occur
-		List<ActiveEffectView> parentNoChild = new ArrayList<>();
-		parentNoChild.add(primary("menaphite", "4:17"));
-		int cyParentOnly = PvpHudOverlay.drawEffects2Col(g, parentNoChild, 0, 0, CANVAS_H);
+		// corrupt without its secondary — must use normal height
+		List<ActiveEffectView> corruptOnly = new ArrayList<>();
+		corruptOnly.add(primary("corrupt", "4:00"));
+		int cyCorrupt = PvpHudOverlay.drawEffects2Col(g, corruptOnly, 0, 0, CANVAS_H);
 
-		// Unrelated primary — same text-path height
+		// Unrelated primary — same text-path height expected
 		List<ActiveEffectView> unrelated = new ArrayList<>();
 		unrelated.add(primary("dsc", "0:45"));
 		int cyUnrelated = PvpHudOverlay.drawEffects2Col(g, unrelated, 0, 0, CANVAS_H);
 
-		assertEquals("parent without child must render at normal height, same as any primary",
-			cyUnrelated, cyParentOnly);
+		assertEquals("corrupt without child must use normal height, not compound",
+			cyUnrelated, cyCorrupt);
 		g.dispose();
 	}
 
@@ -385,25 +384,26 @@ public class EffectRender2ColTest
 	}
 
 	@Test
-	public void compactSecondaryLabel_menaphite_prefixesNXT()
+	public void compactSecondaryLabel_menaphite_returnsRawTimer()
 	{
+		// Beneficial periodic children return the raw timer so the renderer can draw
+		// a cycle glyph beside it rather than a "NXT" text prefix.
 		ActiveEffectView child = childView("menaphite_next", "0:09");
 		String label = PvpHudOverlay.compactSecondaryLabel("menaphite_next", child);
-		assertTrue("menaphite_next compact label must start with NXT",
-			label.startsWith("NXT "));
-		assertFalse("menaphite_next must not be an unlabelled raw timer",
-			label.equals("0:09"));
+		assertEquals("menaphite_next compact label must be the raw timer", "0:09", label);
+		assertFalse("menaphite_next must not have a NXT prefix",
+			label.startsWith("NXT"));
 	}
 
 	@Test
-	public void compactSecondaryLabel_prayerRegen_prefixesNXT()
+	public void compactSecondaryLabel_prayerRegen_returnsRawTimer()
 	{
+		// Same as menaphite: cycle glyph replaces the text prefix.
 		ActiveEffectView child = childView("prayer_regen_next", "0:04");
 		String label = PvpHudOverlay.compactSecondaryLabel("prayer_regen_next", child);
-		assertTrue("prayer_regen_next compact label must start with NXT",
-			label.startsWith("NXT "));
-		assertFalse("prayer_regen_next must not retain verbose P-NXT prefix",
-			label.startsWith("P-NXT"));
+		assertEquals("prayer_regen_next compact label must be the raw timer", "0:04", label);
+		assertFalse("prayer_regen_next must not have a NXT prefix",
+			label.startsWith("NXT"));
 	}
 
 	@Test
@@ -448,5 +448,127 @@ public class EffectRender2ColTest
 		ActiveEffectView child = childView(null, "0:15");
 		String label = PvpHudOverlay.compactSecondaryLabel(null, child);
 		assertEquals("null slotId must fall back to child.label", "0:15", label);
+	}
+
+	// ── reservesSecondaryLine ─────────────────────────────────────────────────
+
+	@Test
+	public void reservesSecondaryLine_periodicBeneficials_returnTrue()
+	{
+		assertTrue("menaphite must reserve secondary line",    PvpHudOverlay.reservesSecondaryLine("menaphite"));
+		assertTrue("prayer_regen must reserve secondary line", PvpHudOverlay.reservesSecondaryLine("prayer_regen"));
+	}
+
+	@Test
+	public void reservesSecondaryLine_harmfulAndOther_returnFalse()
+	{
+		assertFalse(PvpHudOverlay.reservesSecondaryLine("corrupt"));
+		assertFalse(PvpHudOverlay.reservesSecondaryLine("burn"));
+		assertFalse(PvpHudOverlay.reservesSecondaryLine("freeze_barrage"));
+		assertFalse(PvpHudOverlay.reservesSecondaryLine(null));
+	}
+
+	// ── isBeneficialPeriodicChild ─────────────────────────────────────────────
+
+	@Test
+	public void isBeneficialPeriodicChild_beneficialSlots_returnTrue()
+	{
+		assertTrue(PvpHudOverlay.isBeneficialPeriodicChild("menaphite_next"));
+		assertTrue(PvpHudOverlay.isBeneficialPeriodicChild("prayer_regen_next"));
+	}
+
+	@Test
+	public void isBeneficialPeriodicChild_harmfulAndOther_returnFalse()
+	{
+		assertFalse(PvpHudOverlay.isBeneficialPeriodicChild("corrupt_next"));
+		assertFalse(PvpHudOverlay.isBeneficialPeriodicChild("burn_next"));
+		assertFalse(PvpHudOverlay.isBeneficialPeriodicChild("freeze_barrage"));
+		assertFalse(PvpHudOverlay.isBeneficialPeriodicChild(null));
+	}
+
+	// ── Geometry stability (the core regression tests) ────────────────────────
+
+	@Test
+	public void menaphite_geometryStable_childAbsentVsPresent()
+	{
+		// THE KEY REGRESSION TEST:
+		// Menaphite must use identical cell height whether the next-proc timer is known
+		// or not.  If cy differs, neighboring statuses visually shift when the first
+		// proc fires — the snapping bug this feature exists to prevent.
+		Graphics2D g = makeGraphics();
+
+		// Case A: menaphite active, nextProcTicks unknown (no child emitted)
+		List<ActiveEffectView> noChild = new ArrayList<>();
+		noChild.add(primary("menaphite", "4:32"));
+		int cyNoChild = PvpHudOverlay.drawEffects2Col(g, noChild, 0, 0, CANVAS_H);
+
+		// Case B: menaphite active, nextProcTicks known (child emitted)
+		List<ActiveEffectView> withChild = new ArrayList<>();
+		withChild.add(primary("menaphite", "4:17"));
+		withChild.add(secondary("menaphite_next", "0:15"));
+		int cyWithChild = PvpHudOverlay.drawEffects2Col(g, withChild, 0, 0, CANVAS_H);
+
+		assertEquals("menaphite geometry must be stable regardless of child presence",
+			cyNoChild, cyWithChild);
+		g.dispose();
+	}
+
+	@Test
+	public void prayerRegen_geometryStable_childAbsentVsPresent()
+	{
+		// Same stability guarantee for Prayer Regen: next-proc phase becoming known
+		// must not change the cell's footprint.
+		Graphics2D g = makeGraphics();
+
+		List<ActiveEffectView> noChild = new ArrayList<>();
+		noChild.add(primary("prayer_regen", "3:42"));
+		int cyNoChild = PvpHudOverlay.drawEffects2Col(g, noChild, 0, 0, CANVAS_H);
+
+		List<ActiveEffectView> withChild = new ArrayList<>();
+		withChild.add(primary("prayer_regen", "3:38"));
+		withChild.add(secondary("prayer_regen_next", "0:08"));
+		int cyWithChild = PvpHudOverlay.drawEffects2Col(g, withChild, 0, 0, CANVAS_H);
+
+		assertEquals("prayer_regen geometry must be stable regardless of child presence",
+			cyNoChild, cyWithChild);
+		g.dispose();
+	}
+
+	@Test
+	public void menaphite_noChild_usesCompoundHeight_notNormalHeight()
+	{
+		// Menaphite without child must occupy compound height — taller than a plain
+		// unrelated primary — so that cell footprint is consistent throughout its lifetime.
+		Graphics2D g = makeGraphics();
+
+		List<ActiveEffectView> menOnly = new ArrayList<>();
+		menOnly.add(primary("menaphite", "4:32"));
+		int cyMen = PvpHudOverlay.drawEffects2Col(g, menOnly, 0, 0, CANVAS_H);
+
+		List<ActiveEffectView> plainEntry = new ArrayList<>();
+		plainEntry.add(primary("dsc", "0:45"));
+		int cyPlain = PvpHudOverlay.drawEffects2Col(g, plainEntry, 0, 0, CANVAS_H);
+
+		assertTrue("menaphite without child must be taller than a plain non-compound primary",
+			cyMen > cyPlain);
+		g.dispose();
+	}
+
+	// ── drawCycleGlyph ────────────────────────────────────────────────────────
+
+	@Test
+	public void drawCycleGlyph_doesNotCrash_atSmallSizes()
+	{
+		BufferedImage img = new BufferedImage(30, 30, BufferedImage.TYPE_INT_ARGB);
+		Graphics2D g = img.createGraphics();
+		// Below threshold (< 4) → no-op; must not throw
+		PvpHudOverlay.drawCycleGlyph(g, 15, 15, 1,  Color.WHITE);
+		PvpHudOverlay.drawCycleGlyph(g, 15, 15, 3,  Color.WHITE);
+		// At and above threshold → must not throw
+		PvpHudOverlay.drawCycleGlyph(g, 15, 15, 4,  Color.WHITE);
+		PvpHudOverlay.drawCycleGlyph(g, 15, 15, 7,  Color.WHITE);
+		PvpHudOverlay.drawCycleGlyph(g, 15, 15, 12, Color.WHITE);
+		g.dispose();
+		// No assertion needed — just verify no NPE / AIOOB / Graphics error
 	}
 }
