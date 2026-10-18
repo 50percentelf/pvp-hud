@@ -258,6 +258,17 @@ public class PvpHudOverlay extends Overlay
 		if (hcIdx  < modIcons.length) hardcoreIronmanIcon = indexedSpriteToImage(modIcons[hcIdx]);
 	}
 
+	/**
+	 * Re-attempts loading mod icons if any are still null.
+	 * Called on the client thread when an opponent with non-NORMAL account type is tracked
+	 * and the icon cache may have been null at initial load time (race condition).
+	 */
+	void ensureModIconsLoaded()
+	{
+		if (ironmanIcon == null || ultimateIronmanIcon == null || hardcoreIronmanIcon == null)
+			loadModIcons();
+	}
+
 	private static BufferedImage indexedSpriteToImage(IndexedSprite sprite)
 	{
 		if (sprite == null) return null;
@@ -272,6 +283,9 @@ public class PvpHudOverlay extends Overlay
 		if (pixels == null || palette == null || w <= 0 || h <= 0) return null;
 		int imgW = ow > 0 ? ow : w;
 		int imgH = oh > 0 ? oh : h;
+		// Guard: ensure canvas is large enough for offsets + pixel data
+		imgW = Math.max(imgW, offX + w);
+		imgH = Math.max(imgH, offY + h);
 		BufferedImage img = new BufferedImage(imgW, imgH, BufferedImage.TYPE_INT_ARGB);
 		for (int py = 0; py < h; py++)
 		{
@@ -279,6 +293,7 @@ public class PvpHudOverlay extends Overlay
 			{
 				int idx = pixels[py * w + px] & 0xFF;
 				if (idx == 0) continue; // index 0 = transparent
+				if (idx >= palette.length) continue; // bounds guard
 				int rgb = palette[idx];
 				img.setRGB(offX + px, offY + py, 0xFF000000 | rgb);
 			}
@@ -657,9 +672,8 @@ public class PvpHudOverlay extends Overlay
 			final int PER_ROW = 5;
 			int rowW = PER_ROW * DOT_SZ + (PER_ROW - 1) * DOT_GAP; // 28 px
 			int dotX = (INVY_LEFT_W - rowW) / 2;
-			// Centre the dot+EP block vertically in the top arm.
-			int blockH = 2 * DOT_SZ + DOT_GAP + 4 + fm.getHeight();
-			int dotY   = (INVY_TOP_H - blockH) / 2;
+			// Anchor the dot+EP block at the top of the corner, leaving room below for DEALT/TAKEN.
+			int dotY = PAD + 2;
 			for (int i = 0; i < 10; i++)
 			{
 				int row = i / PER_ROW;
@@ -689,6 +703,31 @@ public class PvpHudOverlay extends Overlay
 				g.setColor(i < pot ? POTION_BLUE : DIVIDER);
 				g.fillRect(px + i * (DOT_SZ + DOT_GAP), epY + (fm.getHeight() - DOT_SZ) / 2, DOT_SZ, DOT_SZ);
 			}
+		}
+
+		// ── Corner: DEALT/TAKEN totals block (lower portion of corner) ───────
+		{
+			PvpFightSession dmgSession = state.getCurrentSession();
+			int totalOut = dmgSession != null ? dmgSession.getTotalOutgoing() : state.getLastTotalOutgoing();
+			int totalIn  = dmgSession != null ? dmgSession.getTotalIncoming() : state.getLastTotalIncoming();
+
+			int dmgBlockH = 2 * fm.getHeight() + 2;
+			int dmgY = INVY_TOP_H - PAD - dmgBlockH;
+			int labelX  = PAD;
+			int valueRx = INVY_LEFT_W - PAD;
+
+			g.setColor(OUT_CYAN);
+			g.drawString("DEALT", labelX, dmgY + fm.getAscent());
+			String outStr = String.valueOf(totalOut);
+			g.setColor(totalOut > 0 ? WHITE : GRAY);
+			g.drawString(outStr, valueRx - fm.stringWidth(outStr), dmgY + fm.getAscent());
+			dmgY += fm.getHeight() + 1;
+
+			g.setColor(RED);
+			g.drawString("TAKEN", labelX, dmgY + fm.getAscent());
+			String inStr = String.valueOf(totalIn);
+			g.setColor(totalIn > 0 ? WHITE : GRAY);
+			g.drawString(inStr, valueRx - fm.stringWidth(inStr), dmgY + fm.getAscent());
 		}
 
 		// ── Pane: 3-row opponent panel ───────────────────────────────────────
@@ -761,8 +800,13 @@ public class PvpHudOverlay extends Overlay
 			int badgeSz = fm.getHeight();
 			int badgeX  = x0 + fm.stringWidth(name) + 3;
 			BufferedImage badgeIcon = iconForAccountType(acctType);
-			if (badgeIcon != null)
-				g.drawImage(badgeIcon, badgeX, y1, badgeSz, badgeSz, null);
+			if (badgeIcon != null && badgeIcon.getWidth() > 0)
+			{
+				int bw = badgeIcon.getWidth();
+				int bh = badgeIcon.getHeight();
+				int drawSz = (bw <= badgeSz && bh <= badgeSz) ? Math.max(bw, bh) : badgeSz;
+				g.drawImage(badgeIcon, badgeX, y1 + (badgeSz - drawSz) / 2, drawSz, drawSz, null);
+			}
 			else
 			{
 				g.setColor(acctType == OpponentStats.AccountType.HARDCORE_IRONMAN ? RED : GRAY);
@@ -782,18 +826,16 @@ public class PvpHudOverlay extends Overlay
 			g.setColor(fg);
 			g.fillRect(x0, y2, Math.max(1, (int)(barSz * pct)), HUD_BAR_H);
 			String hpStr = estHp + "/" + maxHp;
-			int    hpX   = barEndX - 2 - fm.stringWidth(hpStr);
 			int    hpY   = y2 + (HUD_BAR_H + fm.getAscent() - fm.getDescent()) / 2;
-			drawOutlinedString(g, hpStr, hpX, hpY, WHITE);
+			drawBarValueRight(g, fm, hpStr, barEndX - 2, hpY, WHITE);
 		}
 		else
 		{
 			g.setColor(HP_BG);
 			g.fillRect(x0, y2, barSz, HUD_BAR_H);
 			String hpStr = "HP?";
-			int    hpX   = barEndX - 2 - fm.stringWidth(hpStr);
 			int    hpY   = y2 + (HUD_BAR_H + fm.getAscent() - fm.getDescent()) / 2;
-			drawOutlinedString(g, hpStr, hpX, hpY, GRAY);
+			drawBarValueRight(g, fm, hpStr, barEndX - 2, hpY, GRAY);
 		}
 
 		// ── Prayer icon: right column, vertically centred in the content block ──
@@ -810,18 +852,15 @@ public class PvpHudOverlay extends Overlay
 			}
 		}
 
-		// Transient outgoing splat — shown below opponent HP bar for ~750 ms after we hit
+		// Transient outgoing damage number — shown below opponent HP bar for ~750 ms after we hit
 		{
 			long outMs  = opp.getLastOutgoingHitMs();
 			int  outDmg = opp.getLastOutgoingHit();
 			if (outMs > 0 && outDmg > 0 && System.currentTimeMillis() - outMs < 750)
 			{
-				String s    = String.valueOf(outDmg);
-				int gr      = Math.max(2, fm.getHeight() / 2 - 1);
-				int splatY  = y2 + HUD_BAR_H + fm.getHeight() / 2 + 1;
-				drawSplatGlyph(g, x0 + gr, splatY, gr, OUT_CYAN);
+				String s = String.valueOf(outDmg);
 				g.setColor(OUT_CYAN);
-				g.drawString(s, x0 + gr * 2 + 3, y2 + HUD_BAR_H + fm.getAscent() + 1);
+				g.drawString(s, x0, y2 + HUD_BAR_H + fm.getAscent() + 1);
 			}
 		}
 	}
@@ -891,38 +930,6 @@ public class PvpHudOverlay extends Overlay
 			self.getRunEnergy(), 100, RUN_FG, RUN_BG, activeProfile.runBarStyle);
 		cy = drawInventoryBar(g, fm, cx, lx, cy, railW, specIcon,
 			fx.getSpecEnergy(), 100, YELLOW, HP_BG, activeProfile.specBarStyle);
-
-		// ── Damage rows: OUT then IN, each full-width with glyph left / number right ──
-		{
-			g.setColor(DIVIDER);
-			g.drawLine(lx, cy, INVY_LEFT_W - lx, cy);
-			cy += 3;
-
-			PvpFightSession dmgSession = state.getCurrentSession();
-			int totalOut = dmgSession != null
-				? dmgSession.getTotalOutgoing() : state.getLastTotalOutgoing();
-			int totalIn  = dmgSession != null
-				? dmgSession.getTotalIncoming() : state.getLastTotalIncoming();
-
-			int gr  = fm.getHeight() / 2 - 1;
-			int rxr = INVY_LEFT_W - lx;
-
-			String outStr = String.valueOf(totalOut);
-			Color outGlyph = totalOut > 0 ? OUT_CYAN : DIVIDER;
-			Color outText  = totalOut > 0 ? OUT_CYAN : GRAY;
-			drawSplatGlyph(g, lx + gr, cy + fm.getHeight() / 2, gr, outGlyph);
-			g.setColor(outText);
-			g.drawString(outStr, rxr - fm.stringWidth(outStr), cy + fm.getAscent());
-			cy += fm.getHeight() + 1;
-
-			String inStr  = String.valueOf(totalIn);
-			Color inGlyph = totalIn > 0 ? RED : DIVIDER;
-			Color inText  = totalIn > 0 ? RED : GRAY;
-			drawSplatGlyph(g, lx + gr, cy + fm.getHeight() / 2, gr, inGlyph);
-			g.setColor(inText);
-			g.drawString(inStr, rxr - fm.stringWidth(inStr), cy + fm.getAscent());
-			cy += fm.getHeight() + 2;
-		}
 
 		// ── Self boost stats (compact: icon + current level, 5 columns) ──
 		if (activeProfile.showBoostRow)
@@ -1075,7 +1082,7 @@ public class PvpHudOverlay extends Overlay
 			g.fillRect(barX, cy, barSz, barH);
 			g.setColor(barFg);
 			g.fillRect(barX, cy, Math.max(1, (int)(barSz * pct)), barH);
-			drawOutlinedString(g, String.valueOf(current), barX + 2, cy + fm.getAscent(), WHITE);
+			drawBarValue(g, fm, String.valueOf(current), barX + 2, cy + fm.getAscent(), WHITE);
 			cy += barH + 1;
 		}
 		else if (showBar(style))
@@ -1263,8 +1270,13 @@ public class PvpHudOverlay extends Overlay
 			int badgeSz = fm.getHeight();
 			int badgeX  = x + fm.stringWidth(name) + 3;
 			BufferedImage badgeIcon = iconForAccountType(acctType);
-			if (badgeIcon != null)
-				g.drawImage(badgeIcon, badgeX, cy, badgeSz, badgeSz, null);
+			if (badgeIcon != null && badgeIcon.getWidth() > 0)
+			{
+				int bw = badgeIcon.getWidth();
+				int bh = badgeIcon.getHeight();
+				int drawSz = (bw <= badgeSz && bh <= badgeSz) ? Math.max(bw, bh) : badgeSz;
+				g.drawImage(badgeIcon, badgeX, cy + (badgeSz - drawSz) / 2, drawSz, drawSz, null);
+			}
 			else
 			{
 				g.setFont(small);
@@ -1291,7 +1303,7 @@ public class PvpHudOverlay extends Overlay
 			g.fillRect(x, cy, contentW, hpBarH);
 			g.setColor(fg);
 			g.fillRect(x, cy, Math.max(1, (int)(contentW * pct)), hpBarH);
-			drawOutlinedStringRight(g, smFm, "~" + estHp + " HP", x + contentW - 2, cy + smFm.getAscent(), WHITE);
+			drawBarValueRight(g, smFm, "~" + estHp + " HP", x + contentW - 2, cy + smFm.getAscent(), WHITE);
 			cy += hpBarH + 3;
 		}
 		else
@@ -1299,7 +1311,7 @@ public class PvpHudOverlay extends Overlay
 			int hpBarH = smFm.getHeight();
 			g.setColor(HP_BG);
 			g.fillRect(x, cy, contentW, hpBarH);
-			drawOutlinedStringRight(g, smFm, "HP ?", x + contentW - 2, cy + smFm.getAscent(), GRAY);
+			drawBarValueRight(g, smFm, "HP ?", x + contentW - 2, cy + smFm.getAscent(), GRAY);
 			cy += hpBarH + 3;
 		}
 
@@ -1318,62 +1330,27 @@ public class PvpHudOverlay extends Overlay
 			}
 		}
 
-		// Prediction / confirmation indicator — ONE slot overlaid near HP bar.
-		// Confirmed (solid): full-opacity hitsplat + white number, ~750 ms window.
-		// Predicted (ghosted): 50% opacity hitsplat + gray number.
+		// Confirmed hitsplat indicator — factual only, ~750 ms window.
 		{
 			long outMs  = opp.getLastOutgoingHitMs();
 			int  outDmg = opp.getLastOutgoingHit();
-			boolean confirmed = outMs > 0 && outDmg > 0 && System.currentTimeMillis() - outMs < 750;
-			boolean predicted = !confirmed && opp.hasPendingHit();
-			if (confirmed || predicted)
+			if (outMs > 0 && outDmg > 0 && System.currentTimeMillis() - outMs < 750)
 			{
-				int   dmg       = confirmed ? outDmg : opp.getPendingHitDamage();
-				Color numColor  = confirmed ? WHITE  : GRAY;
-				int   splatW    = 16; // target width for hitsplat image
-				int   splatH    = 16;
-				int   splatX    = x + contentW - splatW - 2;
-				int   splatY    = cy - splatH - 6; // float above current cy (back to HP bar row)
-
+				int   splatW = 16;
+				int   splatH = 16;
+				int   splatX = x + contentW - splatW - 2;
+				int   splatY = cy - splatH - 6;
 				if (redHitsplatIcon != null)
-				{
-					Composite prev = g.getComposite();
-					if (predicted)
-						g.setComposite(AlphaComposite.getInstance(AlphaComposite.SRC_OVER, 0.50f));
 					g.drawImage(redHitsplatIcon, splatX, splatY, splatW, splatH, null);
-					g.setComposite(prev);
-				}
 				else
 				{
-					// Fallback glyph when sprite not yet loaded
 					int gr = splatW / 2 - 1;
-					Color glyphCol = confirmed ? OUT_CYAN : GRAY;
-					if (predicted)
-					{
-						Composite prev = g.getComposite();
-						g.setComposite(AlphaComposite.getInstance(AlphaComposite.SRC_OVER, 0.50f));
-						drawSplatGlyph(g, splatX + splatW / 2, splatY + splatH / 2, gr, glyphCol);
-						g.setComposite(prev);
-					}
-					else
-					{
-						drawSplatGlyph(g, splatX + splatW / 2, splatY + splatH / 2, gr, glyphCol);
-					}
+					drawSplatGlyph(g, splatX + splatW / 2, splatY + splatH / 2, gr, OUT_CYAN);
 				}
-				String numStr   = String.valueOf(dmg);
-				int    numX     = splatX - smFm.stringWidth(numStr) - 2;
-				int    numY     = splatY + splatH / 2 + smFm.getAscent() / 2;
-				if (predicted)
-				{
-					Composite prev = g.getComposite();
-					g.setComposite(AlphaComposite.getInstance(AlphaComposite.SRC_OVER, 0.50f));
-					drawOutlinedString(g, numStr, numX, numY, numColor);
-					g.setComposite(prev);
-				}
-				else
-				{
-					drawOutlinedString(g, numStr, numX, numY, numColor);
-				}
+				String numStr = String.valueOf(outDmg);
+				int    numX   = splatX - smFm.stringWidth(numStr) - 2;
+				int    numY   = splatY + splatH / 2 + smFm.getAscent() / 2;
+				drawOutlinedString(g, numStr, numX, numY, WHITE);
 			}
 		}
 
@@ -1473,11 +1450,11 @@ public class PvpHudOverlay extends Overlay
 		int outX = p.x + p.width / 4;      // centre of left column
 		int inX  = p.x + 3 * p.width / 4;  // centre of right column
 
-		// Glyph-only column headers (no "OUT"/"IN" text)
-		int glyphR  = smFm.getHeight() / 2 - 1;
-		int headerY = cy + smFm.getHeight() / 2;
-		drawSplatGlyph(g, outX, headerY, glyphR, OUT_CYAN);
-		drawSplatGlyph(g, inX,  headerY, glyphR, RED);
+		// Text column headers
+		g.setColor(OUT_CYAN);
+		drawCentered(g, smFm, "DEALT", outX, cy + smFm.getAscent());
+		g.setColor(RED);
+		drawCentered(g, smFm, "TAKEN", inX, cy + smFm.getAscent());
 		// vertical divider
 		g.setColor(VERT_DIV);
 		g.drawLine(mid, cy - 1, mid, p.y + p.height - PAD * 2 - smFm.getHeight());
@@ -1543,27 +1520,19 @@ public class PvpHudOverlay extends Overlay
 			g.setColor(VERT_DIV);
 			g.drawLine(p.x + PAD, divY, p.x + p.width - PAD, divY);
 
-			int totY    = p.y + p.height - PAD;
-			int totMidY = totY - smFm.getAscent() / 2;
-			int gr      = smFm.getHeight() / 2 - 1;
+			int totY = p.y + p.height - PAD;
 
 			if (totalDealt > 0)
 			{
-				String s      = String.valueOf(totalDealt);
-				int totalW    = gr * 2 + 2 + smFm.stringWidth(s);
-				int sx        = outX - totalW / 2;
-				drawSplatGlyph(g, sx + gr, totMidY, gr, OUT_CYAN);
+				String s = String.valueOf(totalDealt);
 				g.setColor(OUT_CYAN);
-				g.drawString(s, sx + gr * 2 + 2, totY);
+				g.drawString(s, outX - smFm.stringWidth(s) / 2, totY);
 			}
 			if (totalReceived > 0)
 			{
-				String s      = String.valueOf(totalReceived);
-				int totalW    = gr * 2 + 2 + smFm.stringWidth(s);
-				int sx        = inX - totalW / 2;
-				drawSplatGlyph(g, sx + gr, totMidY, gr, RED);
+				String s = String.valueOf(totalReceived);
 				g.setColor(RED);
-				g.drawString(s, sx + gr * 2 + 2, totY);
+				g.drawString(s, inX - smFm.stringWidth(s) / 2, totY);
 			}
 		}
 	}
@@ -1688,7 +1657,7 @@ public class PvpHudOverlay extends Overlay
 				g.fillRect(barX, cy, barW, tallH);
 				g.setColor(fg);
 				g.fillRect(barX, cy, Math.max(1, (int) (barW * pct)), tallH);
-				drawOutlinedStringRight(g, fm, "HP " + self.getCurrentHp() + "/" + self.getMaxHp(),
+				drawBarValueRight(g, fm, "HP " + self.getCurrentHp() + "/" + self.getMaxHp(),
 					effectiveRx - 2, cy + fm.getAscent(), WHITE);
 				cy += tallH + 1;
 			}
@@ -1721,7 +1690,7 @@ public class PvpHudOverlay extends Overlay
 				g.fillRect(barX, cy, barW, tallH);
 				g.setColor(fg);
 				g.fillRect(barX, cy, Math.max(1, (int) (barW * pct)), tallH);
-				drawOutlinedStringRight(g, fm, "PR " + self.getCurrentPrayer() + "/" + self.getMaxPrayer(),
+				drawBarValueRight(g, fm, "PR " + self.getCurrentPrayer() + "/" + self.getMaxPrayer(),
 					effectiveRx - 2, cy + fm.getAscent(), WHITE);
 				cy += tallH + 1;
 			}
@@ -1755,7 +1724,7 @@ public class PvpHudOverlay extends Overlay
 				g.fillRect(barX, cy, barW, tallH);
 				g.setColor(runFg);
 				g.fillRect(barX, cy, Math.max(1, (int) (barW * runPct)), tallH);
-				drawOutlinedStringRight(g, fm, "RUN " + run + "%", effectiveRx - 2, cy + fm.getAscent(), WHITE);
+				drawBarValueRight(g, fm, "RUN " + run + "%", effectiveRx - 2, cy + fm.getAscent(), WHITE);
 				cy += tallH + 1;
 			}
 			else if (showBar(runStyle))
@@ -1786,7 +1755,7 @@ public class PvpHudOverlay extends Overlay
 				g.fillRect(barX, cy, barW, tallH);
 				g.setColor(YELLOW);
 				g.fillRect(barX, cy, Math.max(1, (int) (barW * specPct)), tallH);
-				drawOutlinedStringRight(g, fm, "SPEC " + spec + "%", effectiveRx - 2, cy + fm.getAscent(), WHITE);
+				drawBarValueRight(g, fm, "SPEC " + spec + "%", effectiveRx - 2, cy + fm.getAscent(), WHITE);
 				cy += tallH + 1;
 			}
 			else if (showBar(specStyle))
@@ -2665,6 +2634,34 @@ public class PvpHudOverlay extends Overlay
 	}
 
 	/**
+	 * Draws a number over a bar using a compact dark backing plate for contrast.
+	 * The backing rectangle tightly wraps the text with 1px horizontal padding.
+	 * No fuzzy outline — clean white glyph edges.
+	 */
+	private static void drawBarValue(Graphics2D g, FontMetrics fm, String text, int x, int baseline, Color fg)
+	{
+		int textW = fm.stringWidth(text);
+		int padX  = 1;
+		int padY  = 1;
+		int boxX  = x - padX;
+		int boxY  = baseline - fm.getAscent() - padY;
+		int boxW  = textW + padX * 2;
+		int boxH  = fm.getHeight() + padY * 2;
+		Composite prev = g.getComposite();
+		g.setComposite(AlphaComposite.getInstance(AlphaComposite.SRC_OVER, 0.65f));
+		g.setColor(Color.BLACK);
+		g.fillRect(boxX, boxY, boxW, boxH);
+		g.setComposite(prev);
+		g.setColor(fg);
+		g.drawString(text, x, baseline);
+	}
+
+	private static void drawBarValueRight(Graphics2D g, FontMetrics fm, String text, int rx, int baseline, Color fg)
+	{
+		drawBarValue(g, fm, text, rx - fm.stringWidth(text), baseline, fg);
+	}
+
+	/**
 	 * Draws text with a 1-pixel black outline on all 4 sides, then the foreground colour.
 	 * Makes numbers legible when rendered directly over coloured bars.
 	 */
@@ -2677,15 +2674,6 @@ public class PvpHudOverlay extends Overlay
 		g.drawString(text, x, baseline + 1);
 		g.setColor(fg);
 		g.drawString(text, x, baseline);
-	}
-
-	/**
-	 * Draws right-aligned text with a 1-pixel black outline.
-	 */
-	private static void drawOutlinedStringRight(Graphics2D g, FontMetrics fm,
-		String text, int rx, int baseline, Color fg)
-	{
-		drawOutlinedString(g, text, rx - fm.stringWidth(text), baseline, fg);
 	}
 
 	private BufferedImage prayerIconFor(HeadIcon prayer)

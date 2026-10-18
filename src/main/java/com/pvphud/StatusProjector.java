@@ -208,17 +208,6 @@ public final class StatusProjector
 		if (afTicks  > 0) addTimed(out, "af",  StatusPriority.SUSTAIN, "AF",  afTicks,  false);
 		if (safTicks > 0) addTimed(out, "saf", StatusPriority.SUSTAIN, "SAF", safTicks, false);
 
-		// Boost decay / debuff restore cycle timers
-		int drainTicks = self.getBoostDecay().getTicksRemaining();
-		if (drainTicks > 0 && self.getBoostDecay().isCalibrated() && boosts.hasAnyBoost())
-			out.add(new StatusSlot("drain", StatusPriority.SUSTAIN,
-				"drain " + drainTicks + "t", null, YELLOW, false));
-
-		int rstTicks = self.getDebuffRestore().getTicksRemaining();
-		if (rstTicks > 0 && self.getDebuffRestore().isCalibrated() && boosts.hasAnyDebuff())
-			out.add(new StatusSlot("restore", StatusPriority.SUSTAIN,
-				"rst " + rstTicks + "t", null, YELLOW, false));
-
 		// ── READINESS ─────────────────────────────────────────────────────────
 		if (fx.getImbuedHeartCooldownTicks() > 0)
 			addTimed(out, "ih_cd", StatusPriority.READINESS, "IH-CD",

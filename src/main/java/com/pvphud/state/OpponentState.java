@@ -46,28 +46,6 @@ public class OpponentState
 	@Getter @Setter
 	private long lastOutgoingHitMs = -1;
 
-	/** Damage computed from XP drop, shown as an in-flight indicator before HP bar updates. */
-	@Getter private int  pendingHitDamage;
-	@Getter private long pendingHitTimestampMs = -1;
-
-	public void setPendingHit(int damage)
-	{
-		pendingHitDamage      = damage;
-		pendingHitTimestampMs = System.currentTimeMillis();
-	}
-
-	/** True when a pending prediction has been set by the plugin. Cleared by clearPendingHit(). */
-	public boolean hasPendingHit()
-	{
-		return pendingHitDamage > 0;
-	}
-
-	public void clearPendingHit()
-	{
-		pendingHitDamage      = 0;
-		pendingHitTimestampMs = -1;
-	}
-
 	/** Active overhead prayer (null = none). Updated each game tick. */
 	@Getter @Setter
 	private HeadIcon overheadPrayer;
@@ -99,8 +77,6 @@ public class OpponentState
 		lastOutgoingHit       = -1;
 		lastOutgoingHitMs     = -1;
 		overheadPrayer        = null;
-		pendingHitDamage      = 0;
-		pendingHitTimestampMs = -1;
 		cachedActor           = null;
 		stats.reset();
 	}

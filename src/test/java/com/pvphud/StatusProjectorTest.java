@@ -429,6 +429,35 @@ public class StatusProjectorTest
 		assertEquals(StatusPriority.TACTICAL, s.priority);
 	}
 
+	// ── Drain / restore slots must NOT appear in HUD (Part F) ───────────────
+
+	@Test
+	public void drain_notEmittedToHud()
+	{
+		SelfState self = new SelfState();
+		self.getBoostDecay().sync(TICK);
+		self.getBoostDecay().update(TICK + 50, false); // ticksRemaining = 50 > 0, isCalibrated = true
+		BoostState boosts = new BoostState();
+		boosts.setAttackReal(90);
+		boosts.setAttackBoosted(99); // has a boost
+		List<StatusSlot> slots = project(self, new EffectState(), new PoisonState(), boosts);
+		assertFalse("drain slot must not appear in HUD",
+			slotIds(slots).contains("drain"));
+	}
+
+	@Test
+	public void restore_notEmittedToHud()
+	{
+		SelfState self = new SelfState();
+		self.getDebuffRestore().sync(); // calibrates with DEFAULT_PERIOD=100, ticksRemaining=100>0
+		BoostState boosts = new BoostState();
+		boosts.setAttackReal(99);
+		boosts.setAttackBoosted(85); // has a debuff
+		List<StatusSlot> slots = project(self, new EffectState(), new PoisonState(), boosts);
+		assertFalse("restore slot must not appear in HUD",
+			slotIds(slots).contains("restore"));
+	}
+
 	// ── formatFreezeRemaining ────────────────────────────────────────────────
 
 	@Test

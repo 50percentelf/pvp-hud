@@ -129,21 +129,11 @@ public class PvpHudPlugin extends Plugin
 	/** Last known Menaphite Remedy varbit value; -1 = not yet observed. */
 	private int prevMenaphiteVarbit = -1;
 
-	/** Total HP XP at last observation; used to compute outgoing-damage predictions. -1 = unknown. */
-	private int previousHitpointsXp = -1;
-
-	/** Pending outgoing-damage predictions awaiting hitsplat confirmation. Max 4. */
-	final java.util.ArrayDeque<PendingPrediction> pendingPredictions = new java.util.ArrayDeque<>(4);
-
-	/**
-	 * The game tick on which we last consumed a prediction from the queue.
-	 * Ensures multi-hit attacks (same tick, multiple hitsplats) consume only one
-	 * prediction rather than one per hitsplat.
-	 */
-	private int lastPredictionConsumedTick = -1;
-
 	/** Last known Corruption current-iterations value; used to detect each drain. */
 	private int prevCorruptionIterations = -1;
+
+	/** Countdown for periodic mod-icon reload retry (ticks). */
+	private int modIconRetryCountdown = 0;
 
 	/** Player position from the previous game tick; used to detect movement while frozen. */
 	private WorldPoint lastPlayerPos = null;
@@ -200,9 +190,7 @@ public class PvpHudPlugin extends Plugin
 		lastFreezeGraphicId       = -1;
 		lastFreezeGraphicTick     = -1;
 		lastPlayerPos             = null;
-		previousHitpointsXp        = -1;
-		lastPredictionConsumedTick = -1;
-		pendingPredictions.clear();
+		modIconRetryCountdown     = 0;
 		hudState.fullReset();
 		applyOverlayPosition();
 		overlay.invalidateInventoryHugAnchor();
@@ -271,7 +259,6 @@ public class PvpHudPlugin extends Plugin
 		applyPoisonVarp(poisonVal);
 		self.setCurrentHp(client.getBoostedSkillLevel(Skill.HITPOINTS));
 		self.setMaxHp(client.getRealSkillLevel(Skill.HITPOINTS));
-		previousHitpointsXp = client.getSkillExperience(Skill.HITPOINTS);
 		self.setCurrentPrayer(client.getBoostedSkillLevel(Skill.PRAYER));
 		self.setMaxPrayer(client.getRealSkillLevel(Skill.PRAYER));
 		// client.getEnergy() returns 0-10000; divide by 100 for 0-100%
@@ -390,9 +377,6 @@ public class PvpHudPlugin extends Plugin
 			prevMenaphiteVarbit        = -1;
 			prevCorruptionIterations   = -1;
 			lastPlayerPos              = null;
-			previousHitpointsXp        = -1;
-			lastPredictionConsumedTick = -1;
-			pendingPredictions.clear();
 			hudState.fullReset();
 			overlay.invalidateInventoryHugAnchor();
 		}
@@ -469,43 +453,15 @@ public class PvpHudPlugin extends Plugin
 				if (event.getBoostedLevel() == 0 && prevHp > 0)
 				{
 					// Local player died — terminate the fight immediately.
-					lastPredictionConsumedTick = -1;
 					hudState.endSession();
 					hudState.getOpponent().reset();
 					pendingOpponentName  = null;
 					pendingOpponentActor = null;
-					pendingPredictions.clear();
 				}
 				else if (event.getBoostedLevel() == prevHp + 1
 					&& event.getBoostedLevel() <= event.getLevel())
 				{
 					self.setHpRegenTicksRemaining(100);
-				}
-				// XP delta → outgoing damage prediction.
-				// Always advance the baseline first so a rejected XP gain never
-				// leaks into the next valid delta.
-				int newXp   = event.getXp();
-				int xpDelta = (previousHitpointsXp >= 0) ? (newXp - previousHitpointsXp) : 0;
-				previousHitpointsXp = newXp;
-				if (xpDelta > 0
-					&& hudState.getCurrentSession() != null
-					&& hudState.getOpponent().isTracked())
-				{
-					Player tracked = hudState.getOpponent().getCachedActor();
-					Player local   = client.getLocalPlayer();
-					// Require object-identity interacting match to rule out unrelated XP.
-					if (tracked != null && local != null
-						&& local.getInteracting() == tracked
-						&& tracked.getCombatLevel() > 0)
-					{
-						int pred = predictPvpDamageFromHpXp(xpDelta, tracked.getCombatLevel());
-						if (pred > 0 && pred <= 120) // sanity guard: reject implausible values
-						{
-							String targetName = normalizePlayerName(tracked.getName());
-							enqueuePrediction(pred, client.getTickCount(), targetName);
-							syncPendingPredictionDisplay();
-						}
-					}
 				}
 				break;
 			}
@@ -805,16 +761,22 @@ public class PvpHudPlugin extends Plugin
 		PvpFightSession session = hudState.getCurrentSession();
 		if (session != null && session.isStale(tick))
 		{
-			pendingPredictions.clear();
-			lastPredictionConsumedTick = -1;
 			hudState.endSession();
 			hudState.getOpponent().reset();
 		}
 
 		updateEnvironment();
 		pollOpponentHealth();
-		// Prune expired queue entries and keep the pending display in sync.
-		syncPendingPredictionDisplay();
+
+		// Periodic mod-icon reload retry for ironman badge display.
+		// Retries every 100 ticks when an opponent with non-NORMAL account type is tracked.
+		if (--modIconRetryCountdown <= 0)
+		{
+			modIconRetryCountdown = 100;
+			OpponentState opp2 = hudState.getOpponent();
+			if (opp2.isTracked() && opp2.getStats().getAccountType() != OpponentStats.AccountType.NORMAL)
+				clientThread.invoke(overlay::ensureModIconsLoaded);
+		}
 	}
 
 	// ── Menu clicks ───────────────────────────────────────────────────────────
@@ -991,9 +953,7 @@ public class PvpHudPlugin extends Plugin
 			hudState.getOpponent().setCachedActor(actor);
 			return;
 		}
-		// New opponent — discard any predictions from the previous fight.
-		pendingPredictions.clear();
-		lastPredictionConsumedTick = -1;
+		// New opponent — start fresh.
 		hudState.getOpponent().reset();
 		hudState.getOpponent().setName(name);
 		hudState.getOpponent().setCachedActor(actor);
@@ -1126,16 +1086,6 @@ public class PvpHudPlugin extends Plugin
 		// whichever individual hitsplat arrived last.
 		com.pvphud.state.DamageExchange exchange = session.getExchangeForTick(tick);
 		opp.setLastOutgoingHit(exchange != null ? exchange.getOutgoingTotal() : damage);
-
-		// One prediction is consumed per attack tick — not per hitsplat.
-		// Multi-hit same-tick attacks share a single XP drop and therefore a
-		// single prediction.
-		if (tick != lastPredictionConsumedTick)
-		{
-			lastPredictionConsumedTick = tick;
-			consumePredictionFor(normalizePlayerName(opp.getName()), tick);
-		}
-		syncPendingPredictionDisplay();
 	}
 
 	// ── HUD visibility predicate ─────────────────────────────────────────────
@@ -1232,8 +1182,6 @@ public class PvpHudPlugin extends Plugin
 			// In single-combat, opponent death ends the freeze on us (they can't re-freeze).
 			if (!hudState.getContext().isMultiCombat())
 				hudState.getSelf().breakFreezeEarly();
-			pendingPredictions.clear();
-			lastPredictionConsumedTick = -1;
 			hudState.endSession();
 			hudState.getOpponent().reset();
 			return;
@@ -1516,7 +1464,11 @@ public class PvpHudPlugin extends Plugin
 			OpponentState opp = hudState.getOpponent();
 			if (!opp.isTracked() || !playerName.equalsIgnoreCase(opp.getName())) return;
 			if (type.ordinal() > opp.getStats().getAccountType().ordinal())
+			{
 				opp.getStats().setAccountType(type);
+				log.debug("AccountType set for {}: {}", playerName, type);
+				overlay.ensureModIconsLoaded();
+			}
 		});
 	}
 
@@ -1548,115 +1500,6 @@ public class PvpHudPlugin extends Plugin
 	{
 		net.runelite.client.hiscore.Skill s = result.getSkill(skill);
 		return s != null && s.getLevel() > 0 ? s.getLevel() : -1;
-	}
-
-	// ── XP-derived damage prediction ─────────────────────────────────────────────
-
-	/**
-	 * OSRS PvP XP modifier based on the opponent's combat level.
-	 * The XP gain on the attacker is scaled down by this modifier relative to
-	 * standard PvM — using the opponent's level, not the attacker's.
-	 */
-	static double pvpXpModifier(int opponentCombatLevel)
-	{
-		return Math.min(1.125d, 1.0d + Math.floor(opponentCombatLevel / 20.0d) / 40.0d);
-	}
-
-	/**
-	 * Estimates outgoing damage from an HP XP delta using the OSRS PvP XP modifier.
-	 * {@code opponentCombatLevel} must be the opponent's level — NOT the local player's.
-	 * Formula: predicted = round((hpXpDelta * 0.75) / pvpXpModifier(opponentCombatLevel))
-	 */
-	static int predictPvpDamageFromHpXp(int hpXpDelta, int opponentCombatLevel)
-	{
-		return (int) Math.round((hpXpDelta * 0.75d) / pvpXpModifier(opponentCombatLevel));
-	}
-
-	private void enqueuePrediction(int damage, int createdTick, String targetName)
-	{
-		if (pendingPredictions.size() >= 4)
-			pendingPredictions.pollFirst(); // drop oldest to make room
-		pendingPredictions.addLast(
-			new PendingPrediction(damage, createdTick, System.currentTimeMillis(), targetName));
-	}
-
-	/**
-	 * Removes and returns the oldest non-expired prediction that matches
-	 * {@code normalizedTargetName} and was created no later than {@code confirmedTick}.
-	 * Expired entries encountered during iteration are pruned.
-	 * Returns null if no matching prediction exists.
-	 */
-	PendingPrediction consumePredictionFor(String normalizedTargetName, int confirmedTick)
-	{
-		long now = System.currentTimeMillis();
-		Iterator<PendingPrediction> it = pendingPredictions.iterator();
-		while (it.hasNext())
-		{
-			PendingPrediction p = it.next();
-			if (now - p.createdMs > 3000)
-			{
-				it.remove();
-				continue;
-			}
-			if (p.targetName.equals(normalizedTargetName) && p.createdTick <= confirmedTick)
-			{
-				it.remove();
-				return p;
-			}
-		}
-		return null;
-	}
-
-	/**
-	 * Prunes expired queue entries then synchronises {@code OpponentState.pendingHit}
-	 * with the queue head for the current tracked opponent.
-	 * Must be called after every enqueue, consume, opponent reset, and each game tick.
-	 */
-	void syncPendingPredictionDisplay()
-	{
-		long now = System.currentTimeMillis();
-		while (!pendingPredictions.isEmpty()
-			&& now - pendingPredictions.peekFirst().createdMs > 3000)
-		{
-			pendingPredictions.pollFirst();
-		}
-		OpponentState opp = hudState.getOpponent();
-		if (!pendingPredictions.isEmpty() && opp.isTracked())
-		{
-			PendingPrediction head = pendingPredictions.peekFirst();
-			if (head.targetName.equals(normalizePlayerName(opp.getName())))
-				opp.setPendingHit(head.damage);
-			else
-				opp.clearPendingHit();
-		}
-		else
-		{
-			opp.clearPendingHit();
-		}
-	}
-
-	/** Lowercases a player name for target-identity comparisons. */
-	static String normalizePlayerName(String name)
-	{
-		return name == null ? "" : name.toLowerCase();
-	}
-
-	// ── Inner types ───────────────────────────────────────────────────────────────
-
-	static final class PendingPrediction
-	{
-		final int    damage;
-		final int    createdTick;
-		final long   createdMs;
-		final String targetName; // normalizePlayerName() of the tracked opponent at creation time
-
-		PendingPrediction(int damage, int createdTick, long createdMs, String targetName)
-		{
-			this.damage      = damage;
-			this.createdTick = createdTick;
-			this.createdMs   = createdMs;
-			this.targetName  = targetName;
-		}
 	}
 
 	@Provides
