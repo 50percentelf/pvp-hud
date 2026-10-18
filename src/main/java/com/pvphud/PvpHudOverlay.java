@@ -12,7 +12,9 @@ import com.pvphud.state.PoisonState;
 import com.pvphud.state.ProtectionState;
 import com.pvphud.state.PvpFightSession;
 import com.pvphud.state.SelfState;
+import java.awt.AlphaComposite;
 import java.awt.Color;
+import java.awt.Composite;
 import java.awt.Dimension;
 import java.awt.Font;
 import java.awt.FontMetrics;
@@ -20,6 +22,8 @@ import java.awt.Graphics2D;
 import java.awt.Point;
 import java.awt.Rectangle;
 import java.awt.image.BufferedImage;
+import net.runelite.api.IconID;
+import net.runelite.api.IndexedSprite;
 import java.util.ArrayList;
 import java.util.EnumMap;
 import java.util.List;
@@ -115,10 +119,13 @@ public class PvpHudOverlay extends Overlay
 	private volatile BufferedImage wardIcon;      // ward of arceuus sprite
 	private volatile BufferedImage markIcon;      // mark of darkness sprite
 
-	// ── Cached icons for ironman account-type badge ─────────────────────────
-	private BufferedImage ironmanIcon;
-	private BufferedImage ultimateIronmanIcon;
-	private BufferedImage hardcoreIronmanIcon;
+	// ── Cached icons for ironman account-type badge (loaded from mod icons) ────
+	private volatile BufferedImage ironmanIcon;
+	private volatile BufferedImage ultimateIronmanIcon;
+	private volatile BufferedImage hardcoreIronmanIcon;
+
+	// ── OSRS red hitsplat for prediction/confirmation indicator ──────────────
+	private volatile BufferedImage redHitsplatIcon; // archive 1359, index 0
 
 	// ── Cached skill icons for inventory-hug bars (HP / Prayer / Run / Spec) ──
 	private volatile BufferedImage hpSkillIcon;
@@ -204,10 +211,10 @@ public class PvpHudOverlay extends Overlay
 		imbuedHeartIcon = itemManager.getImage(ItemID.IMBUED_HEART);
 		prayerRegenIcon = itemManager.getImage(ItemID._4DOSE1PRAYER_REGENERATION);
 		sotdIcon        = itemManager.getImage(ItemID.SOTD);
-		surgeIcon            = itemManager.getImage(ItemID._4DOSESURGE);
-		ironmanIcon          = itemManager.getImage(ItemID.IRONMAN_HELM);
-		ultimateIronmanIcon  = itemManager.getImage(ItemID.ULTIMATE_IRONMAN_HELM);
-		hardcoreIronmanIcon  = itemManager.getImage(ItemID.HARDCORE_IRONMAN_HELM);
+		surgeIcon       = itemManager.getImage(ItemID._4DOSESURGE);
+		// Ironman badges: loaded from client.getModIcons() in loadModIcons() (must be client thread).
+		// OSRS red hitsplat: archive 1359, used for prediction/confirmation indicator.
+		spriteManager.getSpriteAsync(1359, 0, img -> redHitsplatIcon = img);
 		// corruptIcon, wardIcon, markIcon: SpriteID.MagicNecroOn not in API jar — text-only display.
 
 		// SpriteID.SPELL_VENGEANCE not loaded — Vengeance display deferred post-v0.1.
@@ -233,6 +240,50 @@ public class PvpHudOverlay extends Overlay
 		spriteManager.getSpriteAsync(SpriteID.SKILL_PRAYER,     0, img -> praySkillIcon = img);
 		spriteManager.getSpriteAsync(SpriteID.SKILL_AGILITY,        0, img -> runEnergyIcon = img);
 		spriteManager.getSpriteAsync(SpriteID.MINIMAP_ORB_SPECIAL_ICON, 0, img -> specIcon     = img);
+	}
+
+	/**
+	 * Loads ironman account-type badges from {@code client.getModIcons()}.
+	 * Must be called on the client thread (called from plugin's rehydrateFromClient).
+	 */
+	void loadModIcons()
+	{
+		IndexedSprite[] modIcons = client.getModIcons();
+		if (modIcons == null) return;
+		int imIdx  = IconID.IRONMAN.getIndex();
+		int uimIdx = IconID.ULTIMATE_IRONMAN.getIndex();
+		int hcIdx  = IconID.HARDCORE_IRONMAN.getIndex();
+		if (imIdx  < modIcons.length) ironmanIcon         = indexedSpriteToImage(modIcons[imIdx]);
+		if (uimIdx < modIcons.length) ultimateIronmanIcon = indexedSpriteToImage(modIcons[uimIdx]);
+		if (hcIdx  < modIcons.length) hardcoreIronmanIcon = indexedSpriteToImage(modIcons[hcIdx]);
+	}
+
+	private static BufferedImage indexedSpriteToImage(IndexedSprite sprite)
+	{
+		if (sprite == null) return null;
+		byte[] pixels  = sprite.getPixels();
+		int[]  palette = sprite.getPalette();
+		int    w       = sprite.getWidth();
+		int    h       = sprite.getHeight();
+		int    ow      = sprite.getOriginalWidth();
+		int    oh      = sprite.getOriginalHeight();
+		int    offX    = sprite.getOffsetX();
+		int    offY    = sprite.getOffsetY();
+		if (pixels == null || palette == null || w <= 0 || h <= 0) return null;
+		int imgW = ow > 0 ? ow : w;
+		int imgH = oh > 0 ? oh : h;
+		BufferedImage img = new BufferedImage(imgW, imgH, BufferedImage.TYPE_INT_ARGB);
+		for (int py = 0; py < h; py++)
+		{
+			for (int px = 0; px < w; px++)
+			{
+				int idx = pixels[py * w + px] & 0xFF;
+				if (idx == 0) continue; // index 0 = transparent
+				int rgb = palette[idx];
+				img.setRGB(offX + px, offY + py, 0xFF000000 | rgb);
+			}
+		}
+		return img;
 	}
 
 	// ── Render entry point ────────────────────────────────────────────────────
@@ -733,8 +784,7 @@ public class PvpHudOverlay extends Overlay
 			String hpStr = estHp + "/" + maxHp;
 			int    hpX   = barEndX - 2 - fm.stringWidth(hpStr);
 			int    hpY   = y2 + (HUD_BAR_H + fm.getAscent() - fm.getDescent()) / 2;
-			g.setColor(WHITE);
-			g.drawString(hpStr, hpX, hpY);
+			drawOutlinedString(g, hpStr, hpX, hpY, WHITE);
 		}
 		else
 		{
@@ -743,8 +793,7 @@ public class PvpHudOverlay extends Overlay
 			String hpStr = "HP?";
 			int    hpX   = barEndX - 2 - fm.stringWidth(hpStr);
 			int    hpY   = y2 + (HUD_BAR_H + fm.getAscent() - fm.getDescent()) / 2;
-			g.setColor(GRAY);
-			g.drawString(hpStr, hpX, hpY);
+			drawOutlinedString(g, hpStr, hpX, hpY, GRAY);
 		}
 
 		// ── Prayer icon: right column, vertically centred in the content block ──
@@ -843,7 +892,7 @@ public class PvpHudOverlay extends Overlay
 		cy = drawInventoryBar(g, fm, cx, lx, cy, railW, specIcon,
 			fx.getSpecEnergy(), 100, YELLOW, HP_BG, activeProfile.specBarStyle);
 
-		// ── Damage row: OUT vs IN totals, always visible ──────────────────────
+		// ── Damage rows: OUT then IN, each full-width with glyph left / number right ──
 		{
 			g.setColor(DIVIDER);
 			g.drawLine(lx, cy, INVY_LEFT_W - lx, cy);
@@ -855,24 +904,23 @@ public class PvpHudOverlay extends Overlay
 			int totalIn  = dmgSession != null
 				? dmgSession.getTotalIncoming() : state.getLastTotalIncoming();
 
-			int halfW  = railW / 2;
-			int outCx  = lx + halfW / 2;
-			int inCx   = lx + halfW + halfW / 2;
-			int gr     = fm.getHeight() / 2 - 1;
+			int gr  = fm.getHeight() / 2 - 1;
+			int rxr = INVY_LEFT_W - lx;
 
 			String outStr = String.valueOf(totalOut);
+			Color outGlyph = totalOut > 0 ? OUT_CYAN : DIVIDER;
+			Color outText  = totalOut > 0 ? OUT_CYAN : GRAY;
+			drawSplatGlyph(g, lx + gr, cy + fm.getHeight() / 2, gr, outGlyph);
+			g.setColor(outText);
+			g.drawString(outStr, rxr - fm.stringWidth(outStr), cy + fm.getAscent());
+			cy += fm.getHeight() + 1;
+
 			String inStr  = String.valueOf(totalIn);
-
-			int outTextX = outCx - fm.stringWidth(outStr) / 2;
-			drawSplatGlyph(g, outTextX - gr - 2, cy + fm.getHeight() / 2, gr, totalOut > 0 ? OUT_CYAN : DIVIDER);
-			g.setColor(totalOut > 0 ? OUT_CYAN : GRAY);
-			g.drawString(outStr, outTextX, cy + fm.getAscent());
-
-			int inTextX = inCx - fm.stringWidth(inStr) / 2;
-			drawSplatGlyph(g, inTextX - gr - 2, cy + fm.getHeight() / 2, gr, totalIn > 0 ? RED : DIVIDER);
-			g.setColor(totalIn > 0 ? RED : GRAY);
-			g.drawString(inStr, inTextX, cy + fm.getAscent());
-
+			Color inGlyph = totalIn > 0 ? RED : DIVIDER;
+			Color inText  = totalIn > 0 ? RED : GRAY;
+			drawSplatGlyph(g, lx + gr, cy + fm.getHeight() / 2, gr, inGlyph);
+			g.setColor(inText);
+			g.drawString(inStr, rxr - fm.stringWidth(inStr), cy + fm.getAscent());
 			cy += fm.getHeight() + 2;
 		}
 
@@ -1001,28 +1049,6 @@ public class PvpHudOverlay extends Overlay
 			}
 		}
 
-		// ── Fight totals ───────────────────────────────────────────────────────
-		if (cy >= railMaxY) return;
-		PvpFightSession session = state.getCurrentSession();
-		int totalDealt    = session != null ? session.getTotalOutgoing()  : state.getLastTotalOutgoing();
-		int totalReceived = session != null ? session.getTotalIncoming() : state.getLastTotalIncoming();
-		if (totalDealt > 0 || totalReceived > 0)
-		{
-			g.setColor(DIVIDER);
-			g.drawLine(lx, cy, INVY_LEFT_W - lx, cy);
-			cy += 3;
-			if (totalDealt > 0 && cy < railMaxY)
-			{
-				g.setColor(GREEN);
-				drawCentered(g, fm, "D " + totalDealt, cx, cy + fm.getAscent());
-				cy += fm.getHeight() + 1;
-			}
-			if (totalReceived > 0 && cy < railMaxY)
-			{
-				g.setColor(RED);
-				drawCentered(g, fm, "R " + totalReceived, cx, cy + fm.getAscent());
-			}
-		}
 	}
 
 	/**
@@ -1049,8 +1075,7 @@ public class PvpHudOverlay extends Overlay
 			g.fillRect(barX, cy, barSz, barH);
 			g.setColor(barFg);
 			g.fillRect(barX, cy, Math.max(1, (int)(barSz * pct)), barH);
-			g.setColor(WHITE);
-			g.drawString(String.valueOf(current), barX + 2, cy + fm.getAscent());
+			drawOutlinedString(g, String.valueOf(current), barX + 2, cy + fm.getAscent(), WHITE);
 			cy += barH + 1;
 		}
 		else if (showBar(style))
@@ -1261,23 +1286,21 @@ public class PvpHudOverlay extends Overlay
 		{
 			float pct = Math.min(1f, (float) estHp / maxHp);
 			Color fg  = pct > 0.5f ? HP_FG : pct > 0.25f ? YELLOW : RED;
+			int hpBarH = smFm.getHeight(); // tall bar for overlaid text
 			g.setColor(HP_BG);
-			g.fillRect(x, cy, contentW, BAR_H);
+			g.fillRect(x, cy, contentW, hpBarH);
 			g.setColor(fg);
-			g.fillRect(x, cy, Math.max(1, (int)(contentW * pct)), BAR_H);
-			cy += BAR_H + 3;
-			g.setColor(GRAY);
-			g.drawString("~" + estHp + " HP", x, cy + smFm.getAscent());
-			cy += smFm.getHeight() + 2;
+			g.fillRect(x, cy, Math.max(1, (int)(contentW * pct)), hpBarH);
+			drawOutlinedStringRight(g, smFm, "~" + estHp + " HP", x + contentW - 2, cy + smFm.getAscent(), WHITE);
+			cy += hpBarH + 3;
 		}
 		else
 		{
+			int hpBarH = smFm.getHeight();
 			g.setColor(HP_BG);
-			g.fillRect(x, cy, contentW, BAR_H);
-			cy += BAR_H + 3;
-			g.setColor(GRAY);
-			g.drawString("HP ?", x, cy + smFm.getAscent());
-			cy += smFm.getHeight() + 2;
+			g.fillRect(x, cy, contentW, hpBarH);
+			drawOutlinedStringRight(g, smFm, "HP ?", x + contentW - 2, cy + smFm.getAscent(), GRAY);
+			cy += hpBarH + 3;
 		}
 
 		// Prayer icon: right column, vertically centred on the name+HP block
@@ -1292,6 +1315,65 @@ public class PvpHudOverlay extends Overlay
 			{
 				g.setColor(prayerColorFor(prayer));
 				g.drawString(prayerShortFor(prayer), prayX, prayIconY + smFm.getAscent());
+			}
+		}
+
+		// Prediction / confirmation indicator — ONE slot overlaid near HP bar.
+		// Confirmed (solid): full-opacity hitsplat + white number, ~750 ms window.
+		// Predicted (ghosted): 50% opacity hitsplat + gray number.
+		{
+			long outMs  = opp.getLastOutgoingHitMs();
+			int  outDmg = opp.getLastOutgoingHit();
+			boolean confirmed = outMs > 0 && outDmg > 0 && System.currentTimeMillis() - outMs < 750;
+			boolean predicted = !confirmed && opp.hasPendingHit();
+			if (confirmed || predicted)
+			{
+				int   dmg       = confirmed ? outDmg : opp.getPendingHitDamage();
+				Color numColor  = confirmed ? WHITE  : GRAY;
+				int   splatW    = 16; // target width for hitsplat image
+				int   splatH    = 16;
+				int   splatX    = x + contentW - splatW - 2;
+				int   splatY    = cy - splatH - 6; // float above current cy (back to HP bar row)
+
+				if (redHitsplatIcon != null)
+				{
+					Composite prev = g.getComposite();
+					if (predicted)
+						g.setComposite(AlphaComposite.getInstance(AlphaComposite.SRC_OVER, 0.50f));
+					g.drawImage(redHitsplatIcon, splatX, splatY, splatW, splatH, null);
+					g.setComposite(prev);
+				}
+				else
+				{
+					// Fallback glyph when sprite not yet loaded
+					int gr = splatW / 2 - 1;
+					Color glyphCol = confirmed ? OUT_CYAN : GRAY;
+					if (predicted)
+					{
+						Composite prev = g.getComposite();
+						g.setComposite(AlphaComposite.getInstance(AlphaComposite.SRC_OVER, 0.50f));
+						drawSplatGlyph(g, splatX + splatW / 2, splatY + splatH / 2, gr, glyphCol);
+						g.setComposite(prev);
+					}
+					else
+					{
+						drawSplatGlyph(g, splatX + splatW / 2, splatY + splatH / 2, gr, glyphCol);
+					}
+				}
+				String numStr   = String.valueOf(dmg);
+				int    numX     = splatX - smFm.stringWidth(numStr) - 2;
+				int    numY     = splatY + splatH / 2 + smFm.getAscent() / 2;
+				if (predicted)
+				{
+					Composite prev = g.getComposite();
+					g.setComposite(AlphaComposite.getInstance(AlphaComposite.SRC_OVER, 0.50f));
+					drawOutlinedString(g, numStr, numX, numY, numColor);
+					g.setComposite(prev);
+				}
+				else
+				{
+					drawOutlinedString(g, numStr, numX, numY, numColor);
+				}
 			}
 		}
 
@@ -1606,9 +1688,8 @@ public class PvpHudOverlay extends Overlay
 				g.fillRect(barX, cy, barW, tallH);
 				g.setColor(fg);
 				g.fillRect(barX, cy, Math.max(1, (int) (barW * pct)), tallH);
-				g.setColor(WHITE);
-				drawRightAligned(g, fm, "HP " + self.getCurrentHp() + "/" + self.getMaxHp(),
-					effectiveRx - 2, cy + fm.getAscent());
+				drawOutlinedStringRight(g, fm, "HP " + self.getCurrentHp() + "/" + self.getMaxHp(),
+					effectiveRx - 2, cy + fm.getAscent(), WHITE);
 				cy += tallH + 1;
 			}
 			else if (showBar(hpStyle))
@@ -1640,9 +1721,8 @@ public class PvpHudOverlay extends Overlay
 				g.fillRect(barX, cy, barW, tallH);
 				g.setColor(fg);
 				g.fillRect(barX, cy, Math.max(1, (int) (barW * pct)), tallH);
-				g.setColor(WHITE);
-				drawRightAligned(g, fm, "PR " + self.getCurrentPrayer() + "/" + self.getMaxPrayer(),
-					effectiveRx - 2, cy + fm.getAscent());
+				drawOutlinedStringRight(g, fm, "PR " + self.getCurrentPrayer() + "/" + self.getMaxPrayer(),
+					effectiveRx - 2, cy + fm.getAscent(), WHITE);
 				cy += tallH + 1;
 			}
 			else if (showBar(prStyle))
@@ -1675,8 +1755,7 @@ public class PvpHudOverlay extends Overlay
 				g.fillRect(barX, cy, barW, tallH);
 				g.setColor(runFg);
 				g.fillRect(barX, cy, Math.max(1, (int) (barW * runPct)), tallH);
-				g.setColor(WHITE);
-				drawRightAligned(g, fm, "RUN " + run + "%", effectiveRx - 2, cy + fm.getAscent());
+				drawOutlinedStringRight(g, fm, "RUN " + run + "%", effectiveRx - 2, cy + fm.getAscent(), WHITE);
 				cy += tallH + 1;
 			}
 			else if (showBar(runStyle))
@@ -1707,8 +1786,7 @@ public class PvpHudOverlay extends Overlay
 				g.fillRect(barX, cy, barW, tallH);
 				g.setColor(YELLOW);
 				g.fillRect(barX, cy, Math.max(1, (int) (barW * specPct)), tallH);
-				g.setColor(WHITE);
-				drawRightAligned(g, fm, "SPEC " + spec + "%", effectiveRx - 2, cy + fm.getAscent());
+				drawOutlinedStringRight(g, fm, "SPEC " + spec + "%", effectiveRx - 2, cy + fm.getAscent(), WHITE);
 				cy += tallH + 1;
 			}
 			else if (showBar(specStyle))
@@ -2584,6 +2662,30 @@ public class PvpHudOverlay extends Overlay
 	private static void drawRightAligned(Graphics2D g, FontMetrics fm, String text, int rx, int baseline)
 	{
 		g.drawString(text, rx - fm.stringWidth(text), baseline);
+	}
+
+	/**
+	 * Draws text with a 1-pixel black outline on all 4 sides, then the foreground colour.
+	 * Makes numbers legible when rendered directly over coloured bars.
+	 */
+	static void drawOutlinedString(Graphics2D g, String text, int x, int baseline, Color fg)
+	{
+		g.setColor(Color.BLACK);
+		g.drawString(text, x - 1, baseline);
+		g.drawString(text, x + 1, baseline);
+		g.drawString(text, x, baseline - 1);
+		g.drawString(text, x, baseline + 1);
+		g.setColor(fg);
+		g.drawString(text, x, baseline);
+	}
+
+	/**
+	 * Draws right-aligned text with a 1-pixel black outline.
+	 */
+	private static void drawOutlinedStringRight(Graphics2D g, FontMetrics fm,
+		String text, int rx, int baseline, Color fg)
+	{
+		drawOutlinedString(g, text, rx - fm.stringWidth(text), baseline, fg);
 	}
 
 	private BufferedImage prayerIconFor(HeadIcon prayer)

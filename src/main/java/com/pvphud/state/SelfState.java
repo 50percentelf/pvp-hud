@@ -91,13 +91,24 @@ public class SelfState
 	}
 
 	/**
-	 * Thaws the freeze naturally (timer expiry) or by movement detection.
-	 * Grants a fixed post-thaw refreeze immunity window (OSRS: ~5 ticks).
+	 * Natural freeze expiry — timer ran out. Grants post-thaw refreeze immunity.
+	 * Call this when {@link #isFrozen} transitions to false via the tick counter.
 	 */
-	public void thaw(int currentTick)
+	public void expireFreeze(int currentTick)
 	{
 		if (freezeEndTick > 0 && freezeStartTick >= 0)
 			refreezeImmunityEndTick = currentTick + REFREEZE_IMMUNITY_TICKS;
+		freezeStartTick = -1;
+		freezeEndTick   = -1;
+		freezeSpriteId  = 0;
+	}
+
+	/**
+	 * Breaks the freeze early (movement detected, or tracked opponent died in single-combat).
+	 * Does NOT grant refreeze immunity — only natural expiry awards it.
+	 */
+	public void breakFreezeEarly()
+	{
 		freezeStartTick = -1;
 		freezeEndTick   = -1;
 		freezeSpriteId  = 0;

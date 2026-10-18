@@ -129,6 +129,12 @@ public class PvpHudPlugin extends Plugin
 	/** Last known Menaphite Remedy varbit value; -1 = not yet observed. */
 	private int prevMenaphiteVarbit = -1;
 
+	/** Total HP XP at last observation; used to compute outgoing-damage predictions. -1 = unknown. */
+	private int previousHitpointsXp = -1;
+
+	/** Pending outgoing-damage predictions awaiting hitsplat confirmation. Max 4. */
+	private final java.util.ArrayDeque<PendingPrediction> pendingPredictions = new java.util.ArrayDeque<>(4);
+
 	/** Last known Corruption current-iterations value; used to detect each drain. */
 	private int prevCorruptionIterations = -1;
 
@@ -187,6 +193,8 @@ public class PvpHudPlugin extends Plugin
 		lastFreezeGraphicId       = -1;
 		lastFreezeGraphicTick     = -1;
 		lastPlayerPos             = null;
+		previousHitpointsXp       = -1;
+		pendingPredictions.clear();
 		hudState.fullReset();
 		applyOverlayPosition();
 		overlay.invalidateInventoryHugAnchor();
@@ -255,6 +263,7 @@ public class PvpHudPlugin extends Plugin
 		applyPoisonVarp(poisonVal);
 		self.setCurrentHp(client.getBoostedSkillLevel(Skill.HITPOINTS));
 		self.setMaxHp(client.getRealSkillLevel(Skill.HITPOINTS));
+		previousHitpointsXp = client.getSkillExperience(Skill.HITPOINTS);
 		self.setCurrentPrayer(client.getBoostedSkillLevel(Skill.PRAYER));
 		self.setMaxPrayer(client.getRealSkillLevel(Skill.PRAYER));
 		// client.getEnergy() returns 0-10000; divide by 100 for 0-100%
@@ -315,6 +324,7 @@ public class PvpHudPlugin extends Plugin
 		if (client.getGameState() != GameState.LOGGED_IN) return;
 		updateEnvironment();
 		initSelfState();
+		overlay.loadModIcons();
 		hudState.getLayout().markDirty();
 		overlay.invalidateInventoryHugAnchor();
 	}
@@ -372,6 +382,8 @@ public class PvpHudPlugin extends Plugin
 			prevMenaphiteVarbit      = -1;
 			prevCorruptionIterations = -1;
 			lastPlayerPos            = null;
+			previousHitpointsXp      = -1;
+			pendingPredictions.clear();
 			hudState.fullReset();
 			overlay.invalidateInventoryHugAnchor();
 		}
@@ -452,12 +464,27 @@ public class PvpHudPlugin extends Plugin
 					hudState.getOpponent().reset();
 					pendingOpponentName  = null;
 					pendingOpponentActor = null;
+					pendingPredictions.clear();
 				}
 				else if (event.getBoostedLevel() == prevHp + 1
 					&& event.getBoostedLevel() <= event.getLevel())
 				{
 					self.setHpRegenTicksRemaining(100);
 				}
+				// XP delta → outgoing damage prediction
+				int newXp = event.getXp();
+				if (previousHitpointsXp >= 0 && newXp > previousHitpointsXp
+					&& hudState.getOpponent().isTracked())
+				{
+					int xpDelta = newXp - previousHitpointsXp;
+					int pred    = computePredictedDamage(xpDelta);
+					if (pred > 0 && pred <= 120) // sanity guard: reject implausible values
+					{
+						enqueuePrediction(pred, client.getTickCount());
+						hudState.getOpponent().setPendingHit(pred);
+					}
+				}
+				previousHitpointsXp = newXp;
 				break;
 			}
 			case PRAYER:
@@ -715,7 +742,7 @@ public class PvpHudPlugin extends Plugin
 
 		SelfState self = hudState.getSelf();
 
-		// Movement while frozen proves the freeze has expired.
+		// Movement while frozen proves the freeze broke early.
 		// Guard against the tick the freeze was applied (position may be stale).
 		Player localPlayer = client.getLocalPlayer();
 		if (localPlayer != null)
@@ -723,13 +750,13 @@ public class PvpHudPlugin extends Plugin
 			WorldPoint pos = localPlayer.getWorldLocation();
 			if (self.isFrozen(tick) && lastPlayerPos != null && !pos.equals(lastPlayerPos)
 				&& tick != self.getFreezeStartTick())
-				self.thaw(tick);
+				self.breakFreezeEarly();
 			lastPlayerPos = pos;
 		}
 
-		// Natural freeze expiry: timer ran out but thaw hasn't been called yet.
+		// Natural freeze expiry: timer ran out — grants refreeze immunity.
 		if (!self.isFrozen(tick) && self.getFreezeStartTick() >= 0)
-			self.thaw(tick);
+			self.expireFreeze(tick);
 
 		if (self.getHpRegenTicksRemaining() > 0)
 			self.setHpRegenTicksRemaining(self.getHpRegenTicksRemaining() - 1);
@@ -756,6 +783,7 @@ public class PvpHudPlugin extends Plugin
 		PvpFightSession session = hudState.getCurrentSession();
 		if (session != null && session.isStale(tick))
 		{
+			pendingPredictions.clear();
 			hudState.endSession();
 			hudState.getOpponent().reset();
 		}
@@ -1051,6 +1079,8 @@ public class PvpHudPlugin extends Plugin
 	{
 		opp.setLastOutgoingHit(damage);
 		opp.setLastOutgoingHitMs(System.currentTimeMillis());
+		// Confirmed hit — consume the oldest pending prediction for this opponent.
+		popConfirmedPrediction();
 
 		if (opp.getEstimatedHp() > 0)
 			opp.setEstimatedHp(Math.max(0, opp.getEstimatedHp() - damage));
@@ -1158,6 +1188,10 @@ public class PvpHudPlugin extends Plugin
 		{
 			hudState.getProtection().onAttackExchanged(getPjTimerTicks());
 			if (isInLms()) hudState.getProtection().onKillInLms();
+			// In single-combat, opponent death ends the freeze on us (they can't re-freeze).
+			if (!hudState.getContext().isMultiCombat())
+				hudState.getSelf().breakFreezeEarly();
+			pendingPredictions.clear();
 			hudState.endSession();
 			hudState.getOpponent().reset();
 			return;
@@ -1472,6 +1506,59 @@ public class PvpHudPlugin extends Plugin
 	{
 		net.runelite.client.hiscore.Skill s = result.getSkill(skill);
 		return s != null && s.getLevel() > 0 ? s.getLevel() : -1;
+	}
+
+	// ── XP-derived damage prediction ─────────────────────────────────────────────
+
+	/**
+	 * Estimates outgoing damage from an HP XP delta using the OSRS PvP XP modifier.
+	 * Formula: pvpMod = min(1.125, 1.0 + floor(combatLevel/20.0)/40.0)
+	 *          predicted = round((hpXpDelta * 0.75) / pvpMod)
+	 */
+	int computePredictedDamage(int hpXpDelta)
+	{
+		Player local = client.getLocalPlayer();
+		int combatLevel = local != null ? local.getCombatLevel() : 126;
+		double pvpMod = Math.min(1.125, 1.0 + Math.floor(combatLevel / 20.0) / 40.0);
+		return (int) Math.round((hpXpDelta * 0.75) / pvpMod);
+	}
+
+	private void enqueuePrediction(int damage, int tick)
+	{
+		if (pendingPredictions.size() >= 4)
+			pendingPredictions.pollFirst(); // drop oldest to make room
+		pendingPredictions.addLast(new PendingPrediction(damage, tick, System.currentTimeMillis()));
+	}
+
+	/** Pops and returns the oldest pending prediction, or -1 if the queue is empty or all expired. */
+	int popConfirmedPrediction()
+	{
+		long now = System.currentTimeMillis();
+		while (!pendingPredictions.isEmpty())
+		{
+			PendingPrediction p = pendingPredictions.peekFirst();
+			if (now - p.createdMs > 3000) // expire after 3 s
+				pendingPredictions.pollFirst();
+			else
+				return pendingPredictions.pollFirst().damage;
+		}
+		return -1;
+	}
+
+	// ── Inner types ───────────────────────────────────────────────────────────────
+
+	static final class PendingPrediction
+	{
+		final int  damage;
+		final int  tick;
+		final long createdMs;
+
+		PendingPrediction(int damage, int tick, long createdMs)
+		{
+			this.damage    = damage;
+			this.tick      = tick;
+			this.createdMs = createdMs;
+		}
 	}
 
 	@Provides

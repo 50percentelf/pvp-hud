@@ -58,7 +58,7 @@ public class StatusProjectorTest
 	{
 		SelfState self = new SelfState();
 		self.applyFreeze(TICK - 20, 20, SpriteID.SPELL_ICE_BARRAGE); // freeze expired
-		self.thaw(TICK);                                              // grants immunity
+		self.expireFreeze(TICK);                                              // grants immunity
 
 		List<StatusSlot> slots = project(self, new EffectState(), new PoisonState(), new BoostState());
 		List<String> ids = slotIds(slots);
@@ -73,7 +73,7 @@ public class StatusProjectorTest
 	{
 		SelfState self = new SelfState();
 		self.applyFreeze(TICK - 20, 20, SpriteID.SPELL_ICE_BARRAGE);
-		self.thaw(TICK); // immunity = 5 ticks
+		self.expireFreeze(TICK); // immunity = 5 ticks
 
 		StatusSlot slot = find(
 			project(self, new EffectState(), new PoisonState(), new BoostState()),
@@ -97,7 +97,7 @@ public class StatusProjectorTest
 		// immune: exactly one immunity slot
 		SelfState immune = new SelfState();
 		immune.applyFreeze(TICK - 20, 20, SpriteID.SPELL_ICE_BARRAGE);
-		immune.thaw(TICK);
+		immune.expireFreeze(TICK);
 		List<String> immuneIds = slotIds(
 			project(immune, new EffectState(), new PoisonState(), new BoostState()));
 		long immuneCount = immuneIds.stream()
@@ -427,5 +427,36 @@ public class StatusProjectorTest
 		StatusSlot s = find(project(new SelfState(), fx, new PoisonState(), new BoostState()), "sotd");
 		assertNotNull(s);
 		assertEquals(StatusPriority.TACTICAL, s.priority);
+	}
+
+	// ── formatFreezeRemaining ────────────────────────────────────────────────
+
+	@Test
+	public void formatFreezeRemaining_aboveThree_returnsSeconds()
+	{
+		assertEquals("19s", StatusProjector.formatFreezeRemaining(32));
+		assertEquals("4s", StatusProjector.formatFreezeRemaining(7));
+		assertEquals("2s", StatusProjector.formatFreezeRemaining(4));
+	}
+
+	@Test
+	public void formatFreezeRemaining_threeOrBelow_returnsTicks()
+	{
+		assertEquals("3t", StatusProjector.formatFreezeRemaining(3));
+		assertEquals("2t", StatusProjector.formatFreezeRemaining(2));
+		assertEquals("1t", StatusProjector.formatFreezeRemaining(1));
+	}
+
+	@Test
+	public void freeze_display_usesTick_notation_at3t()
+	{
+		// 3 ticks remaining → slot label should be "3t", not "2s"
+		SelfState self = new SelfState();
+		self.applyFreeze(TICK - 29, 32, SpriteID.SPELL_ICE_BARRAGE); // 3 ticks left at TICK
+		StatusSlot slot = find(
+			project(self, new EffectState(), new PoisonState(), new BoostState()),
+			"freeze_barrage");
+		assertNotNull(slot);
+		assertEquals("3t", slot.label);
 	}
 }

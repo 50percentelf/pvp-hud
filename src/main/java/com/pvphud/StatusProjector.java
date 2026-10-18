@@ -53,7 +53,7 @@ public final class StatusProjector
 		int freeze = self.getFreezeTicksRemaining(tick);
 		if (freeze > 0 && (showAll || config.showFreezeTimer()))
 		{
-			String t = ticksToSecs(freeze);
+			String t = formatFreezeRemaining(freeze);
 			out.add(new StatusSlot(freezeSlotId(self.getFreezeSpriteId()),
 				StatusPriority.CRITICAL, t, "ICE " + t, LIGHT_BLUE, freezeHighlight, false));
 		}
@@ -255,6 +255,16 @@ public final class StatusProjector
 	}
 
 	// ── Format helpers (package-private for tests) ────────────────────────────
+
+	/**
+	 * Formats a freeze countdown: ticks ≤ 3 show as "3t"/"2t"/"1t" for tick-accurate
+	 * precision at the end of the timer; otherwise converts to seconds.
+	 * Package-private for tests.
+	 */
+	static String formatFreezeRemaining(int ticks)
+	{
+		return ticks <= 3 ? ticks + "t" : ticksToSecs(ticks);
+	}
 
 	static String ticksToSecs(int ticks)
 	{
