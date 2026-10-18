@@ -489,6 +489,16 @@ public class PvpHudPlugin extends Plugin
 		return current == prev + 1 && current <= base;
 	}
 
+	/**
+	 * Returns true when the cached tracked opponent is actively interacting with
+	 * the local player (i.e., they are swinging at us this tick).
+	 * Package-visible for unit testing.
+	 */
+	static boolean isTrackedOpponentTargetingUs(Object trackedInteracting, Object localPlayer)
+	{
+		return trackedInteracting != null && trackedInteracting == localPlayer;
+	}
+
 	// ── Varbit / VarPlayer changes ────────────────────────────────────────────
 
 	@Subscribe
@@ -977,8 +987,16 @@ public class PvpHudPlugin extends Plugin
 			PvpFightSession session = hudState.getCurrentSession();
 			if (dmg <= 0)
 			{
-				// 0-splat keeps the session alive without adding to totals.
-				if (session != null) session.touchCombat(tick);
+				// 0-splat keeps the session alive only when the tracked opponent
+				// is actively targeting us (guards against NPC splashes and
+				// multi-combat 3rd-party 0-hits).
+				if (session != null)
+				{
+					Player tracked = hudState.getOpponent().getCachedActor();
+					Object interacting = tracked != null ? tracked.getInteracting() : null;
+					if (isTrackedOpponentTargetingUs(interacting, client.getLocalPlayer()))
+						session.touchCombat(tick);
+				}
 				return;
 			}
 

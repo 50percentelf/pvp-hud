@@ -767,9 +767,12 @@ public class PvpHudOverlay extends Overlay
 			int  outDmg = opp.getLastOutgoingHit();
 			if (outMs > 0 && outDmg > 0 && System.currentTimeMillis() - outMs < 750)
 			{
-				String s = "-" + outDmg;
+				String s    = String.valueOf(outDmg);
+				int gr      = Math.max(2, fm.getHeight() / 2 - 1);
+				int splatY  = y2 + HUD_BAR_H + fm.getHeight() / 2 + 1;
+				drawSplatGlyph(g, x0 + gr, splatY, gr, OUT_CYAN);
 				g.setColor(OUT_CYAN);
-				g.drawString(s, x0, y2 + HUD_BAR_H + fm.getAscent() + 1);
+				g.drawString(s, x0 + gr * 2 + 3, y2 + HUD_BAR_H + fm.getAscent() + 1);
 			}
 		}
 	}
@@ -822,9 +825,13 @@ public class PvpHudOverlay extends Overlay
 			int  inDmg = self.getLastIncomingDamage();
 			if (inMs > 0 && inDmg > 0 && System.currentTimeMillis() - inMs < 750)
 			{
-				String s = "-" + inDmg;
+				String s      = String.valueOf(inDmg);
+				int gr        = Math.max(2, fm.getHeight() / 2 - 1);
+				int totalW    = gr * 2 + 3 + fm.stringWidth(s);
+				int startX    = lx + railW - totalW;
+				drawSplatGlyph(g, startX + gr, hpBarCy + fm.getHeight() / 2, gr, RED);
 				g.setColor(RED);
-				g.drawString(s, lx + railW - fm.stringWidth(s), hpBarCy + fm.getAscent());
+				g.drawString(s, startX + gr * 2 + 3, hpBarCy + fm.getAscent());
 			}
 		}
 
@@ -853,8 +860,8 @@ public class PvpHudOverlay extends Overlay
 			int inCx   = lx + halfW + halfW / 2;
 			int gr     = fm.getHeight() / 2 - 1;
 
-			String outStr = totalOut > 0 ? String.valueOf(totalOut) : "-";
-			String inStr  = totalIn  > 0 ? String.valueOf(totalIn)  : "-";
+			String outStr = String.valueOf(totalOut);
+			String inStr  = String.valueOf(totalIn);
 
 			int outTextX = outCx - fm.stringWidth(outStr) / 2;
 			drawSplatGlyph(g, outTextX - gr - 2, cy + fm.getHeight() / 2, gr, totalOut > 0 ? OUT_CYAN : DIVIDER);
@@ -1177,7 +1184,7 @@ public class PvpHudOverlay extends Overlay
 		}
 
 		drawOpponentPanel(g, state, layout, normal, small);
-		drawEventPanel(g, state, layout, normal, small);
+		drawEventPanel(g, state, layout, normal, small, vertical);
 		drawSelfPanel(g, state, layout, normal, small, !vertical);
 		drawBoostRow(g, state, layout, small, !vertical);
 		drawActionStrip(g, state, layout, small, vertical);
@@ -1335,8 +1342,37 @@ public class PvpHudOverlay extends Overlay
 
 	private static final Color GRAY_DIM = new Color(100, 100, 100);
 
+	/**
+	 * Formats the damage label for a single exchange (one direction).
+	 * Single hit: "34". Two hits: "20+8". Three or more: "42 (3)".
+	 * Returns "" when there are no hits in that direction.
+	 * Package-visible for unit testing.
+	 */
+	static String formatExchangeDamage(DamageExchange ex, boolean outgoing)
+	{
+		int count = outgoing ? ex.getOutgoingHitCount() : ex.getIncomingHitCount();
+		int total = outgoing ? ex.getOutgoingTotal()    : ex.getIncomingTotal();
+		if (count == 0) return "";
+		if (count == 1)
+			return String.valueOf(outgoing ? ex.getOutgoingHit(0) : ex.getIncomingHit(0));
+		if (count == 2)
+			return (outgoing ? ex.getOutgoingHit(0) : ex.getIncomingHit(0))
+				+ "+" + (outgoing ? ex.getOutgoingHit(1) : ex.getIncomingHit(1));
+		return total + " (" + count + ")";
+	}
+
+	/**
+	 * Number of exchange rows shown in the fight panel depending on orientation.
+	 * Vertical Float uses 2 (less height); horizontal layouts use 3.
+	 * Package-visible for unit testing.
+	 */
+	static int exchangeRowCount(boolean vertical)
+	{
+		return vertical ? 2 : 3;
+	}
+
 	private void drawEventPanel(Graphics2D g, PvpHudState state, HudLayoutState layout,
-		Font normal, Font small)
+		Font normal, Font small, boolean vertical)
 	{
 		Rectangle p = layout.getEventPanel();
 		if (p == null) return;
@@ -1351,17 +1387,15 @@ public class PvpHudOverlay extends Overlay
 		drawCentered(g, smFm, "FIGHT", cx, cy + smFm.getAscent());
 		cy += smFm.getHeight() + 2;
 
-		// Column headers with splat glyphs
-		int outX    = p.x + p.width / 4;      // centre of left column
-		int inX     = p.x + 3 * p.width / 4;  // centre of right column
+		// Column centres
+		int outX = p.x + p.width / 4;      // centre of left column
+		int inX  = p.x + 3 * p.width / 4;  // centre of right column
+
+		// Glyph-only column headers (no "OUT"/"IN" text)
 		int glyphR  = smFm.getHeight() / 2 - 1;
 		int headerY = cy + smFm.getHeight() / 2;
-		drawSplatGlyph(g, outX - smFm.stringWidth("OUT") / 2 - glyphR - 2, headerY, glyphR, OUT_CYAN);
-		g.setColor(OUT_CYAN);
-		drawCentered(g, smFm, "OUT", outX, cy + smFm.getAscent());
-		drawSplatGlyph(g, inX - smFm.stringWidth("IN") / 2 - glyphR - 2, headerY, glyphR, RED);
-		g.setColor(RED);
-		drawCentered(g, smFm, "IN", inX, cy + smFm.getAscent());
+		drawSplatGlyph(g, outX, headerY, glyphR, OUT_CYAN);
+		drawSplatGlyph(g, inX,  headerY, glyphR, RED);
 		// vertical divider
 		g.setColor(VERT_DIV);
 		g.drawLine(mid, cy - 1, mid, p.y + p.height - PAD * 2 - smFm.getHeight());
@@ -1377,7 +1411,7 @@ public class PvpHudOverlay extends Overlay
 		g.setFont(small);
 		FontMetrics fmSm = g.getFontMetrics();
 
-		int maxRows = 3;
+		int maxRows = exchangeRowCount(vertical);
 		int rowH    = fmNorm.getHeight() + 1;
 		for (int row = 0; row < maxRows && row < exchanges.size(); row++)
 		{
@@ -1390,7 +1424,7 @@ public class PvpHudOverlay extends Overlay
 
 			if (ex.hasOutgoing())
 			{
-				String outLabel = String.valueOf(ex.getOutgoingTotal());
+				String outLabel = formatExchangeDamage(ex, true);
 				if (ex.getOutgoingPrayerDrain() > 0)
 					outLabel += " -" + ex.getOutgoingPrayerDrain() + "p";
 				g.setColor(isFirst ? OUT_CYAN : GRAY_DIM);
@@ -1400,7 +1434,7 @@ public class PvpHudOverlay extends Overlay
 			if (ex.hasIncoming())
 			{
 				g.setColor(isFirst ? RED : GRAY_DIM);
-				drawCentered(g, fm, String.valueOf(ex.getIncomingTotal()), inX, cy + fm.getAscent());
+				drawCentered(g, fm, formatExchangeDamage(ex, false), inX, cy + fm.getAscent());
 			}
 
 			cy += isFirst ? fm.getHeight() + 2 : fm.getHeight() + 1;
@@ -1416,28 +1450,38 @@ public class PvpHudOverlay extends Overlay
 			cy += smFm.getHeight() + 4;
 		}
 
-		// Totals row at the bottom (live session or last session)
+		// Totals row at the bottom (live session or last session) — splat glyph + number
 		int totalDealt    = session != null ? session.getTotalOutgoing()  : state.getLastTotalOutgoing();
 		int totalReceived = session != null ? session.getTotalIncoming() : state.getLastTotalIncoming();
 		if (totalDealt > 0 || totalReceived > 0)
 		{
-			// Thin divider above totals
 			g.setFont(small);
 			smFm = g.getFontMetrics();
 			int divY = p.y + p.height - PAD - smFm.getHeight() - 3;
 			g.setColor(VERT_DIV);
 			g.drawLine(p.x + PAD, divY, p.x + p.width - PAD, divY);
 
-			int totY = p.y + p.height - PAD;
+			int totY    = p.y + p.height - PAD;
+			int totMidY = totY - smFm.getAscent() / 2;
+			int gr      = smFm.getHeight() / 2 - 1;
+
 			if (totalDealt > 0)
 			{
+				String s      = String.valueOf(totalDealt);
+				int totalW    = gr * 2 + 2 + smFm.stringWidth(s);
+				int sx        = outX - totalW / 2;
+				drawSplatGlyph(g, sx + gr, totMidY, gr, OUT_CYAN);
 				g.setColor(OUT_CYAN);
-				drawCentered(g, smFm, totalDealt + "D", outX, totY);
+				g.drawString(s, sx + gr * 2 + 2, totY);
 			}
 			if (totalReceived > 0)
 			{
+				String s      = String.valueOf(totalReceived);
+				int totalW    = gr * 2 + 2 + smFm.stringWidth(s);
+				int sx        = inX - totalW / 2;
+				drawSplatGlyph(g, sx + gr, totMidY, gr, RED);
 				g.setColor(RED);
-				drawCentered(g, smFm, totalReceived + "R", inX, totY);
+				g.drawString(s, sx + gr * 2 + 2, totY);
 			}
 		}
 	}
@@ -1950,20 +1994,22 @@ public class PvpHudOverlay extends Overlay
 	}
 
 	/**
-	 * Draws an 8-pointed star (4 crossing lines) centred at (cx, cy) with radius r.
+	 * Draws 8 radial half-lines from centre, plus a small filled centre square.
+	 * Reads as "damage splat" rather than an asterisk.
 	 * Used as the damage-type glyph for outgoing (OUT_CYAN) and incoming (RED) hits.
 	 */
 	static void drawSplatGlyph(Graphics2D g, int cx, int cy, int r, Color color)
 	{
 		if (r < 2) return;
 		g.setColor(color);
-		for (int i = 0; i < 4; i++)
+		for (int i = 0; i < 8; i++)
 		{
 			double angle = Math.toRadians(i * 45);
 			int dx = (int) Math.round(Math.cos(angle) * r);
 			int dy = (int) Math.round(Math.sin(angle) * r);
-			g.drawLine(cx - dx, cy - dy, cx + dx, cy + dy);
+			g.drawLine(cx, cy, cx + dx, cy + dy);
 		}
+		g.fillRect(cx - 1, cy - 1, 2, 2);
 	}
 
 	/**

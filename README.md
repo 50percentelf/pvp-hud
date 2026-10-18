@@ -11,7 +11,7 @@ A configurable PvP combat HUD for RuneLite. Consolidates fight tracking, buff ti
 | **Chat Locked** | Fills the chatbox region and stays pinned there. Cannot be dragged. |
 | **Horizontal Float** | Same proportions as Chat Locked but freely draggable via Alt+drag. |
 | **Vertical Float** | Narrow stacked panel, freely draggable via Alt+drag. |
-| **Inventory Hug** | Attaches a left rail and top rail flush against the inventory panel without overlapping it. |
+| **Inventory Hug** | Attaches a left rail and top rail flush against the inventory panel without overlapping it. Top rail shows the opponent panel. Left rail shows HP / Prayer / Run / Spec bars, an always-visible damage row (total dealt / received), and optionally the boost stats. |
 
 Float layouts remember their last dragged position independently per layout and per gameframe (Fixed / Resizable Classic / Resizable Modern).
 
@@ -33,11 +33,12 @@ Float layouts remember their last dragged position independently per layout and 
 
 | Element | Notes |
 |---|---|
-| Hit log | Three most recent outgoing (green) and incoming (red) hits, newest at top. |
-| Stack label | `[dmg]` brackets indicate multiple hitsplats on the same actor in the same tick (weapon + ring of recoil, etc.). |
-| Prayer drain | `-Np` suffix on hits where Smite was active. |
-| Session totals | `#D` / `#R` pinned to the bottom: total damage dealt and received. |
-| Fight Over banner | Shown after the opponent's HP ratio reaches 0 or the session times out. |
+| Hit log | Tick-paired rows newest first. Left column (cyan splat) = damage dealt by you; right column (red splat) = damage received. **IN is not guaranteed to originate from the tracked opponent in multi-combat.** |
+| Stack format | Single hit: `34`. Two same-tick hits: `20+8`. Three or more: `42 (3)`. |
+| Smite drain | `-Np` suffix on outgoing hits where you had Smite active. |
+| Session totals | Cyan splat + dealt total / red splat + received total, pinned to the bottom. |
+| Rows shown | Horizontal Float / Chat Locked: 3 most recent ticks. Vertical Float: 2 most recent ticks. |
+| Fight Over banner | Shown after opponent death or session timeout. |
 
 ### You (right / bottom)
 
@@ -118,7 +119,7 @@ ATK / STR / DEF / RNG / MAG skill icons with current boost level. Configurable a
 
 ## Smite tracking
 
-When the local player has Smite active, outgoing hits show `-Np` in the fight log where N = `floor(damage / 4)`. When the opponent has Smite, incoming hits show the same drain.
+When the local player has Smite active, outgoing hits show `-Np` in the fight log where N = `floor(damage / 4)`.
 
 ---
 
