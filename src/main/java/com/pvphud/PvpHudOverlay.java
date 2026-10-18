@@ -682,7 +682,7 @@ public class PvpHudOverlay extends Overlay
 			final int PER_ROW = 5;
 			int rowW = PER_ROW * DOT_SZ + (PER_ROW - 1) * DOT_GAP; // 28 px
 			int dotX = (INVY_LEFT_W - rowW) / 2;
-			// Anchor the dot+EP block at the top of the corner, leaving room below for DEALT/TAKEN.
+			// Anchor the dot+EP block at the top of the corner, leaving room below for OUT / IN.
 			int dotY = PAD + 2;
 			for (int i = 0; i < 10; i++)
 			{
@@ -692,6 +692,9 @@ public class PvpHudOverlay extends Overlay
 				g.fillRect(dotX + col * (DOT_SZ + DOT_GAP), dotY + row * (DOT_SZ + DOT_GAP),
 					DOT_SZ, DOT_SZ);
 			}
+			// E/P readiness dots — compact sizing to share row with ammo chip on the right
+			final int EP_SZ  = 3;
+			final int EP_GAP = 1;
 			int epY = dotY + 2 * DOT_SZ + DOT_GAP + 4;
 			int eat = clock.getEatCooldownTicks(tick);
 			int pot = clock.getPotCooldownTicks(tick);
@@ -702,44 +705,33 @@ public class PvpHudOverlay extends Overlay
 			for (int i = 0; i < 3; i++)
 			{
 				g.setColor(i < eat ? ORANGE : DIVIDER);
-				g.fillRect(px + i * (DOT_SZ + DOT_GAP), epY + (fm.getHeight() - DOT_SZ) / 2, DOT_SZ, DOT_SZ);
+				g.fillRect(px + i * (EP_SZ + EP_GAP), epY + (fm.getHeight() - EP_SZ) / 2, EP_SZ, EP_SZ);
 			}
-			px += 3 * (DOT_SZ + DOT_GAP) + 3;
+			px += 3 * (EP_SZ + EP_GAP) + 3;
 			g.setColor(pot > 0 ? POTION_BLUE : DIVIDER);
 			g.drawString("P", px, epY + fm.getAscent());
 			px += fm.stringWidth("P") + 2;
 			for (int i = 0; i < 3; i++)
 			{
 				g.setColor(i < pot ? POTION_BLUE : DIVIDER);
-				g.fillRect(px + i * (DOT_SZ + DOT_GAP), epY + (fm.getHeight() - DOT_SZ) / 2, DOT_SZ, DOT_SZ);
+				g.fillRect(px + i * (EP_SZ + EP_GAP), epY + (fm.getHeight() - EP_SZ) / 2, EP_SZ, EP_SZ);
 			}
+			int epEndX = px + 2 * (EP_SZ + EP_GAP) + EP_SZ; // right edge of last P dot
 
-			// Ammo chip: [icon] qty — between E/P row and OUT/IN block
-			int ammoId  = state.getSelf().getAmmoItemId();
-			int ammoQty = state.getSelf().getAmmoQuantity();
-			if (ammoId >= 0)
+			// Ammo chip — right-aligned on the E/P row, text-only (corner too narrow for icon)
+			int cornerAmmoId  = state.getSelf().getAmmoItemId();
+			int cornerAmmoQty = state.getSelf().getAmmoQuantity();
+			if (cornerAmmoId >= 0)
 			{
-				if (ammoId != cachedAmmoItemId)
-				{
-					cachedAmmoItemId = ammoId;
-					cachedAmmoIcon   = itemManager.getImage(ammoId);
-				}
-				int ammoY  = epY + fm.getHeight() + 2;
-				int iconH  = fm.getHeight();
-				String qtyStr = String.valueOf(ammoQty);
-				int totalAmmoW = (cachedAmmoIcon != null ? iconH + 2 : 0) + fm.stringWidth(qtyStr);
-				int ammoX  = (INVY_LEFT_W - totalAmmoW) / 2;
-				if (cachedAmmoIcon != null)
-				{
-					g.drawImage(cachedAmmoIcon, ammoX, ammoY, iconH, iconH, null);
-					ammoX += iconH + 2;
-				}
-				g.setColor(ammoColor(ammoQty));
-				g.drawString(qtyStr, ammoX, ammoY + fm.getAscent());
+				ensureAmmoIcon(cornerAmmoId);
+				int chipRx = INVY_LEFT_W - PAD;
+				int chipW  = ammoChipWidth(fm, cornerAmmoQty, 0);
+				if (chipRx - chipW > epEndX + 2)
+					drawAmmoChip(g, fm, cornerAmmoQty, 0, chipRx, epY + fm.getAscent(), 0);
 			}
 		}
 
-		// ── Corner: DEALT/TAKEN totals block (lower portion of corner) ───────
+		// ── Corner: OUT / IN totals block (lower portion of corner) ──────────
 		{
 			PvpFightSession dmgSession = state.getCurrentSession();
 			int totalOut = dmgSession != null ? dmgSession.getTotalOutgoing() : state.getLastTotalOutgoing();
@@ -2452,11 +2444,24 @@ public class PvpHudOverlay extends Overlay
 				g.fillRect(p.x + PAD + i * (DOT_SZ_V + DOT_GAP_V), dotY, DOT_SZ_V, DOT_SZ_V);
 			}
 
-			int textX    = p.x + PAD + 10 * (DOT_SZ_V + DOT_GAP_V) + 4;
-			int textRx   = p.x + p.width - PAD;
+			int textX = p.x + PAD + 10 * (DOT_SZ_V + DOT_GAP_V) + 4;
 			g.setFont(small);
 			FontMetrics fm = g.getFontMetrics();
 			int baseline = p.y + (p.height + fm.getAscent() - fm.getDescent()) / 2;
+
+			// Ammo chip: reserve far-right, draw first so timers cannot overlap it
+			int  stripIconH   = p.height - 4;
+			int  stripAmmoId  = state.getSelf().getAmmoItemId();
+			int  stripAmmoQty = state.getSelf().getAmmoQuantity();
+			int  ammoChipW    = 0;
+			if (stripAmmoId >= 0)
+			{
+				ensureAmmoIcon(stripAmmoId);
+				ammoChipW = ammoChipWidth(fm, stripAmmoQty, stripIconH) + PAD;
+				drawAmmoChip(g, fm, stripAmmoQty, stripIconH,
+					p.x + p.width - PAD, baseline, p.y + (p.height - stripIconH) / 2);
+			}
+			int textRx = p.x + p.width - PAD - ammoChipW;
 
 			ManualTimerState t1 = state.getTimer1();
 			if (t1.isRunning() && textX < textRx)
@@ -2504,31 +2509,6 @@ public class PvpHudOverlay extends Overlay
 			{
 				g.setColor(LIGHT_BLUE);
 				g.drawString("LCK", textX, baseline);
-			}
-
-			// Ammo chip at far-right of the vertical strip
-			{
-				int ammoId  = state.getSelf().getAmmoItemId();
-				int ammoQty = state.getSelf().getAmmoQuantity();
-				if (ammoId >= 0)
-				{
-					if (ammoId != cachedAmmoItemId)
-					{
-						cachedAmmoItemId = ammoId;
-						cachedAmmoIcon   = itemManager.getImage(ammoId);
-					}
-					String qtyStr = String.valueOf(ammoQty);
-					int iconH = p.height - 4;
-					int ammoRx = p.x + p.width - PAD;
-					g.setColor(ammoColor(ammoQty));
-					g.drawString(qtyStr, ammoRx - fm.stringWidth(qtyStr), baseline);
-					if (cachedAmmoIcon != null)
-					{
-						int iconY = p.y + (p.height - iconH) / 2;
-						g.drawImage(cachedAmmoIcon, ammoRx - fm.stringWidth(qtyStr) - iconH - 2,
-							iconY, iconH, iconH, null);
-					}
-				}
 			}
 			return;
 		}
@@ -2586,31 +2566,16 @@ public class PvpHudOverlay extends Overlay
 
 		int dotSectionW = dp;
 
-		// Ammo chip at far-right of the horizontal strip
-		int ammoChipW = 0;
+		int horzIconH   = p.height - 4;
+		int horzAmmoId  = state.getSelf().getAmmoItemId();
+		int horzAmmoQty = state.getSelf().getAmmoQuantity();
+		int ammoChipW   = 0;
+		if (horzAmmoId >= 0)
 		{
-			int ammoId  = state.getSelf().getAmmoItemId();
-			int ammoQty = state.getSelf().getAmmoQuantity();
-			if (ammoId >= 0)
-			{
-				if (ammoId != cachedAmmoItemId)
-				{
-					cachedAmmoItemId = ammoId;
-					cachedAmmoIcon   = itemManager.getImage(ammoId);
-				}
-				String qtyStr = String.valueOf(ammoQty);
-				int iconH = p.height - 4;
-				ammoChipW = (cachedAmmoIcon != null ? iconH + 2 : 0) + fm.stringWidth(qtyStr) + PAD;
-				int ammoRx = p.x + p.width - PAD;
-				g.setColor(ammoColor(ammoQty));
-				g.drawString(qtyStr, ammoRx - fm.stringWidth(qtyStr), baseline);
-				if (cachedAmmoIcon != null)
-				{
-					int iconY = p.y + (p.height - iconH) / 2;
-					g.drawImage(cachedAmmoIcon, ammoRx - fm.stringWidth(qtyStr) - iconH - 2,
-						iconY, iconH, iconH, null);
-				}
-			}
+			ensureAmmoIcon(horzAmmoId);
+			ammoChipW = ammoChipWidth(fm, horzAmmoQty, horzIconH) + PAD;
+			drawAmmoChip(g, fm, horzAmmoQty, horzIconH,
+				p.x + p.width - PAD, baseline, p.y + (p.height - horzIconH) / 2);
 		}
 
 		// Text items (spec moved to self panel; strip shows timers + context info only)
@@ -2722,6 +2687,37 @@ public class PvpHudOverlay extends Overlay
 	private static Color ammoColor(int qty)
 	{
 		return qty <= 10 ? RED : qty <= 25 ? YELLOW : WHITE;
+	}
+
+	private void ensureAmmoIcon(int ammoId)
+	{
+		if (ammoId != cachedAmmoItemId)
+		{
+			cachedAmmoItemId = ammoId;
+			cachedAmmoIcon   = ammoId >= 0 ? itemManager.getImage(ammoId) : null;
+		}
+	}
+
+	/** Pixel width of the ammo chip. {@code iconH=0} means text-only (no icon). */
+	static int ammoChipWidth(FontMetrics fm, int qty, int iconH)
+	{
+		return (iconH > 0 ? iconH + 2 : 0) + fm.stringWidth(String.valueOf(qty));
+	}
+
+	/**
+	 * Draws ammo chip right-aligned at {@code chipRx}.
+	 * {@code iconH=0} renders qty text only; positive also renders a scaled item icon left of text.
+	 * {@code iconY} is the icon top-left Y (ignored when iconH==0).
+	 */
+	private void drawAmmoChip(Graphics2D g, FontMetrics fm, int qty, int iconH,
+		int chipRx, int baseline, int iconY)
+	{
+		String qtyStr = String.valueOf(qty);
+		int    qtyW   = fm.stringWidth(qtyStr);
+		g.setColor(ammoColor(qty));
+		g.drawString(qtyStr, chipRx - qtyW, baseline);
+		if (iconH > 0 && cachedAmmoIcon != null)
+			g.drawImage(cachedAmmoIcon, chipRx - qtyW - iconH - 2, iconY, iconH, iconH, null);
 	}
 
 	private static void drawShadowedText(Graphics2D g, FontMetrics fm, String text, int x, int baseline, Color fg)

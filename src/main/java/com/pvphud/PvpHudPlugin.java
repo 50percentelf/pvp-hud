@@ -842,7 +842,7 @@ public class PvpHudPlugin extends Plugin
 		}
 		ItemStats         stats = itemManager.getItemStats(ammo.getId());
 		ItemEquipmentStats eq   = stats != null ? stats.getEquipment() : null;
-		if (eq == null || eq.getArange() <= 0)
+		if (!isSupportedAmmo(eq))
 		{
 			self.setAmmoItemId(-1);
 			self.setAmmoQuantity(0);
@@ -850,6 +850,11 @@ public class PvpHudPlugin extends Plugin
 		}
 		self.setAmmoItemId(ammo.getId());
 		self.setAmmoQuantity(ammo.getQuantity());
+	}
+
+	static boolean isSupportedAmmo(ItemEquipmentStats eq)
+	{
+		return eq != null && eq.getRstr() > 0;
 	}
 
 	private static boolean isSotdFamily(int itemId)
