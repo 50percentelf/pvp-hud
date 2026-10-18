@@ -11,7 +11,7 @@ A configurable PvP combat HUD for RuneLite. Consolidates fight tracking, buff ti
 | **Chat Locked** | Fills the chatbox region and stays pinned there. Cannot be dragged. |
 | **Horizontal Float** | Same proportions as Chat Locked but freely draggable via Alt+drag. |
 | **Vertical Float** | Narrow stacked panel, freely draggable via Alt+drag. |
-| **Inventory Hug** | Attaches a left rail and top rail flush against the inventory panel without overlapping it. Top rail shows the opponent panel. Left rail shows HP / Prayer / Run / Spec bars, and optionally the boost stats. The action corner shows OUT / IN damage totals (dealt / received) below the attack clock. |
+| **Inventory Hug** | Attaches a left rail and top rail flush against the inventory panel without overlapping it. Top rail shows the opponent panel. Left rail shows HP / Prayer / Run / Spec bars; if supported ammo is equipped, a dedicated ammo row appears below Spec showing the actual equipped arrow/bolt icon (18px) and current quantity. Optionally shows boost stats. The action corner shows OUT / IN damage totals (dealt / received) below the attack clock. |
 
 Float layouts remember their last dragged position independently per layout and per gameframe (Fixed / Resizable Classic / Resizable Modern).
 
@@ -90,7 +90,7 @@ Displayed in the YOU panel. Three display styles: **Text**, **Vertical Bar** (ic
 | `LCK` | Under-attack lock active (20 ticks after receiving any hit — must fight back at current attacker). |
 | `W#` | Current Wilderness level. |
 | `MULTI` | Multi-combat zone indicator. |
-| `[ammo icon] qty` | Equipped ammo quantity (arrows/bolts from ammo slot). Color: white >25, yellow ≤25, red ≤10. Conventional ammo only — blowpipe darts and thrown-weapon stacks are not tracked. In Inventory Hug, quantities ≥1000 are shown in compact form (e.g. `1.2k`, `10k`) to fit the narrow corner; other layouts show the full integer. |
+| `[ammo icon] qty` | Equipped ammo quantity (arrows/bolts from ammo slot). Color: white >25, yellow ≤25, red ≤10. Conventional ammo only — blowpipe darts and thrown-weapon stacks are not tracked. In Inventory Hug this appears as a dedicated rail row (not in the action strip) — see layout table above. |
 
 ### Boost row
 

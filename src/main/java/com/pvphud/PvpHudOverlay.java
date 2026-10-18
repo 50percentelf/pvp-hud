@@ -55,6 +55,9 @@ public class PvpHudOverlay extends Overlay
 	private static final int INVY_TOP_H  = 72;
 	private static final int INVY_LEFT_W = 72;
 
+	/** Dedicated ammo row in the INVENTORY_HUG left rail. */
+	static final int IH_AMMO_ICON_H = 18;
+	static final int IH_AMMO_ROW_H  = IH_AMMO_ICON_H + 4; // 2px top + 2px bottom padding
 
 	/** Icon size for VERTICAL_BAR and ICON_TRAY buff styles (pixels). */
 	private static final int ICON_SIZE = 18;
@@ -692,9 +695,9 @@ public class PvpHudOverlay extends Overlay
 				g.fillRect(dotX + col * (DOT_SZ + DOT_GAP), dotY + row * (DOT_SZ + DOT_GAP),
 					DOT_SZ, DOT_SZ);
 			}
-			// E/P readiness dots — compact sizing to share row with ammo chip on the right
-			final int EP_SZ  = 3;
-			final int EP_GAP = 1;
+			// E/P readiness dots
+			final int EP_SZ  = 4;
+			final int EP_GAP = 2;
 			int epY = dotY + 2 * DOT_SZ + DOT_GAP + 4;
 			int eat = clock.getEatCooldownTicks(tick);
 			int pot = clock.getPotCooldownTicks(tick);
@@ -715,20 +718,6 @@ public class PvpHudOverlay extends Overlay
 			{
 				g.setColor(i < pot ? POTION_BLUE : DIVIDER);
 				g.fillRect(px + i * (EP_SZ + EP_GAP), epY + (fm.getHeight() - EP_SZ) / 2, EP_SZ, EP_SZ);
-			}
-			int epEndX = px + 2 * (EP_SZ + EP_GAP) + EP_SZ; // right edge of last P dot
-
-			// Ammo chip — right-aligned on the E/P row with a 10px item icon
-			int cornerAmmoId  = state.getSelf().getAmmoItemId();
-			int cornerAmmoQty = state.getSelf().getAmmoQuantity();
-			if (cornerAmmoId >= 0)
-			{
-				ensureAmmoIcon(cornerAmmoId);
-				final int cornerIconH   = 10;
-				String    cornerQtyText = formatCompactAmmoQuantity(cornerAmmoQty);
-				int       chipRx        = INVY_LEFT_W - PAD;
-				int       iconY         = epY + (fm.getHeight() - cornerIconH) / 2;
-				drawAmmoChip(g, fm, cornerAmmoQty, cornerQtyText, cornerIconH, chipRx, epY + fm.getAscent(), iconY);
 			}
 		}
 
@@ -958,6 +947,9 @@ public class PvpHudOverlay extends Overlay
 		cy = drawInventoryBar(g, fm, cx, lx, cy, railW, specIcon,
 			fx.getSpecEnergy(), 100, YELLOW, HP_BG, activeProfile.specBarStyle);
 
+		cy = drawInventoryAmmoRow(g, fm, lx, cy, railW,
+			self.getAmmoItemId(), self.getAmmoQuantity());
+
 		// ── Self boost stats (compact: icon + current level, 5 columns) ──
 		if (activeProfile.showBoostRow)
 		{
@@ -1134,6 +1126,34 @@ public class PvpHudOverlay extends Overlay
 		return cy;
 	}
 
+
+	/**
+	 * Draws the dedicated ammo row in the Inventory Hug left rail.
+	 * Icon ({@link #IH_AMMO_ICON_H}px) left-aligned; quantity right-aligned in full-integer form
+	 * (compact fallback only when the text would overlap the icon).
+	 * Includes a 2px gap above the row so the caller does not need to insert spacing.
+	 * Returns updated cy, or cy unchanged when {@code ammoId < 0} (no supported ammo).
+	 */
+	private int drawInventoryAmmoRow(Graphics2D g, FontMetrics fm,
+		int lx, int cy, int railW, int ammoId, int qty)
+	{
+		if (ammoId < 0) return cy;
+		cy += 2; // visual gap between spec bar and ammo row
+		ensureAmmoIcon(ammoId);
+		int iconY = cy + (IH_AMMO_ROW_H - IH_AMMO_ICON_H) / 2;
+		if (cachedAmmoIcon != null)
+			g.drawImage(cachedAmmoIcon, lx, iconY, IH_AMMO_ICON_H, IH_AMMO_ICON_H, null);
+		// Prefer full integer; compact only if it would overlap the icon
+		String qtyText  = String.valueOf(qty);
+		int    textRx   = lx + railW;
+		int    minTextX = lx + IH_AMMO_ICON_H + 4;
+		if (textRx - fm.stringWidth(qtyText) < minTextX)
+			qtyText = formatCompactAmmoQuantity(qty);
+		int baseline = cy + (IH_AMMO_ROW_H + fm.getAscent() - fm.getDescent()) / 2;
+		g.setColor(ammoColor(qty));
+		g.drawString(qtyText, textRx - fm.stringWidth(qtyText), baseline);
+		return cy + IH_AMMO_ROW_H;
+	}
 
 	// ── Layout computation ────────────────────────────────────────────────────
 
