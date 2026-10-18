@@ -97,7 +97,7 @@ public class HudSnapshotTest
 		{
 			ActiveEffectView e = effects.get(i);
 			sb.append("    {\"id\": \"").append(e.getTextLabel().replace("\"", "\\\""))
-			  .append("\", \"group\": \"").append(e.group.name()).append("\"}");
+			  .append("\", \"priority\": \"").append(e.priority.name()).append("\"}");
 			if (i < effects.size() - 1) sb.append(",");
 			sb.append("\n");
 		}
@@ -303,17 +303,17 @@ public class HudSnapshotTest
 			Scenario.ALL_EFFECTS.buildState(), TICK);
 
 		assertFalse("ALL_EFFECTS must produce at least one effect", effects.isEmpty());
-		assertEquals("First effect must be CRITICAL group",
-			EffectGroup.CRITICAL, effects.get(0).group);
+		assertEquals("First effect must be CRITICAL priority",
+			StatusPriority.CRITICAL, effects.get(0).priority);
 
-		// Verify CRITICAL runs before PROTECTION which runs before CYCLE
-		EffectGroup last = null;
+		// Verify CRITICAL → TACTICAL → SUSTAIN → READINESS ordering
+		StatusPriority last = null;
 		for (ActiveEffectView e : effects)
 		{
-			if (last != null && e.group.ordinal() < last.ordinal())
-				fail("Effect groups out of order: " + last + " followed by " + e.group
+			if (last != null && e.priority.ordinal() < last.ordinal())
+				fail("Effect priority out of order: " + last + " followed by " + e.priority
 					+ " (effect: " + e.getTextLabel() + ")");
-			last = e.group;
+			last = e.priority;
 		}
 	}
 

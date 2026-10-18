@@ -50,11 +50,11 @@ public class EffectRender2ColTest
 		Graphics2D g = makeGraphics();
 		List<ActiveEffectView> effects = new ArrayList<>();
 		for (int i = 0; i < 8; i++)
-			effects.add(new ActiveEffectView(null, "C" + i, Color.RED, EffectGroup.CRITICAL));
+			effects.add(new ActiveEffectView(null, "C" + i, Color.RED, StatusPriority.CRITICAL));
 		for (int i = 0; i < 8; i++)
-			effects.add(new ActiveEffectView(null, "P" + i, Color.GREEN, EffectGroup.PROTECTION));
+			effects.add(new ActiveEffectView(null, "P" + i, Color.GREEN, StatusPriority.SUSTAIN));
 		for (int i = 0; i < 8; i++)
-			effects.add(new ActiveEffectView(null, "Y" + i, Color.YELLOW, EffectGroup.CYCLE));
+			effects.add(new ActiveEffectView(null, "Y" + i, Color.YELLOW, StatusPriority.SUSTAIN));
 
 		int maxY = 80;
 		int cy = PvpHudOverlay.drawEffects2Col(g, effects, 0, 0, maxY);
@@ -68,10 +68,10 @@ public class EffectRender2ColTest
 	{
 		Graphics2D g = makeGraphics();
 		List<ActiveEffectView> effects = new ArrayList<>();
-		effects.add(new ActiveEffectView(null, "FREEZE", Color.CYAN,   EffectGroup.CRITICAL));
-		effects.add(new ActiveEffectView(null, "TB",     Color.ORANGE, EffectGroup.CRITICAL));
-		effects.add(new ActiveEffectView(null, "DSC",    Color.GREEN,  EffectGroup.PROTECTION));
-		effects.add(new ActiveEffectView(null, "NXT",    Color.YELLOW, EffectGroup.CYCLE));
+		effects.add(new ActiveEffectView(null, "FREEZE", Color.CYAN,   StatusPriority.CRITICAL));
+		effects.add(new ActiveEffectView(null, "TB",     Color.ORANGE, StatusPriority.CRITICAL));
+		effects.add(new ActiveEffectView(null, "DSC",    Color.GREEN,  StatusPriority.SUSTAIN));
+		effects.add(new ActiveEffectView(null, "NXT",    Color.YELLOW, StatusPriority.SUSTAIN));
 
 		int maxY = 20; // smaller than one text row — essentially nothing fits
 		int cy = PvpHudOverlay.drawEffects2Col(g, effects, 0, 0, maxY);
@@ -95,8 +95,8 @@ public class EffectRender2ColTest
 	{
 		Graphics2D g = makeGraphics();
 		List<ActiveEffectView> effects = new ArrayList<>();
-		effects.add(new ActiveEffectView(null, "A", Color.WHITE, EffectGroup.CRITICAL));
-		effects.add(new ActiveEffectView(null, "B", Color.WHITE, EffectGroup.CRITICAL));
+		effects.add(new ActiveEffectView(null, "A", Color.WHITE, StatusPriority.CRITICAL));
+		effects.add(new ActiveEffectView(null, "B", Color.WHITE, StatusPriority.CRITICAL));
 
 		int cy = PvpHudOverlay.drawEffects2Col(g, effects, 0, 0, CANVAS_H);
 		assertTrue("two effects in same group must advance cy", cy > 0);
@@ -112,14 +112,14 @@ public class EffectRender2ColTest
 
 		// Two effects, same group — no separator gap
 		List<ActiveEffectView> sameGroup = new ArrayList<>();
-		sameGroup.add(new ActiveEffectView(null, "A", Color.WHITE, EffectGroup.CRITICAL));
-		sameGroup.add(new ActiveEffectView(null, "B", Color.WHITE, EffectGroup.CRITICAL));
+		sameGroup.add(new ActiveEffectView(null, "A", Color.WHITE, StatusPriority.CRITICAL));
+		sameGroup.add(new ActiveEffectView(null, "B", Color.WHITE, StatusPriority.CRITICAL));
 		int cySame = PvpHudOverlay.drawEffects2Col(g, sameGroup, 0, 0, CANVAS_H);
 
 		// Two effects, different groups — separator gap added between them
 		List<ActiveEffectView> diffGroup = new ArrayList<>();
-		diffGroup.add(new ActiveEffectView(null, "A", Color.WHITE, EffectGroup.CRITICAL));
-		diffGroup.add(new ActiveEffectView(null, "B", Color.WHITE, EffectGroup.PROTECTION));
+		diffGroup.add(new ActiveEffectView(null, "A", Color.WHITE, StatusPriority.CRITICAL));
+		diffGroup.add(new ActiveEffectView(null, "B", Color.WHITE, StatusPriority.SUSTAIN));
 		int cyDiff = PvpHudOverlay.drawEffects2Col(g, diffGroup, 0, 0, CANVAS_H);
 
 		assertTrue("cross-group cy=" + cyDiff + " must exceed single-group cy=" + cySame,
@@ -142,9 +142,9 @@ public class EffectRender2ColTest
 
 		List<ActiveEffectView> effects = new ArrayList<>();
 		// CRITICAL first — should fit (fills the one row)
-		effects.add(new ActiveEffectView(null, "FREEZE", Color.CYAN, EffectGroup.CRITICAL));
+		effects.add(new ActiveEffectView(null, "FREEZE", Color.CYAN, StatusPriority.CRITICAL));
 		// CYCLE second — should be truncated because space is exhausted
-		effects.add(new ActiveEffectView(null, "NXT", Color.YELLOW, EffectGroup.CYCLE));
+		effects.add(new ActiveEffectView(null, "NXT", Color.YELLOW, StatusPriority.SUSTAIN));
 
 		int cy = PvpHudOverlay.drawEffects2Col(g, effects, 0, 0, maxY);
 		assertTrue("cy=" + cy + " must not exceed maxY=" + maxY, cy <= maxY);
@@ -160,15 +160,15 @@ public class EffectRender2ColTest
 		Graphics2D g = makeGraphics();
 		List<ActiveEffectView> effects = new ArrayList<>();
 		// Three effects — last one is a lone entry that must still advance cy
-		effects.add(new ActiveEffectView(null, "A", Color.WHITE, EffectGroup.CRITICAL));
-		effects.add(new ActiveEffectView(null, "B", Color.WHITE, EffectGroup.CRITICAL));
-		effects.add(new ActiveEffectView(null, "C", Color.WHITE, EffectGroup.CRITICAL));
+		effects.add(new ActiveEffectView(null, "A", Color.WHITE, StatusPriority.CRITICAL));
+		effects.add(new ActiveEffectView(null, "B", Color.WHITE, StatusPriority.CRITICAL));
+		effects.add(new ActiveEffectView(null, "C", Color.WHITE, StatusPriority.CRITICAL));
 
 		int cySingle = PvpHudOverlay.drawEffects2Col(g, effects, 0, 0, CANVAS_H);
 
 		List<ActiveEffectView> pair = new ArrayList<>();
-		pair.add(new ActiveEffectView(null, "A", Color.WHITE, EffectGroup.CRITICAL));
-		pair.add(new ActiveEffectView(null, "B", Color.WHITE, EffectGroup.CRITICAL));
+		pair.add(new ActiveEffectView(null, "A", Color.WHITE, StatusPriority.CRITICAL));
+		pair.add(new ActiveEffectView(null, "B", Color.WHITE, StatusPriority.CRITICAL));
 		int cyPair = PvpHudOverlay.drawEffects2Col(g, pair, 0, 0, CANVAS_H);
 
 		// Three entries must advance cy the same as two (the third fits beside the second row's

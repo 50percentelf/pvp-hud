@@ -27,32 +27,39 @@ public final class ActiveEffectView
 	 */
 	public final Color highlightColor;
 
-	/** Semantic category: drives display order, group separators, and overflow priority. */
-	public final EffectGroup group;
+	/** Semantic priority: drives display order, group separators, and overflow policy. */
+	public final StatusPriority priority;
+
+	/**
+	 * True for compound sub-entries (e.g. "next proc" or "next hit" lines).
+	 * ICON_TRAY and 2-col renderers skip secondary entries; TEXT and VERTICAL_BAR show them.
+	 */
+	public final boolean isSecondary;
 
 	/** Full constructor. */
 	public ActiveEffectView(BufferedImage icon, String label, String textLabel,
-		Color color, Color highlightColor, EffectGroup group)
+		Color color, Color highlightColor, StatusPriority priority, boolean isSecondary)
 	{
 		this.icon           = icon;
 		this.label          = label;
 		this.textLabel      = textLabel;
 		this.color          = color;
 		this.highlightColor = highlightColor;
-		this.group          = group;
+		this.priority       = priority;
+		this.isSecondary    = isSecondary;
 	}
 
 	/** No highlight. */
 	public ActiveEffectView(BufferedImage icon, String label, String textLabel,
-		Color color, EffectGroup group)
+		Color color, StatusPriority priority, boolean isSecondary)
 	{
-		this(icon, label, textLabel, color, null, group);
+		this(icon, label, textLabel, color, null, priority, isSecondary);
 	}
 
-	/** label == textLabel, no highlight. */
-	public ActiveEffectView(BufferedImage icon, String label, Color color, EffectGroup group)
+	/** label == textLabel, no highlight, not secondary. */
+	public ActiveEffectView(BufferedImage icon, String label, Color color, StatusPriority priority)
 	{
-		this(icon, label, null, color, null, group);
+		this(icon, label, null, color, null, priority, false);
 	}
 
 	/** Returns the label to use in TEXT mode. */

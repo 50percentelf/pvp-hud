@@ -1534,167 +1534,76 @@ public class PvpHudOverlay extends Overlay
 	// ── Active effect builder (single source of truth for all buff styles) ──────
 
 	/**
-	 * Builds the list of currently active effects to display in the buff strip.
-	 * All three presentation styles (TEXT, VERTICAL_BAR, ICON_TRAY) consume this list.
-	 * Labels are self-describing so TEXT mode is intelligible without icons.
+	 * Projects current state into render-ready effect views via {@link StatusProjector}.
+	 * Replaces the old buildActiveEffects() inline logic.
 	 */
 	private List<ActiveEffectView> buildActiveEffects(SelfState self, EffectState fx,
 		PoisonState poison, BoostState boosts)
 	{
+		return flattenToViews(StatusProjector.project(
+			self, fx, poison, boosts, client.getTickCount(), config, debugRendering));
+	}
+
+	/**
+	 * Converts a {@link StatusSlot} list to render-ready {@link ActiveEffectView}s by
+	 * resolving icons via {@link #getIconFor}.  Reuses {@code effectScratch} as the
+	 * backing list so callers must consume the result before the next render frame.
+	 */
+	private List<ActiveEffectView> flattenToViews(List<StatusSlot> slots)
+	{
 		effectScratch.clear();
-		int currentTick = client.getTickCount();
-
-		// ── CRITICAL ──────────────────────────────────────────────────────────
-		int freeze = self.getFreezeTicksRemaining(currentTick);
-		if (freeze > 0 && (debugRendering || config.showFreezeTimer()))
-		{
-			String t = ticksToSecs(freeze);
+		for (StatusSlot s : slots)
 			effectScratch.add(new ActiveEffectView(
-				debugIcon(iceIconFor(self.getFreezeSpriteId())), t, "ICE " + t, LIGHT_BLUE,
-				config.barrageHighlightColor(), EffectGroup.CRITICAL));
-		}
-
-		int tb = self.getTeleBlockTicksRemaining();
-		if (tb > 0)
-		{
-			String t = ticksToMSS(tb);
-			effectScratch.add(new ActiveEffectView(debugIcon(tbIcon), t, "TB " + t, ORANGE,
-				config.tbHighlightColor(), EffectGroup.CRITICAL));
-		}
-
-		if (poison.isVenomed())
-			effectScratch.add(new ActiveEffectView(debugIcon(venomIcon),  "",  "VENOM",  TOXIC_GREEN, EffectGroup.CRITICAL));
-		else if (poison.isPoisoned())
-			effectScratch.add(new ActiveEffectView(debugIcon(poisonIcon), "",  "POISON", TOXIC_GREEN, EffectGroup.CRITICAL));
-
-		if (self.isTbImmunityActive())
-			effectScratch.add(new ActiveEffectView(debugIcon(tbIcon), "IMM", "TB-IMM", ORANGE, EffectGroup.CRITICAL));
-
-		int refreezeImm = self.getRefreezeImmunityTicks(currentTick);
-		if (refreezeImm > 0 && (debugRendering || config.showFreezeTimer()))
-		{
-			String t = ticksToSecs(refreezeImm);
-			effectScratch.add(new ActiveEffectView(
-				debugIcon(iceBarrageIcon), t, "REFRZ " + t, LIGHT_BLUE, EffectGroup.CRITICAL));
-		}
-
-		int prayerLockTicks = self.getPrayerLockTicksRemaining(currentTick);
-		if (prayerLockTicks > 0)
-			effectScratch.add(new ActiveEffectView(null, String.valueOf(prayerLockTicks),
-				"PLOCK " + prayerLockTicks, RED, EffectGroup.CRITICAL));
-
-		// Corruption — dangerous, show with remaining iterations × base damage
-		if (fx.isCorruptionActive())
-		{
-			int iters = fx.getCorruptionIterationsRemaining();
-			int total = fx.getCorruptionTotalTicks(currentTick);
-			String label     = total > 0 ? ticksToMSS(total) : iters + "x";
-			String textLabel = "CORRUPT " + label;
-			effectScratch.add(new ActiveEffectView(debugIcon(corruptIcon), label, textLabel,
-				RED, EffectGroup.CRITICAL));
-		}
-
-		// Burn damage counters
-		if (fx.getBurnDamageTotal() > 0)
-			effectScratch.add(new ActiveEffectView(null, String.valueOf(fx.getBurnDamageTotal()),
-				"BURN " + fx.getBurnDamageTotal(), RED, EffectGroup.CRITICAL));
-
-		// ── PROTECTION ────────────────────────────────────────────────────────
-		if (poison.isAntiVenomActive())
-			addTimedEffect("ANTI-V", poison.getImmunityTicksRemaining(currentTick), antiVenomItemIcon, EffectGroup.PROTECTION);
-		else if (poison.isAntiPoisonActive())
-			addTimedEffect("ANTI-P", poison.getImmunityTicksRemaining(currentTick), antiPoisonItemIcon, EffectGroup.PROTECTION);
-
-		if (debugRendering || config.showDivineTimers())
-		{
-			addTimedEffect("DSC", fx.getDivineSupercombatTicks(), dscIcon, EffectGroup.PROTECTION);
-			addTimedEffect("DRG", fx.getDivineRangingTicks(),     drgIcon, EffectGroup.PROTECTION);
-			addTimedEffect("DMG", fx.getDivineMagicTicks(),       dmgIcon, EffectGroup.PROTECTION);
-			addTimedEffect("BAS", fx.getDivineBastionTicks(),     basIcon, EffectGroup.PROTECTION);
-			addTimedEffect("BTM", fx.getDivineBattlemageTicks(),  btmIcon, EffectGroup.PROTECTION);
-			addTimedEffect("DSA", fx.getDivineSuperAttackTicks(),   dsaIcon, EffectGroup.PROTECTION);
-			addTimedEffect("DSS", fx.getDivineSuperStrengthTicks(), dssIcon, EffectGroup.PROTECTION);
-			addTimedEffect("DSD", fx.getDivineSuperDefenceTicks(),  dsdIcon, EffectGroup.PROTECTION);
-			if (fx.getMenaphite().isActive())
-				addTimedEffect("MEN", fx.getMenaphite().getTotalTicksRemaining(), menIcon, EffectGroup.PROTECTION);
-		}
-
-		addTimedEffect("IH-CD", fx.getImbuedHeartCooldownTicks(), imbuedHeartIcon, EffectGroup.PROTECTION);
-
-		// Staff of the Dead melee protection
-		int sotdTicks = fx.getStaffProtTicks(currentTick);
-		if (sotdTicks > 0)
-			addTimedEffect("SOTD", sotdTicks, sotdIcon, EffectGroup.PROTECTION);
-
-		// Prayer Regeneration potion
-		if (fx.getPrayerRegen().isActive())
-			addTimedEffect("PRYR", fx.getPrayerRegen().getTotalTicksRemaining(), prayerRegenIcon, EffectGroup.PROTECTION);
-
-		// Ward of Arceuus
-		int wardTicks = fx.getWardOfArceuusTicks(currentTick);
-		if (wardTicks > 0)
-			addTimedEffect("WARD", wardTicks, wardIcon, EffectGroup.PROTECTION);
-		else
-		{
-			int wardCd = fx.getWardCooldownTicks(currentTick);
-			if (wardCd > 0)
-				addTimedEffect("WARD-CD", wardCd, wardIcon, EffectGroup.PROTECTION);
-		}
-
-		// Mark of Darkness
-		int markTicks = fx.getMarkOfDarknessTicks(currentTick);
-		if (markTicks > 0)
-			addTimedEffect("MARK", markTicks, markIcon, EffectGroup.PROTECTION);
-		else
-		{
-			int markCd = fx.getMarkCooldownTicks(currentTick);
-			if (markCd > 0)
-				addTimedEffect("MARK-CD", markCd, markIcon, EffectGroup.PROTECTION);
-		}
-
-		// Surge potion cooldown
-		int surgeTicks = fx.getSurgePotionTicks(currentTick);
-		if (surgeTicks > 0)
-			addTimedEffect("SURGE", surgeTicks, surgeIcon, EffectGroup.PROTECTION);
-
-		if (fx.getStaminaEffectTicks() > 0)
-			addTimedEffect("STAM", fx.getStaminaEffectTicks(), staminaIcon, EffectGroup.PROTECTION);
-
-		int afTicks  = fx.getAntifireTicks(currentTick);
-		int safTicks = fx.getSuperAntifireTicks(currentTick);
-		if (afTicks  > 0) addTimedEffect("AF",  afTicks,  antifireIcon,      EffectGroup.PROTECTION);
-		if (safTicks > 0) addTimedEffect("SAF", safTicks, superAntifireIcon, EffectGroup.PROTECTION);
-
-		// ── CYCLE ─────────────────────────────────────────────────────────────
-		if ((debugRendering || config.showDivineTimers()) && fx.getMenaphite().isActive())
-			addTimedEffect("NXT", fx.getMenaphite().getNextProcTicks(), menIcon, EffectGroup.CYCLE);
-
-		// Prayer Regen next proc
-		if (fx.getPrayerRegen().isActive() && fx.getPrayerRegen().getNextProcTicks() > 0)
-			addTimedEffect("P-NXT", fx.getPrayerRegen().getNextProcTicks(), prayerRegenIcon, EffectGroup.CYCLE);
-
-		// Corruption next drain
-		if (fx.isCorruptionActive() && fx.getCorruptionNextDrainTicks(currentTick) > 0)
-		{
-			String label = "-" + fx.getCorruptionBaseDamage() + " " + fx.getCorruptionNextDrainTicks(currentTick) + "t";
-			effectScratch.add(new ActiveEffectView(debugIcon(corruptIcon), label, "NXDRAIN " + label,
-				RED, EffectGroup.CYCLE));
-		}
-
-		// Burn next hit
-		if (fx.getBurnDamageNextHit() > 0)
-			effectScratch.add(new ActiveEffectView(null, "BURN+" + fx.getBurnDamageNextHit(),
-				"BURN NXT " + fx.getBurnDamageNextHit(), RED, EffectGroup.CYCLE));
-
-		int drainTicks = self.getBoostDecay().getTicksRemaining();
-		if (drainTicks > 0 && self.getBoostDecay().isCalibrated() && boosts.hasAnyBoost())
-			effectScratch.add(new ActiveEffectView(null, "drain " + drainTicks + "t", YELLOW, EffectGroup.CYCLE));
-
-		int rstTicks = self.getDebuffRestore().getTicksRemaining();
-		if (rstTicks > 0 && self.getDebuffRestore().isCalibrated() && boosts.hasAnyDebuff())
-			effectScratch.add(new ActiveEffectView(null, "rst " + rstTicks + "t", YELLOW, EffectGroup.CYCLE));
-
+				getIconFor(s.slotId), s.label, s.textLabel, s.color, s.highlightColor,
+				s.priority, s.isSecondary));
 		return effectScratch;
+	}
+
+	/**
+	 * Resolves a {@link StatusSlot#slotId} to its cached icon.
+	 * Returns {@code null} if the slot has no icon or the icon has not loaded yet.
+	 */
+	private BufferedImage getIconFor(String slotId)
+	{
+		switch (slotId)
+		{
+			case "freeze_rush":        return debugIcon(iceRushIcon);
+			case "freeze_burst":       return debugIcon(iceBurstIcon);
+			case "freeze_blitz":       return debugIcon(iceBlitzIcon);
+			case "freeze_barrage":     return debugIcon(iceBarrageIcon);
+			case "freeze_imm":         return debugIcon(iceBarrageIcon);
+			case "tb":                 return debugIcon(tbIcon);
+			case "tb_imm":             return debugIcon(tbIcon);
+			case "venom":              return debugIcon(venomIcon);
+			case "poison":             return debugIcon(poisonIcon);
+			case "corrupt":            return debugIcon(corruptIcon);
+			case "corrupt_next":       return debugIcon(corruptIcon);
+			case "sotd":               return debugIcon(sotdIcon);
+			case "ward":               return debugIcon(wardIcon);
+			case "ward_cd":            return debugIcon(wardIcon);
+			case "mark":               return debugIcon(markIcon);
+			case "mark_cd":            return debugIcon(markIcon);
+			case "anti_venom":         return debugIcon(antiVenomItemIcon);
+			case "anti_poison":        return debugIcon(antiPoisonItemIcon);
+			case "dsc":                return debugIcon(dscIcon);
+			case "drg":                return debugIcon(drgIcon);
+			case "dmg":                return debugIcon(dmgIcon);
+			case "bas":                return debugIcon(basIcon);
+			case "btm":                return debugIcon(btmIcon);
+			case "dsa":                return debugIcon(dsaIcon);
+			case "dss":                return debugIcon(dssIcon);
+			case "dsd":                return debugIcon(dsdIcon);
+			case "menaphite":          return debugIcon(menIcon);
+			case "menaphite_next":     return debugIcon(menIcon);
+			case "prayer_regen":       return debugIcon(prayerRegenIcon);
+			case "prayer_regen_next":  return debugIcon(prayerRegenIcon);
+			case "stamina":            return debugIcon(staminaIcon);
+			case "af":                 return debugIcon(antifireIcon);
+			case "saf":                return debugIcon(superAntifireIcon);
+			case "ih_cd":              return debugIcon(imbuedHeartIcon);
+			case "surge":              return debugIcon(surgeIcon);
+			default:                   return null; // plock, burn, burn_next, drain, restore, venom, poison
+		}
 	}
 
 	/**
@@ -1703,159 +1612,19 @@ public class PvpHudOverlay extends Overlay
 	 */
 	static List<ActiveEffectView> buildEffectsHeadless(PvpHudState state, int tick)
 	{
-		List<ActiveEffectView> out = new ArrayList<>(24);
-		com.pvphud.state.SelfState   self   = state.getSelf();
-		com.pvphud.state.EffectState fx     = state.getEffects();
-		com.pvphud.state.PoisonState poison = state.getPoison();
-		com.pvphud.state.BoostState  boosts = state.getBoosts();
+		List<StatusSlot> slots = StatusProjector.project(
+			state.getSelf(), state.getEffects(), state.getPoison(), state.getBoosts(),
+			tick, null, true);
+		return flattenHeadless(slots);
+	}
 
-		// ── CRITICAL ──────────────────────────────────────────────────────────
-		int freeze = self.getFreezeTicksRemaining(tick);
-		if (freeze > 0)
-		{
-			String t = ticksToSecs(freeze);
-			out.add(new ActiveEffectView(null, t, "ICE " + t, LIGHT_BLUE, EffectGroup.CRITICAL));
-		}
-
-		int tb = self.getTeleBlockTicksRemaining();
-		if (tb > 0)
-		{
-			String t = ticksToMSS(tb);
-			out.add(new ActiveEffectView(null, t, "TB " + t, ORANGE, EffectGroup.CRITICAL));
-		}
-
-		if (poison.isVenomed())
-			out.add(new ActiveEffectView(null, "", "VENOM", TOXIC_GREEN, EffectGroup.CRITICAL));
-		else if (poison.isPoisoned())
-			out.add(new ActiveEffectView(null, "", "POISON", TOXIC_GREEN, EffectGroup.CRITICAL));
-
-		if (self.isTbImmunityActive())
-			out.add(new ActiveEffectView(null, "IMM", "TB-IMM", ORANGE, EffectGroup.CRITICAL));
-
-		int refreezeImm = self.getRefreezeImmunityTicks(tick);
-		if (refreezeImm > 0)
-		{
-			String t = ticksToSecs(refreezeImm);
-			out.add(new ActiveEffectView(null, t, "REFRZ " + t, LIGHT_BLUE, EffectGroup.CRITICAL));
-		}
-
-		int prayerLockTicks = self.getPrayerLockTicksRemaining(tick);
-		if (prayerLockTicks > 0)
-			out.add(new ActiveEffectView(null, String.valueOf(prayerLockTicks),
-				"PLOCK " + prayerLockTicks, RED, EffectGroup.CRITICAL));
-
-		if (fx.isCorruptionActive())
-		{
-			int iters = fx.getCorruptionIterationsRemaining();
-			int total = fx.getCorruptionTotalTicks(tick);
-			String label = total > 0 ? ticksToMSS(total) : iters + "x";
-			out.add(new ActiveEffectView(null, label, "CORRUPT " + label, RED, EffectGroup.CRITICAL));
-		}
-
-		if (fx.getBurnDamageTotal() > 0)
-			out.add(new ActiveEffectView(null, String.valueOf(fx.getBurnDamageTotal()),
-				"BURN " + fx.getBurnDamageTotal(), RED, EffectGroup.CRITICAL));
-
-		// ── PROTECTION ────────────────────────────────────────────────────────
-		if (poison.isAntiVenomActive())
-			hlAddTimedEffect(out, "ANTI-V", poison.getImmunityTicksRemaining(tick), EffectGroup.PROTECTION);
-		else if (poison.isAntiPoisonActive())
-			hlAddTimedEffect(out, "ANTI-P", poison.getImmunityTicksRemaining(tick), EffectGroup.PROTECTION);
-
-		hlAddTimedEffect(out, "DSC", fx.getDivineSupercombatTicks(),   EffectGroup.PROTECTION);
-		hlAddTimedEffect(out, "DRG", fx.getDivineRangingTicks(),       EffectGroup.PROTECTION);
-		hlAddTimedEffect(out, "DMG", fx.getDivineMagicTicks(),         EffectGroup.PROTECTION);
-		hlAddTimedEffect(out, "BAS", fx.getDivineBastionTicks(),       EffectGroup.PROTECTION);
-		hlAddTimedEffect(out, "BTM", fx.getDivineBattlemageTicks(),    EffectGroup.PROTECTION);
-		hlAddTimedEffect(out, "DSA", fx.getDivineSuperAttackTicks(),   EffectGroup.PROTECTION);
-		hlAddTimedEffect(out, "DSS", fx.getDivineSuperStrengthTicks(), EffectGroup.PROTECTION);
-		hlAddTimedEffect(out, "DSD", fx.getDivineSuperDefenceTicks(),  EffectGroup.PROTECTION);
-
-		if (fx.getMenaphite().isActive())
-			hlAddTimedEffect(out, "MEN", fx.getMenaphite().getTotalTicksRemaining(), EffectGroup.PROTECTION);
-
-		hlAddTimedEffect(out, "IH-CD", fx.getImbuedHeartCooldownTicks(), EffectGroup.PROTECTION);
-
-		int sotdTicks = fx.getStaffProtTicks(tick);
-		if (sotdTicks > 0)
-			hlAddTimedEffect(out, "SOTD", sotdTicks, EffectGroup.PROTECTION);
-
-		if (fx.getPrayerRegen().isActive())
-			hlAddTimedEffect(out, "PRYR", fx.getPrayerRegen().getTotalTicksRemaining(), EffectGroup.PROTECTION);
-
-		int wardTicks = fx.getWardOfArceuusTicks(tick);
-		if (wardTicks > 0)
-			hlAddTimedEffect(out, "WARD", wardTicks, EffectGroup.PROTECTION);
-		else
-		{
-			int wardCd = fx.getWardCooldownTicks(tick);
-			if (wardCd > 0)
-				hlAddTimedEffect(out, "WARD-CD", wardCd, EffectGroup.PROTECTION);
-		}
-
-		int markTicks = fx.getMarkOfDarknessTicks(tick);
-		if (markTicks > 0)
-			hlAddTimedEffect(out, "MARK", markTicks, EffectGroup.PROTECTION);
-		else
-		{
-			int markCd = fx.getMarkCooldownTicks(tick);
-			if (markCd > 0)
-				hlAddTimedEffect(out, "MARK-CD", markCd, EffectGroup.PROTECTION);
-		}
-
-		int surgeTicks = fx.getSurgePotionTicks(tick);
-		if (surgeTicks > 0)
-			hlAddTimedEffect(out, "SURGE", surgeTicks, EffectGroup.PROTECTION);
-
-		if (fx.getStaminaEffectTicks() > 0)
-			hlAddTimedEffect(out, "STAM", fx.getStaminaEffectTicks(), EffectGroup.PROTECTION);
-
-		int afTicks  = fx.getAntifireTicks(tick);
-		int safTicks = fx.getSuperAntifireTicks(tick);
-		if (afTicks  > 0) hlAddTimedEffect(out, "AF",  afTicks,  EffectGroup.PROTECTION);
-		if (safTicks > 0) hlAddTimedEffect(out, "SAF", safTicks, EffectGroup.PROTECTION);
-
-		// ── CYCLE ─────────────────────────────────────────────────────────────
-		if (fx.getMenaphite().isActive())
-			hlAddTimedEffect(out, "NXT", fx.getMenaphite().getNextProcTicks(), EffectGroup.CYCLE);
-
-		if (fx.getPrayerRegen().isActive() && fx.getPrayerRegen().getNextProcTicks() > 0)
-			hlAddTimedEffect(out, "P-NXT", fx.getPrayerRegen().getNextProcTicks(), EffectGroup.CYCLE);
-
-		if (fx.isCorruptionActive() && fx.getCorruptionNextDrainTicks(tick) > 0)
-		{
-			String label = "-" + fx.getCorruptionBaseDamage() + " " + fx.getCorruptionNextDrainTicks(tick) + "t";
-			out.add(new ActiveEffectView(null, label, "NXDRAIN " + label, RED, EffectGroup.CYCLE));
-		}
-
-		if (fx.getBurnDamageNextHit() > 0)
-			out.add(new ActiveEffectView(null, "BURN+" + fx.getBurnDamageNextHit(),
-				"BURN NXT " + fx.getBurnDamageNextHit(), RED, EffectGroup.CYCLE));
-
-		int drainTicks = self.getBoostDecay().getTicksRemaining();
-		if (drainTicks > 0 && self.getBoostDecay().isCalibrated() && boosts.hasAnyBoost())
-			out.add(new ActiveEffectView(null, "drain " + drainTicks + "t", YELLOW, EffectGroup.CYCLE));
-
-		int rstTicks2 = self.getDebuffRestore().getTicksRemaining();
-		if (rstTicks2 > 0 && self.getDebuffRestore().isCalibrated() && boosts.hasAnyDebuff())
-			out.add(new ActiveEffectView(null, "rst " + rstTicks2 + "t", YELLOW, EffectGroup.CYCLE));
-
+	private static List<ActiveEffectView> flattenHeadless(List<StatusSlot> slots)
+	{
+		List<ActiveEffectView> out = new ArrayList<>(slots.size());
+		for (StatusSlot s : slots)
+			out.add(new ActiveEffectView(null, s.label, s.textLabel, s.color, s.highlightColor,
+				s.priority, s.isSecondary));
 		return out;
-	}
-
-	private static void hlAddTimedEffect(List<ActiveEffectView> out, String label, int ticks, EffectGroup group)
-	{
-		if (ticks <= 0) return;
-		String t = ticksToMSS(ticks);
-		out.add(new ActiveEffectView(null, t, label + " " + t, timerColor(ticks), group));
-	}
-
-	/** Icon modes show just the time; TEXT mode prefixes the effect label. */
-	private void addTimedEffect(String label, int ticks, BufferedImage icon, EffectGroup group)
-	{
-		if (ticks <= 0) return;
-		String t = ticksToMSS(ticks);
-		effectScratch.add(new ActiveEffectView(debugIcon(icon), t, label + " " + t, timerColor(ticks), group));
 	}
 
 	/**
@@ -1883,48 +1652,25 @@ public class PvpHudOverlay extends Overlay
 		return new Color(base.getRed(), base.getGreen(), base.getBlue(), alpha);
 	}
 
-	private static Color timerColor(int ticks)
-	{
-		int s = ticks * 600 / 1000;
-		return s > 60 ? GREEN : s > 30 ? YELLOW : RED;
-	}
-
-	private static String ticksToMSS(int ticks)
-	{
-		int s = ticks * 600 / 1000;
-		return (s / 60) + ":" + String.format("%02d", s % 60);
-	}
-
-	private BufferedImage iceIconFor(int spriteId)
-	{
-		switch (spriteId)
-		{
-			case SpriteID.SPELL_ICE_RUSH:    return iceRushIcon;
-			case SpriteID.SPELL_ICE_BURST:   return iceBurstIcon;
-			case SpriteID.SPELL_ICE_BLITZ:   return iceBlitzIcon;
-			case SpriteID.SPELL_ICE_BARRAGE: return iceBarrageIcon;
-			default:                         return iceBarrageIcon;
-		}
-	}
-
 	// ── TEXT: one label per line, colour-coded ────────────────────────────────
 
 	static int drawEffectsText(Graphics2D g, Font font, List<ActiveEffectView> effects, int lx, int cy, int maxY)
 	{
 		g.setFont(font);
 		FontMetrics fm = g.getFontMetrics();
-		EffectGroup lastGroup = null;
+		StatusPriority lastPriority = null;
 		for (ActiveEffectView e : effects)
 		{
-			if (lastGroup != null && e.group != lastGroup)
+			if (lastPriority != null && e.priority != lastPriority)
 			{
 				if (cy + 3 > maxY) break;
 				cy += 3;
 			}
-			lastGroup = e.group;
+			lastPriority = e.priority;
 			if (cy + fm.getHeight() + 1 > maxY) break;
 			g.setColor(e.color);
-			g.drawString(e.getTextLabel(), lx, cy + fm.getAscent());
+			int indent = e.isSecondary ? 6 : 0;
+			g.drawString(e.getTextLabel(), lx + indent, cy + fm.getAscent());
 			cy += fm.getHeight() + 1;
 		}
 		return cy;
@@ -1937,22 +1683,23 @@ public class PvpHudOverlay extends Overlay
 	{
 		FontMetrics fm = g.getFontMetrics();
 		int lineH = Math.max(ICON_SIZE, fm.getHeight()) + 2;
-		EffectGroup lastGroup = null;
+		StatusPriority lastPriority = null;
 		for (ActiveEffectView e : effects)
 		{
-			if (lastGroup != null && e.group != lastGroup)
+			if (lastPriority != null && e.priority != lastPriority)
 			{
 				if (cy + 3 > maxY) break;
 				cy += 3;
 			}
-			lastGroup = e.group;
+			lastPriority = e.priority;
 			if (cy + lineH > maxY) break;
 			if (e.icon == null)
 			{
 				if (textFallback)
 				{
 					g.setColor(e.color);
-					g.drawString(e.getTextLabel(), lx, cy + fm.getAscent());
+					int indent = e.isSecondary ? ICON_SIZE + ICON_GAP : 0;
+					g.drawString(e.getTextLabel(), lx + indent, cy + fm.getAscent());
 					cy += lineH;
 				}
 				continue;
@@ -1979,16 +1726,17 @@ public class PvpHudOverlay extends Overlay
 		final int iconGap = 2;
 		final int cellH  = ICON_SIZE + iconGap + fm.getHeight() + 2;
 		int col = 0;
-		EffectGroup lastGroup = null;
+		StatusPriority lastPriority = null;
 		for (ActiveEffectView e : effects)
 		{
-			if (lastGroup != null && e.group != lastGroup)
+			if (e.isSecondary) continue; // next-proc sub-entries not shown in compact 2-col view
+			if (lastPriority != null && e.priority != lastPriority)
 			{
 				if (col == 1) { cy += cellH; col = 0; }
 				if (cy + 3 > maxY) break;
 				cy += 3;
 			}
-			lastGroup = e.group;
+			lastPriority = e.priority;
 			if (e.icon == null)
 			{
 				if (col == 1) { cy += cellH; col = 0; }
@@ -2023,15 +1771,17 @@ public class PvpHudOverlay extends Overlay
 		FontMetrics fm = g.getFontMetrics();
 		int maxLabelW = 0;
 		for (ActiveEffectView e : effects)
-			if (!e.label.isEmpty()) maxLabelW = Math.max(maxLabelW, fm.stringWidth(e.label));
+			if (!e.isSecondary && !e.label.isEmpty())
+				maxLabelW = Math.max(maxLabelW, fm.stringWidth(e.label));
 		int slotW = Math.max(ICON_SIZE, maxLabelW) + ICON_GAP;
 		int col   = 0;
-		EffectGroup lastGroup = null;
+		StatusPriority lastPriority = null;
 		for (ActiveEffectView e : effects)
 		{
-			if (lastGroup != null && e.group != lastGroup)
-				col++; // extra gap slot between groups
-			lastGroup = e.group;
+			if (e.isSecondary) continue; // next-proc sub-entries not shown in tray
+			if (lastPriority != null && e.priority != lastPriority)
+				col++; // extra gap slot between priority groups
+			lastPriority = e.priority;
 			if (lx + col * slotW + ICON_SIZE > maxX) break;
 			if (e.icon == null)
 			{
@@ -2388,12 +2138,6 @@ public class PvpHudOverlay extends Overlay
 	private static void drawRightAligned(Graphics2D g, FontMetrics fm, String text, int rx, int baseline)
 	{
 		g.drawString(text, rx - fm.stringWidth(text), baseline);
-	}
-
-	/** Convert game ticks to a rounded-seconds string, e.g. 32 → "19s". */
-	private static String ticksToSecs(int ticks)
-	{
-		return (int) Math.round(ticks * 0.6) + "s";
 	}
 
 	private BufferedImage prayerIconFor(HeadIcon prayer)
