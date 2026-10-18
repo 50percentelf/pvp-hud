@@ -8,6 +8,7 @@ import com.pvphud.state.CombatEventType;
 import com.pvphud.state.EffectState;
 import com.pvphud.state.ManualTimerState;
 import com.pvphud.state.OpponentState;
+import com.pvphud.state.OpponentStats;
 import com.pvphud.state.PeriodicEffect;
 import com.pvphud.state.PoisonState;
 import com.pvphud.state.PrayerEffect;
@@ -782,12 +783,14 @@ public class PvpHudPlugin extends Plugin
 			}
 			case "Attack":
 			{
-				// Confirm combat immediately on an explicit Attack click on a player.
+				// Confirm combat immediately on an explicit Attack click on a player,
+				// but only when the attack is valid for the current zone/level range.
 				Actor menuActor = event.getMenuEntry().getActor();
 				if (menuActor instanceof Player)
 				{
 					Player p = (Player) menuActor;
-					if (p.getName() != null) confirmCombatCandidate(p.getName(), p);
+					if (p.getName() != null && canAttackPlayer(p))
+						confirmCombatCandidate(p.getName(), p);
 				}
 				break;
 			}
@@ -937,6 +940,17 @@ public class PvpHudPlugin extends Plugin
 		pendingOpponentActor = null;
 	}
 
+	/** True if the target player can be attacked in the current zone and at the current combat level. */
+	private boolean canAttackPlayer(Player target)
+	{
+		if (!hudState.getContext().isInPvpZone()) return false;
+		int wildLevel = hudState.getContext().getWildernessLevel();
+		if (wildLevel == 0) return true; // PvP world — no level-range restriction
+		int myLevel    = client.getLocalPlayer().getCombatLevel();
+		int theirLevel = target.getCombatLevel();
+		return Math.abs(myLevel - theirLevel) <= wildLevel;
+	}
+
 	// ── Hitsplat events — combat log and HP estimation ────────────────────────
 
 	@Subscribe
@@ -961,9 +975,10 @@ public class PvpHudPlugin extends Plugin
 			// attack — including 0-damage splashes (OSRS uses attacks, not damage).
 			hudState.getProtection().onAttackExchanged(getPjTimerTicks());
 			hudState.getProtection().onIncomingHit();
-			hudState.getSelf().setLastIncomingDamageMs(System.currentTimeMillis());
 
 			if (dmg <= 0) return;
+			// Only shake on actual damage — 0-splat must not trigger the animation.
+			hudState.getSelf().setLastIncomingDamageMs(System.currentTimeMillis());
 
 			PvpFightSession session = hudState.getCurrentSession();
 			if (session == null) return;
@@ -1390,6 +1405,38 @@ public class PvpHudPlugin extends Plugin
 				}
 				applyHiscoresResult(playerName, result);
 			});
+
+		// Account-type detection: run ironman endpoint checks in parallel.
+		// Only upgrades account type (NORMAL < IM < UIM < HC) — never downgrades.
+		hiscoreClient.lookupAsync(playerName, HiscoreEndpoint.IRONMAN)
+			.whenComplete((r, ex) ->
+			{
+				if (ex == null && r != null && skillLevel(r, HiscoreSkill.HITPOINTS) > 0)
+					applyAccountType(playerName, OpponentStats.AccountType.IRONMAN);
+			});
+		hiscoreClient.lookupAsync(playerName, HiscoreEndpoint.ULTIMATE_IRONMAN)
+			.whenComplete((r, ex) ->
+			{
+				if (ex == null && r != null && skillLevel(r, HiscoreSkill.HITPOINTS) > 0)
+					applyAccountType(playerName, OpponentStats.AccountType.ULTIMATE_IRONMAN);
+			});
+		hiscoreClient.lookupAsync(playerName, HiscoreEndpoint.HARDCORE_IRONMAN)
+			.whenComplete((r, ex) ->
+			{
+				if (ex == null && r != null && skillLevel(r, HiscoreSkill.HITPOINTS) > 0)
+					applyAccountType(playerName, OpponentStats.AccountType.HARDCORE_IRONMAN);
+			});
+	}
+
+	private void applyAccountType(String playerName, OpponentStats.AccountType type)
+	{
+		clientThread.invoke(() ->
+		{
+			OpponentState opp = hudState.getOpponent();
+			if (!opp.isTracked() || !playerName.equalsIgnoreCase(opp.getName())) return;
+			if (type.ordinal() > opp.getStats().getAccountType().ordinal())
+				opp.getStats().setAccountType(type);
+		});
 	}
 
 	private void applyHiscoresResult(String playerName, HiscoreResult result)

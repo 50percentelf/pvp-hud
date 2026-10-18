@@ -684,13 +684,19 @@ public class PvpHudOverlay extends Overlay
 				cellX + sIconSz + 1, sNumY);
 		}
 
-		// ── Row 1: opponent name ──────────────────────────────────────────────
+		// ── Row 1: opponent name + ironman badge ──────────────────────────────────────
 		int nameMaxW = barEndX - x0;
 		String name = opp.getName();
 		while (name.length() > 1 && fm.stringWidth(name) > nameMaxW)
 			name = name.substring(0, name.length() - 1);
 		g.setColor(WHITE);
 		g.drawString(name, x0, y1 + fm.getAscent());
+		OpponentStats.AccountType acctType = opp.getStats().getAccountType();
+		if (acctType != OpponentStats.AccountType.NORMAL)
+		{
+			g.setColor(acctType == OpponentStats.AccountType.HARDCORE_IRONMAN ? RED : GRAY);
+			g.drawString(accountTypeBadge(acctType), x0 + fm.stringWidth(name) + 3, y1 + fm.getAscent());
+		}
 
 		// ── Row 2: HP bar, text overlaid ─────────────────────────────────────
 		int estHp = opp.getEstimatedHp();
@@ -823,7 +829,7 @@ public class PvpHudOverlay extends Overlay
 			}
 		}
 
-		// ── Self boost stats (compact: one row of 5 icons, colour = boost direction) ──
+		// ── Self boost stats (compact: icon + current level, 5 columns) ──
 		if (activeProfile.showBoostRow)
 		{
 			g.setColor(DIVIDER);
@@ -851,7 +857,13 @@ public class PvpHudOverlay extends Overlay
 				else
 					g.fillRect(iconX + 2, cy + 2, ICN - 4, ICN - 4); // coloured dot while icon loads
 			}
-			cy += ICN + 2;
+			for (int i = 0; i < 5; i++)
+			{
+				int delta = boosted[i] - real[i];
+				g.setColor(delta > 0 ? GREEN : delta < 0 ? RED : GRAY);
+				drawCentered(g, fm, String.valueOf(boosted[i]), i * colW + colW / 2, cy + ICN + fm.getAscent());
+			}
+			cy += ICN + fm.getHeight() + 2;
 		}
 
 		List<ActiveEffectView> selfBuffs = buildActiveEffects(self, fx, poison, boosts);
@@ -977,11 +989,25 @@ public class PvpHudOverlay extends Overlay
 		if (max <= 0 || !barVisible(style)) return cy;
 		float pct   = Math.min(1f, (float) current / max);
 		Color barFg = pct > 0.5f ? fg : pct > 0.25f ? YELLOW : RED;
-		if (showBar(style))
+		final int ICN = 9;
+		int barX  = icon != null ? lx + ICN + 2 : lx;
+		int barSz = railW - (icon != null ? ICN + 2 : 0);
+		if (showBar(style) && showNum(style))
 		{
-			final int ICN = 9;
-			int barX = icon != null ? lx + ICN + 2 : lx;
-			int barSz = railW - (icon != null ? ICN + 2 : 0);
+			// Combined: taller bar with number overlaid — saves one full text row.
+			int barH = Math.max(fm.getHeight(), ICN);
+			if (icon != null)
+				g.drawImage(icon, lx, cy + (barH - ICN) / 2, ICN, ICN, null);
+			g.setColor(bgColor);
+			g.fillRect(barX, cy, barSz, barH);
+			g.setColor(barFg);
+			g.fillRect(barX, cy, Math.max(1, (int)(barSz * pct)), barH);
+			g.setColor(WHITE);
+			g.drawString(String.valueOf(current), barX + 2, cy + fm.getAscent());
+			cy += barH + 1;
+		}
+		else if (showBar(style))
+		{
 			if (icon != null)
 				g.drawImage(icon, lx, cy + (BAR_H - ICN) / 2, ICN, ICN, null);
 			g.setColor(bgColor);
@@ -990,7 +1016,7 @@ public class PvpHudOverlay extends Overlay
 			g.fillRect(barX, cy, Math.max(1, (int)(barSz * pct)), BAR_H);
 			cy += BAR_H + 1;
 		}
-		if (showNum(style))
+		else if (showNum(style))
 		{
 			g.setColor(barFg);
 			drawCentered(g, fm, String.valueOf(current), cx, cy + fm.getAscent());
@@ -1123,7 +1149,7 @@ public class PvpHudOverlay extends Overlay
 		if (p == null) return;
 
 		int x  = p.x + PAD;
-		int w  = p.width - PAD * 2;
+		int rx = p.x + p.width - PAD;
 		int cy = p.y + PAD;
 
 		g.setFont(small);
@@ -1140,29 +1166,47 @@ public class PvpHudOverlay extends Overlay
 			return;
 		}
 
-		// Name row
+		// Pre-compute prayer icon dimensions to reserve right column.
 		g.setFont(normal);
 		FontMetrics fm = g.getFontMetrics();
+		HeadIcon prayer = opp.getOverheadPrayer();
+		int contentBlockH = fm.getHeight() + 4 + BAR_H + 3 + smFm.getHeight() + 2;
+		int praySz  = prayer != null ? Math.min(config.opponentPrayerIconSize(), contentBlockH) : 0;
+		int prayX   = rx - praySz;
+		int contentW = (prayer != null ? prayX - 3 : rx) - x;
+
+		// Name row + ironman badge
 		g.setColor(WHITE);
 		String name = opp.getName();
-		while (name.length() > 1 && fm.stringWidth(name) > w)
+		while (name.length() > 1 && fm.stringWidth(name) > contentW)
 			name = name.substring(0, name.length() - 1);
 		g.drawString(name, x, cy + fm.getAscent());
+
+		OpponentStats.AccountType acctType = opp.getStats().getAccountType();
+		if (acctType != OpponentStats.AccountType.NORMAL)
+		{
+			g.setFont(small);
+			smFm = g.getFontMetrics();
+			g.setColor(acctType == OpponentStats.AccountType.HARDCORE_IRONMAN ? RED : GRAY);
+			g.drawString(accountTypeBadge(acctType), x + fm.stringWidth(name) + 3, cy + fm.getAscent());
+			g.setFont(normal);
+		}
+		int nameCy = cy;
 		cy += fm.getHeight() + 4;
 
-		// HP bar + HP text
-		int estHp  = opp.getEstimatedHp();
-		int maxHp  = opp.getMaxHp();
+		// HP bar + HP text (within contentW)
+		int estHp = opp.getEstimatedHp();
+		int maxHp = opp.getMaxHp();
 		g.setFont(small);
 		smFm = g.getFontMetrics();
 		if (estHp >= 0 && maxHp > 0)
 		{
 			float pct = Math.min(1f, (float) estHp / maxHp);
+			Color fg  = pct > 0.5f ? HP_FG : pct > 0.25f ? YELLOW : RED;
 			g.setColor(HP_BG);
-			g.fillRect(x, cy, w, BAR_H);
-			Color fg = pct > 0.5f ? HP_FG : pct > 0.25f ? YELLOW : RED;
+			g.fillRect(x, cy, contentW, BAR_H);
 			g.setColor(fg);
-			g.fillRect(x, cy, Math.max(1, (int)(w * pct)), BAR_H);
+			g.fillRect(x, cy, Math.max(1, (int)(contentW * pct)), BAR_H);
 			cy += BAR_H + 3;
 			g.setColor(GRAY);
 			g.drawString("~" + estHp + " HP", x, cy + smFm.getAscent());
@@ -1171,63 +1215,57 @@ public class PvpHudOverlay extends Overlay
 		else
 		{
 			g.setColor(HP_BG);
-			g.fillRect(x, cy, w, BAR_H);
+			g.fillRect(x, cy, contentW, BAR_H);
 			cy += BAR_H + 3;
 			g.setColor(GRAY);
 			g.drawString("HP ?", x, cy + smFm.getAscent());
 			cy += smFm.getHeight() + 2;
 		}
 
-		// Overhead prayer: large icon + label, below the HP bar
-		HeadIcon prayer = opp.getOverheadPrayer();
-		if (prayer != null)
+		// Prayer icon: right column, vertically centred on the name+HP block
+		if (prayer != null && praySz > 0)
 		{
-			int PRAY_SZ = config.opponentPrayerIconSize();
-			g.setFont(small);
-			smFm = g.getFontMetrics();
-			BufferedImage pIcon  = prayerIconFor(prayer);
-			Color         pColor = prayerColorFor(prayer);
-			String        pLabel = prayerShortFor(prayer);
+			int blockH    = cy - nameCy;
+			int prayIconY = nameCy + Math.max(0, (blockH - praySz) / 2);
+			BufferedImage pIcon = prayerIconFor(prayer);
 			if (pIcon != null)
+				g.drawImage(pIcon, prayX, prayIconY, praySz, praySz, null);
+			else
 			{
-				g.drawImage(pIcon, x, cy, PRAY_SZ, PRAY_SZ, null);
-				if (pLabel != null)
-				{
-					g.setColor(pColor);
-					int textY2 = cy + (PRAY_SZ + smFm.getAscent() - smFm.getDescent()) / 2;
-					g.drawString(pLabel, x + PRAY_SZ + 4, textY2);
-				}
-				cy += PRAY_SZ + 3;
-			}
-			else if (pLabel != null)
-			{
-				g.setColor(pColor);
-				g.drawString(pLabel, x, cy + smFm.getAscent());
-				cy += smFm.getHeight() + 2;
+				g.setColor(prayerColorFor(prayer));
+				g.drawString(prayerShortFor(prayer), prayX, prayIconY + smFm.getAscent());
 			}
 		}
 
-		// Opponent base stats (hiscores, async) — first-class row after prayer section.
-		// Skip if a large prayer icon has pushed cy too close to the panel bottom.
-		g.setFont(small);
-		smFm = g.getFontMetrics();
+		// Opponent base stats — prayer now occupies only the right column so stats fit.
 		cy += 2;
 		int statsRowH = ICON_SIZE + 2 + smFm.getAscent();
 		if (cy + statsRowH <= p.y + p.height - PAD)
 		{
 			OpponentStats stats = opp.getStats();
-			int col    = p.width / 5;
-			int c1     = p.x + col / 2;
-			int c2     = c1 + col;
-			int c3     = c2 + col;
-			int c4     = c3 + col;
-			int c5     = c4 + col;
-			int textY  = cy + ICON_SIZE + 2 + smFm.getAscent();
+			int col   = p.width / 5;
+			int c1    = p.x + col / 2;
+			int c2    = c1 + col;
+			int c3    = c2 + col;
+			int c4    = c3 + col;
+			int c5    = c4 + col;
+			int textY = cy + ICON_SIZE + 2 + smFm.getAscent();
 			drawStatColumn(g, smFm, atkSkillIcon, "ATK", stats.getAttack(),   c1, cy, textY);
 			drawStatColumn(g, smFm, strSkillIcon, "STR", stats.getStrength(), c2, cy, textY);
 			drawStatColumn(g, smFm, defSkillIcon, "DEF", stats.getDefence(),  c3, cy, textY);
 			drawStatColumn(g, smFm, rngSkillIcon, "RNG", stats.getRanged(),   c4, cy, textY);
 			drawStatColumn(g, smFm, magSkillIcon, "MAG", stats.getMagic(),    c5, cy, textY);
+		}
+	}
+
+	private static String accountTypeBadge(OpponentStats.AccountType type)
+	{
+		switch (type)
+		{
+			case IRONMAN:          return "IM";
+			case ULTIMATE_IRONMAN: return "UIM";
+			case HARDCORE_IRONMAN: return "HC";
+			default:               return "";
 		}
 	}
 
@@ -1380,15 +1418,16 @@ public class PvpHudOverlay extends Overlay
 		BoostState  boosts = state.getBoosts();
 		PoisonState poison = state.getPoison();
 
-		cy = drawHpPrayerBars(g, smFm, self, fx, rx, cy, p.width);
-
+		// Horizontal+boost: draw boost stats in a left column alongside the bars
 		if (horizontal && activeProfile.showBoostRow)
 		{
-			// Horizontal mode: boost row renders the effects; show boost stats here
-			Rectangle boostRect = new Rectangle(p.x, cy, p.width, p.height - (cy - p.y));
-			drawBoostColumns(g, state, boostRect, small);
+			drawBoostStack(g, state, lx, cy, 32, p.y + p.height - PAD, small);
+			g.setFont(small);
+			smFm = g.getFontMetrics();
 		}
-		else
+		cy = drawHpPrayerBars(g, smFm, self, fx, rx, cy, p.width);
+
+		if (!horizontal || !activeProfile.showBoostRow)
 		{
 			List<ActiveEffectView> effects = buildActiveEffects(self, fx, poison, boosts);
 			if (!effects.isEmpty())
@@ -1836,6 +1875,44 @@ public class PvpHudOverlay extends Overlay
 		else
 		{
 			drawBoostColumns(g, state, p, small);
+		}
+	}
+
+	/**
+	 * Draws 5 boost-stat rows (icon + current level) stacked vertically in a narrow column.
+	 * Used in horizontal-float self panel where the boost row holds effects instead.
+	 */
+	private void drawBoostStack(Graphics2D g, PvpHudState state, int lx, int cy, int colW,
+		int maxY, Font small)
+	{
+		g.setFont(small);
+		FontMetrics fm = g.getFontMetrics();
+		final int ICN = 9;
+		int rowH = Math.max(ICN, fm.getHeight()) + 2;
+		BoostState boosts = state.getBoosts();
+		int[]           boosted = { boosts.getAttackBoosted(), boosts.getStrengthBoosted(),
+		                            boosts.getDefenceBoosted(), boosts.getRangedBoosted(),
+		                            boosts.getMagicBoosted() };
+		int[]           real    = { boosts.getAttackReal(),    boosts.getStrengthReal(),
+		                            boosts.getDefenceReal(),   boosts.getRangedReal(),
+		                            boosts.getMagicReal()    };
+		BufferedImage[] icons   = { atkSkillIcon, strSkillIcon, defSkillIcon,
+		                            rngSkillIcon, magSkillIcon };
+		for (int i = 0; i < 5 && cy + rowH <= maxY; i++)
+		{
+			int delta = boosted[i] - real[i];
+			g.setColor(delta > 0 ? GREEN : delta < 0 ? RED : GRAY);
+			BufferedImage icon = debugIcon(icons[i]);
+			int iconY = cy + (rowH - ICN) / 2;
+			if (icon != null)
+				g.drawImage(icon, lx, iconY, ICN, ICN, null);
+			else
+				g.fillRect(lx + 1, iconY + 1, ICN - 2, ICN - 2);
+			String val = activeProfile.boostXOverX
+				? boosted[i] + "/" + real[i]
+				: String.valueOf(boosted[i]);
+			g.drawString(val, lx + ICN + 2, cy + fm.getAscent());
+			cy += rowH;
 		}
 	}
 
