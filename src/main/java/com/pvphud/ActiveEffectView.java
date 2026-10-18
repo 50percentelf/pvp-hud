@@ -6,6 +6,13 @@ import java.awt.image.BufferedImage;
 /** Immutable render-ready description of one active effect in the buff strip. */
 public final class ActiveEffectView
 {
+	/**
+	 * Slot identifier from {@link StatusSlot#slotId}, used by the 2-col renderer to
+	 * resolve parent/child compound pairs.  {@code null} for programmatically-built
+	 * entries that don't come through {@link StatusProjector}.
+	 */
+	public final String slotId;
+
 	/** Sprite/item icon, or {@code null} for text-only entries. */
 	public final BufferedImage icon;
 
@@ -32,14 +39,19 @@ public final class ActiveEffectView
 
 	/**
 	 * True for compound sub-entries (e.g. "next proc" or "next hit" lines).
-	 * ICON_TRAY and 2-col renderers skip secondary entries; TEXT and VERTICAL_BAR show them.
+	 * <ul>
+	 *   <li>TEXT / VERTICAL_BAR — shown with indentation below the parent.</li>
+	 *   <li>2-col — folded as a compact second line inside the parent's cell.</li>
+	 *   <li>ICON_TRAY — skipped (primary icon only).</li>
+	 * </ul>
 	 */
 	public final boolean isSecondary;
 
 	/** Full constructor. */
-	public ActiveEffectView(BufferedImage icon, String label, String textLabel,
+	public ActiveEffectView(String slotId, BufferedImage icon, String label, String textLabel,
 		Color color, Color highlightColor, StatusPriority priority, boolean isSecondary)
 	{
+		this.slotId         = slotId;
 		this.icon           = icon;
 		this.label          = label;
 		this.textLabel      = textLabel;
@@ -49,17 +61,17 @@ public final class ActiveEffectView
 		this.isSecondary    = isSecondary;
 	}
 
-	/** No highlight. */
+	/** No highlight; no slotId. */
 	public ActiveEffectView(BufferedImage icon, String label, String textLabel,
 		Color color, StatusPriority priority, boolean isSecondary)
 	{
-		this(icon, label, textLabel, color, null, priority, isSecondary);
+		this(null, icon, label, textLabel, color, null, priority, isSecondary);
 	}
 
-	/** label == textLabel, no highlight, not secondary. */
+	/** label == textLabel, no highlight, not secondary, no slotId. */
 	public ActiveEffectView(BufferedImage icon, String label, Color color, StatusPriority priority)
 	{
-		this(icon, label, null, color, null, priority, false);
+		this(null, icon, label, null, color, null, priority, false);
 	}
 
 	/** Returns the label to use in TEXT mode. */

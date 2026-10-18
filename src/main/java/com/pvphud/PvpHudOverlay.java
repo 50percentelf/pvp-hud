@@ -1662,7 +1662,7 @@ public class PvpHudOverlay extends Overlay
 		effectScratch.clear();
 		for (StatusSlot s : slots)
 			effectScratch.add(new ActiveEffectView(
-				getIconFor(s.slotId), s.label, s.textLabel, s.color, s.highlightColor,
+				s.slotId, getIconFor(s.slotId), s.label, s.textLabel, s.color, s.highlightColor,
 				s.priority, s.isSecondary));
 		return effectScratch;
 	}
@@ -1730,8 +1730,8 @@ public class PvpHudOverlay extends Overlay
 	{
 		List<ActiveEffectView> out = new ArrayList<>(slots.size());
 		for (StatusSlot s : slots)
-			out.add(new ActiveEffectView(null, s.label, s.textLabel, s.color, s.highlightColor,
-				s.priority, s.isSecondary));
+			out.add(new ActiveEffectView(s.slotId, null, s.label, s.textLabel, s.color,
+				s.highlightColor, s.priority, s.isSecondary));
 		return out;
 	}
 
@@ -1826,18 +1826,59 @@ public class PvpHudOverlay extends Overlay
 	}
 
 	// ── 2-COLUMN GRID: icon above timer, two entries per row (Inventory Hug) ──
+	//
+	// Compound parent/child pairs (e.g. menaphite + menaphite_next) are folded into
+	// a single full-width cell: icon centred, primary label on line 1, secondary on
+	// line 2.  Non-compound primaries pair two-per-row as before.
+	// ICON_TRAY still shows primary only (secondaries always skipped there).
+
+	/**
+	 * Maps a primary slot ID to the slot ID of its associated secondary child, or
+	 * {@code null} if the slot has no child.  Used by {@link #drawEffects2Col} to
+	 * detect and fold compound pairs into one cell.
+	 */
+	static String childSlotIdFor(String parentSlotId)
+	{
+		if (parentSlotId == null) return null;
+		switch (parentSlotId)
+		{
+			case "menaphite":    return "menaphite_next";
+			case "prayer_regen": return "prayer_regen_next";
+			case "corrupt":      return "corrupt_next";
+			case "burn":         return "burn_next";
+			default:             return null;
+		}
+	}
 
 	static int drawEffects2Col(Graphics2D g, List<ActiveEffectView> effects, int lx, int cy, int maxY)
 	{
-		FontMetrics fm   = g.getFontMetrics();
-		final int colW   = (INVY_LEFT_W - 2 * PAD) / 2; // 30px per column
+		FontMetrics fm    = g.getFontMetrics();
+		final int colW    = (INVY_LEFT_W - 2 * PAD) / 2; // 30px per column
 		final int iconGap = 2;
-		final int cellH  = ICON_SIZE + iconGap + fm.getHeight() + 2;
+		final int lineH   = fm.getHeight();
+		final int cellH   = ICON_SIZE + iconGap + lineH + 2;
+		final int compH   = ICON_SIZE + iconGap + lineH * 2 + 2; // compound: two text lines
 		int col = 0;
 		StatusPriority lastPriority = null;
-		for (ActiveEffectView e : effects)
+
+		for (int i = 0; i < effects.size(); i++)
 		{
-			if (e.isSecondary) continue; // next-proc sub-entries not shown in compact 2-col view
+			ActiveEffectView e = effects.get(i);
+			if (e.isSecondary) continue; // already consumed by its parent's lookahead
+
+			// Look ahead: does the immediately-next entry belong to this one as a child?
+			ActiveEffectView child = null;
+			String expectedChildId = childSlotIdFor(e.slotId);
+			if (expectedChildId != null
+				&& i + 1 < effects.size()
+				&& effects.get(i + 1).isSecondary
+				&& expectedChildId.equals(effects.get(i + 1).slotId))
+			{
+				child = effects.get(i + 1);
+				i++; // consume the child so the outer loop skips it
+			}
+
+			// Priority-group separator
 			if (lastPriority != null && e.priority != lastPriority)
 			{
 				if (col == 1) { cy += cellH; col = 0; }
@@ -1845,27 +1886,66 @@ public class PvpHudOverlay extends Overlay
 				cy += 3;
 			}
 			lastPriority = e.priority;
-			if (e.icon == null)
+
+			if (child != null)
 			{
+				// Compound entry: force new row, spans full width (both columns)
 				if (col == 1) { cy += cellH; col = 0; }
-				if (cy + fm.getHeight() + 2 > maxY) break;
+				if (cy + compH > maxY)
+				{
+					if (cy + cellH > maxY) break;
+					child = null; // drop secondary, draw primary only
+				}
+				// Icon centred over both columns
+				if (e.icon != null)
+				{
+					int iconX = lx + (2 * colW - ICON_SIZE) / 2;
+					drawIconHighlight(g, e.highlightColor, iconX, cy, ICON_SIZE);
+					g.drawImage(e.icon, iconX, cy, ICON_SIZE, ICON_SIZE, null);
+				}
+				// Primary label — line 1
+				if (!e.label.isEmpty())
+				{
+					g.setColor(e.color);
+					drawCentered(g, fm, e.label, lx + colW,
+						cy + ICON_SIZE + iconGap + fm.getAscent());
+				}
+				// Secondary label — line 2 (only when child was not dropped)
+				if (child != null && !child.label.isEmpty())
+				{
+					g.setColor(child.color);
+					drawCentered(g, fm, child.label, lx + colW,
+						cy + ICON_SIZE + iconGap + lineH + fm.getAscent());
+				}
+				cy += (child != null ? compH : cellH);
+				// col stays 0 — compound row always ends flush
+			}
+			else if (e.icon == null)
+			{
+				// Text-only entry: one per row, centred
+				if (col == 1) { cy += cellH; col = 0; }
+				if (cy + lineH + 2 > maxY) break;
 				g.setColor(e.color);
 				drawCentered(g, fm, e.label, lx + colW, cy + fm.getAscent());
-				cy += fm.getHeight() + 2;
-				continue;
+				cy += lineH + 2;
 			}
-			if (col == 0 && cy + cellH > maxY) break;
-			int x     = lx + col * colW;
-			int iconX = x + (colW - ICON_SIZE) / 2;
-			drawIconHighlight(g, e.highlightColor, iconX, cy, ICON_SIZE);
-			g.drawImage(e.icon, iconX, cy, ICON_SIZE, ICON_SIZE, null);
-			if (!e.label.isEmpty())
+			else
 			{
-				g.setColor(e.color);
-				drawCentered(g, fm, e.label, x + colW / 2, cy + ICON_SIZE + iconGap + fm.getAscent());
+				// Normal icon entry: two per row
+				if (col == 0 && cy + cellH > maxY) break;
+				int x     = lx + col * colW;
+				int iconX = x + (colW - ICON_SIZE) / 2;
+				drawIconHighlight(g, e.highlightColor, iconX, cy, ICON_SIZE);
+				g.drawImage(e.icon, iconX, cy, ICON_SIZE, ICON_SIZE, null);
+				if (!e.label.isEmpty())
+				{
+					g.setColor(e.color);
+					drawCentered(g, fm, e.label, x + colW / 2,
+						cy + ICON_SIZE + iconGap + fm.getAscent());
+				}
+				col++;
+				if (col == 2) { col = 0; cy += cellH; }
 			}
-			col++;
-			if (col == 2) { col = 0; cy += cellH; }
 		}
 		if (col == 1) cy += cellH;
 		return cy;
