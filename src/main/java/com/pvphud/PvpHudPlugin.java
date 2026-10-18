@@ -50,6 +50,7 @@ import net.runelite.api.events.HitsplatApplied;
 import net.runelite.api.events.InteractingChanged;
 import net.runelite.api.events.ItemContainerChanged;
 import net.runelite.api.events.MenuOptionClicked;
+import net.runelite.api.events.PlayerDespawned;
 import net.runelite.api.events.ResizeableChanged;
 import net.runelite.api.events.StatChanged;
 import net.runelite.api.events.WidgetLoaded;
@@ -62,8 +63,8 @@ import net.runelite.client.config.ConfigManager;
 import net.runelite.client.eventbus.Subscribe;
 import net.runelite.client.events.ConfigChanged;
 import net.runelite.client.game.ItemManager;
-import net.runelite.client.hiscore.HiscoreClient;
 import net.runelite.client.hiscore.HiscoreEndpoint;
+import net.runelite.client.hiscore.HiscoreManager;
 import net.runelite.client.hiscore.HiscoreResult;
 import net.runelite.client.hiscore.HiscoreSkill;
 import net.runelite.client.input.KeyManager;
@@ -89,21 +90,28 @@ public class PvpHudPlugin extends Plugin
 	@Inject private ConfigManager       configManager;
 	@Inject private OverlayManager      overlayManager;
 	@Inject private PvpHudOverlay       overlay;
-	@Inject private PvpHudDebugOverlay  debugOverlay;
 	@Inject private ItemManager         itemManager;
 	@Inject private KeyManager          keyManager;
-	@Inject private HiscoreClient       hiscoreClient;
+	@Inject private HiscoreManager      hiscoreManager;
 	@Inject private ClientThread        clientThread;
+
+	private static final String CONFIG_GROUP = "pvp-hud";
 
 	@Getter
 	private final PvpHudState hudState = new PvpHudState();
 
-	/** Synthetic state used by the debug overlay and fed to the live HUD when debugMode is on. */
-	@Getter
-	private final PvpHudState debugHudState = new PvpHudState();
-
 	/** Names already queued for a hiscores lookup this session (case-lowered). */
 	private final Set<String> lookedUp = new HashSet<>();
+
+	/** Hiscore polling state — the HiscoreManager cache is populated asynchronously. */
+	private String pendingHiscoreName   = null;
+	private int    hiscorePollStartTick = -1;
+	private static final int HISCORE_RECHECK_TICKS = 10;
+	private static final int HISCORE_TIMEOUT_TICKS = 200;
+
+	/** Tick at which the tracked opponent was last seen despawned (-1 = present). */
+	private int opponentMissingTick = -1;
+	private static final int OPPONENT_GRACE_TICKS = 10;
 
 	/** Eat/drink intents awaiting inventory-change confirmation. */
 	private final List<PendingConsumable> pendingConsumables = new ArrayList<>();
@@ -181,6 +189,7 @@ public class PvpHudPlugin extends Plugin
 	@Override
 	protected void startUp() throws Exception
 	{
+		migrateOldConfig();
 		lookedUp.clear();
 		pendingConsumables.clear();
 		pendingOpponentName       = null;
@@ -191,12 +200,14 @@ public class PvpHudPlugin extends Plugin
 		lastFreezeGraphicTick     = -1;
 		lastPlayerPos             = null;
 		modIconRetryCountdown     = 0;
+		pendingHiscoreName        = null;
+		hiscorePollStartTick      = -1;
+		opponentMissingTick       = -1;
 		hudState.fullReset();
 		applyOverlayPosition();
 		overlay.invalidateInventoryHugAnchor();
 		overlay.loadIcons();
 		overlayManager.add(overlay);
-		overlayManager.add(debugOverlay);
 		keyManager.registerKeyListener(hudToggleListener);
 		keyManager.registerKeyListener(timer1Listener);
 		keyManager.registerKeyListener(timer2Listener);
@@ -211,9 +222,48 @@ public class PvpHudPlugin extends Plugin
 		keyManager.unregisterKeyListener(timer1Listener);
 		keyManager.unregisterKeyListener(timer2Listener);
 		overlayManager.remove(overlay);
-		overlayManager.remove(debugOverlay);
 		hudState.fullReset();
 		log.info("PvP HUD stopped");
+	}
+
+	// ── Config migration ──────────────────────────────────────────────────────
+
+	/**
+	 * One-shot config migration from the Plugin Hub v0 schema to v1.
+	 * - CHAT_LOCKED layout is folded into HORIZONTAL_FLOAT with hf_chatLocked=true.
+	 * - Legacy top-level style keys (buffStyle, backgroundOpacity, hpBarStyle, etc.)
+	 *   are copied into their hf_* equivalents when the hf_* key is not already set.
+	 * The configVersion key is used as an idempotency guard.
+	 */
+	private void migrateOldConfig()
+	{
+		String versionStr = configManager.getConfiguration(CONFIG_GROUP, "configVersion");
+		if ("1".equals(versionStr)) return;
+
+		String layoutRaw = configManager.getConfiguration(CONFIG_GROUP, "hudLayout");
+		if ("CHAT_LOCKED".equals(layoutRaw))
+		{
+			configManager.setConfiguration(CONFIG_GROUP, "hudLayout", "HORIZONTAL_FLOAT");
+			configManager.setConfiguration(CONFIG_GROUP, "hf_chatLocked", "true");
+
+			copyIfAbsent("buffStyle",         "hf_buffStyle");
+			copyIfAbsent("backgroundOpacity", "hf_backgroundOpacity");
+			copyIfAbsent("hpBarStyle",        "hf_hpBarStyle");
+			copyIfAbsent("prayerBarStyle",    "hf_prayerBarStyle");
+			copyIfAbsent("runBarStyle",       "hf_runBarStyle");
+			copyIfAbsent("specBarStyle",      "hf_specBarStyle");
+			// showBoostRow intentionally not migrated — boost row is removed in this release.
+		}
+
+		configManager.setConfiguration(CONFIG_GROUP, "configVersion", "1");
+	}
+
+	private void copyIfAbsent(String oldKey, String newKey)
+	{
+		String oldVal = configManager.getConfiguration(CONFIG_GROUP, oldKey);
+		String newVal = configManager.getConfiguration(CONFIG_GROUP, newKey);
+		if (oldVal != null && newVal == null)
+			configManager.setConfiguration(CONFIG_GROUP, newKey, oldVal);
 	}
 
 	private void applyOverlayPosition()
@@ -379,6 +429,9 @@ public class PvpHudPlugin extends Plugin
 			prevMenaphiteVarbit        = -1;
 			prevCorruptionIterations   = -1;
 			lastPlayerPos              = null;
+			pendingHiscoreName         = null;
+			hiscorePollStartTick       = -1;
+			opponentMissingTick        = -1;
 			hudState.fullReset();
 			overlay.invalidateInventoryHugAnchor();
 		}
@@ -719,6 +772,47 @@ public class PvpHudPlugin extends Plugin
 	{
 		int tick = client.getTickCount();
 
+		// Opponent missing grace period — end session if opponent remains despawned.
+		if (opponentMissingTick >= 0)
+		{
+			boolean reappeared = false;
+			List<Player> players = client.getPlayers();
+			if (players != null)
+			{
+				OpponentState opp = hudState.getOpponent();
+				for (Player p : players)
+				{
+					if (p != null && p.getName() != null
+						&& p.getName().equalsIgnoreCase(opp.getName()))
+					{
+						reappeared = true;
+						opp.setCachedActor(p);
+						break;
+					}
+				}
+			}
+			if (reappeared)
+			{
+				opponentMissingTick = -1;
+			}
+			else if (tick - opponentMissingTick >= OPPONENT_GRACE_TICKS)
+			{
+				log.debug("Opponent missing for {} ticks — ending session", OPPONENT_GRACE_TICKS);
+				hudState.endSession();
+				hudState.getOpponent().reset();
+				pendingOpponentName  = null;
+				pendingOpponentActor = null;
+				opponentMissingTick  = -1;
+			}
+		}
+
+		// Poll the HiscoreManager cache for a pending opponent lookup.
+		if (pendingHiscoreName != null)
+		{
+			if ((tick - hiscorePollStartTick) % HISCORE_RECHECK_TICKS == 0)
+				checkHiscores();
+		}
+
 		SelfState self = hudState.getSelf();
 
 		// Movement while frozen proves the freeze broke early.
@@ -915,9 +1009,9 @@ public class PvpHudPlugin extends Plugin
 			Actor interacting = client.getLocalPlayer().getInteracting();
 			if (!AttackAnimations.isBlocked(anim) && interacting instanceof Player)
 			{
-				long tick  = client.getTickCount();
-				int  speed = getWeaponSpeed();
-				hudState.getActionClock().setAttack(tick, speed);
+				int speed = getWeaponSpeed();
+				if (speed > 0)
+					hudState.getActionClock().setAttack(client.getTickCount(), speed);
 			}
 		}
 		// Opponent Vengeance animation detection removed — deferred post-v0.1.
@@ -977,6 +1071,19 @@ public class PvpHudPlugin extends Plugin
 		}
 	}
 
+	// ── Opponent despawn — session lifecycle ─────────────────────────────────
+
+	@Subscribe
+	public void onPlayerDespawned(PlayerDespawned event)
+	{
+		Player player = event.getPlayer();
+		if (player == null || player.getName() == null) return;
+		OpponentState opp = hudState.getOpponent();
+		if (!opp.isTracked()) return;
+		if (player.getName().equalsIgnoreCase(opp.getName()))
+			opponentMissingTick = client.getTickCount();
+	}
+
 	/**
 	 * Starts (or refreshes) a fight session for the given player.
 	 * Safe to call multiple times for the same opponent.
@@ -988,6 +1095,7 @@ public class PvpHudPlugin extends Plugin
 		{
 			hudState.getOpponent().setName(name);
 			hudState.getOpponent().setCachedActor(actor);
+			opponentMissingTick = -1;
 			return;
 		}
 		// New opponent — start fresh.
@@ -998,6 +1106,7 @@ public class PvpHudPlugin extends Plugin
 		enqueueHiscoresLookup(name);
 		pendingOpponentName  = null;
 		pendingOpponentActor = null;
+		opponentMissingTick  = -1;
 	}
 
 	/** True if the target player can be attacked in the current zone and at the current combat level. */
@@ -1264,15 +1373,15 @@ public class PvpHudPlugin extends Plugin
 	private int getWeaponSpeed()
 	{
 		ItemContainer equipment = client.getItemContainer(InventoryID.EQUIPMENT);
-		if (equipment == null) return 4;
+		if (equipment == null) return 0;
 		Item weapon = equipment.getItem(EquipmentInventorySlot.WEAPON.getSlotIdx());
-		if (weapon == null) return 4;
+		if (weapon == null) return 0;
 		ItemStats stats = itemManager.getItemStats(weapon.getId());
-		if (stats == null) return 4;
+		if (stats == null) return 0;
 		ItemEquipmentStats eq = stats.getEquipment();
-		if (eq == null) return 4;
+		if (eq == null) return 0;
 		int speed = eq.getAspeed();
-		return speed > 0 ? speed : 4;
+		return speed > 0 ? speed : 0;
 	}
 
 	/**
@@ -1407,7 +1516,7 @@ public class PvpHudPlugin extends Plugin
 	/** Returns true when the player is inside Last Man Standing. */
 	private boolean isInLms()
 	{
-		// TODO: detect LMS via region check or varbit
+		// LMS detection not yet implemented; LMS immunity timer not active.
 		return false;
 	}
 
@@ -1458,65 +1567,79 @@ public class PvpHudPlugin extends Plugin
 	private void enqueueHiscoresLookup(String playerName)
 	{
 		String key = playerName.toLowerCase();
-		if (!lookedUp.add(key)) return; // already queued
+		if (!lookedUp.add(key)) return;
+		log.debug("PvP HUD hiscores lookup queued: {}", playerName);
+		pendingHiscoreName   = playerName;
+		hiscorePollStartTick = client.getTickCount();
+		checkHiscores();
+	}
 
-		log.debug("PvP HUD hiscores lookup started: player={}", playerName);
+	/**
+	 * Polls the HiscoreManager cache for the pending opponent. Called from onGameTick
+	 * every HISCORE_RECHECK_TICKS until a result is populated or the timeout expires.
+	 * HiscoreManager.lookupAsync returns cached data immediately or null; the first call
+	 * also triggers a background refresh.
+	 */
+	private void checkHiscores()
+	{
+		if (pendingHiscoreName == null) return;
+		String name = pendingHiscoreName;
 
-		hiscoreClient.lookupAsync(playerName, HiscoreEndpoint.NORMAL)
-			.whenComplete((result, ex) ->
-			{
-				if (ex != null || result == null)
-				{
-					log.debug("PvP HUD hiscores NORMAL endpoint failed for {}: {}", playerName,
-						ex != null ? ex.getMessage() : "null result");
-					return;
-				}
-				log.debug("PvP HUD hiscores NORMAL endpoint success: player={}", playerName);
-				applyHiscoresResult(playerName, result);
-			});
+		OpponentState opp = hudState.getOpponent();
+		if (!opp.isTracked() || !name.equalsIgnoreCase(opp.getName()))
+		{
+			pendingHiscoreName = null;
+			return;
+		}
 
-		// Account-type detection: run ironman endpoint checks in parallel.
-		// Only upgrades account type (NORMAL < IM < UIM < HC) — never downgrades.
-		hiscoreClient.lookupAsync(playerName, HiscoreEndpoint.IRONMAN)
-			.whenComplete((r, ex) ->
+		if (client.getTickCount() - hiscorePollStartTick > HISCORE_TIMEOUT_TICKS)
+		{
+			log.debug("PvP HUD hiscores timeout for {}", name);
+			pendingHiscoreName = null;
+			return;
+		}
+
+		boolean normalDone  = opp.getStats().getHitpoints() > 0;
+		boolean accountDone = opp.getStats().getAccountType() != OpponentStats.AccountType.NORMAL;
+
+		if (!normalDone)
+		{
+			HiscoreResult r = hiscoreManager.lookupAsync(name, HiscoreEndpoint.NORMAL);
+			if (r != null)
 			{
-				boolean success = ex == null && r != null && skillLevel(r, HiscoreSkill.HITPOINTS) > 0;
-				log.debug("PvP HUD hiscores IRONMAN endpoint: player={} success={}", playerName, success);
-				if (success)
-					applyAccountType(playerName, OpponentStats.AccountType.IRONMAN);
-			});
-		hiscoreClient.lookupAsync(playerName, HiscoreEndpoint.ULTIMATE_IRONMAN)
-			.whenComplete((r, ex) ->
-			{
-				boolean success = ex == null && r != null && skillLevel(r, HiscoreSkill.HITPOINTS) > 0;
-				log.debug("PvP HUD hiscores ULTIMATE_IRONMAN endpoint: player={} success={}", playerName, success);
-				if (success)
-					applyAccountType(playerName, OpponentStats.AccountType.ULTIMATE_IRONMAN);
-			});
-		hiscoreClient.lookupAsync(playerName, HiscoreEndpoint.HARDCORE_IRONMAN)
-			.whenComplete((r, ex) ->
-			{
-				boolean success = ex == null && r != null && skillLevel(r, HiscoreSkill.HITPOINTS) > 0;
-				log.debug("PvP HUD hiscores HARDCORE_IRONMAN endpoint: player={} success={}", playerName, success);
-				if (success)
-					applyAccountType(playerName, OpponentStats.AccountType.HARDCORE_IRONMAN);
-			});
+				applyHiscoresResult(name, r);
+				normalDone = true;
+			}
+		}
+
+		HiscoreResult hc = hiscoreManager.lookupAsync(name, HiscoreEndpoint.HARDCORE_IRONMAN);
+		HiscoreResult ui = hiscoreManager.lookupAsync(name, HiscoreEndpoint.ULTIMATE_IRONMAN);
+		HiscoreResult im = hiscoreManager.lookupAsync(name, HiscoreEndpoint.IRONMAN);
+
+		if (hc != null && skillLevel(hc, HiscoreSkill.HITPOINTS) > 0)
+			applyAccountType(name, OpponentStats.AccountType.HARDCORE_IRONMAN);
+		else if (ui != null && skillLevel(ui, HiscoreSkill.HITPOINTS) > 0)
+			applyAccountType(name, OpponentStats.AccountType.ULTIMATE_IRONMAN);
+		else if (im != null && skillLevel(im, HiscoreSkill.HITPOINTS) > 0)
+			applyAccountType(name, OpponentStats.AccountType.IRONMAN);
+
+		if (!normalDone || (!accountDone && hc == null && ui == null && im == null))
+			return; // still pending; next poll driven by onGameTick
+
+		pendingHiscoreName = null;
 	}
 
 	private void applyAccountType(String playerName, OpponentStats.AccountType type)
 	{
-		clientThread.invoke(() ->
+		OpponentState opp = hudState.getOpponent();
+		if (!opp.isTracked() || !playerName.equalsIgnoreCase(opp.getName())) return;
+		if (type.ordinal() > opp.getStats().getAccountType().ordinal())
 		{
-			OpponentState opp = hudState.getOpponent();
-			if (!opp.isTracked() || !playerName.equalsIgnoreCase(opp.getName())) return;
-			if (type.ordinal() > opp.getStats().getAccountType().ordinal())
-			{
-				opp.getStats().setAccountType(type);
-				log.debug("AccountType set for {}: {}", playerName, type);
-				overlay.ensureModIconsLoaded();
-				overlay.logBadgeCacheState(playerName, type);
-			}
-		});
+			opp.getStats().setAccountType(type);
+			log.debug("AccountType set for {}: {}", playerName, type);
+			overlay.ensureModIconsLoaded();
+			overlay.logBadgeCacheState(playerName, type);
+		}
 	}
 
 	private void applyHiscoresResult(String playerName, HiscoreResult result)
@@ -1528,19 +1651,15 @@ public class PvpHudPlugin extends Plugin
 		int ranged    = skillLevel(result, HiscoreSkill.RANGED);
 		int magic     = skillLevel(result, HiscoreSkill.MAGIC);
 
-		clientThread.invoke(() ->
-		{
-			OpponentState opp = hudState.getOpponent();
-			if (!opp.isTracked() || !playerName.equalsIgnoreCase(opp.getName())) return;
-			opp.getStats().setAttack(attack);
-			opp.getStats().setDefence(defence);
-			opp.getStats().setStrength(strength);
-			opp.getStats().setHitpoints(hitpoints);
-			opp.getStats().setRanged(ranged);
-			opp.getStats().setMagic(magic);
-			// Seed maxHp from hiscores — overrides the rough back-calculation.
-			if (hitpoints > 0) opp.setMaxHp(hitpoints);
-		});
+		OpponentState opp = hudState.getOpponent();
+		if (!opp.isTracked() || !playerName.equalsIgnoreCase(opp.getName())) return;
+		opp.getStats().setAttack(attack);
+		opp.getStats().setDefence(defence);
+		opp.getStats().setStrength(strength);
+		opp.getStats().setHitpoints(hitpoints);
+		opp.getStats().setRanged(ranged);
+		opp.getStats().setMagic(magic);
+		if (hitpoints > 0) opp.setMaxHp(hitpoints);
 	}
 
 	private static int skillLevel(HiscoreResult result, HiscoreSkill skill)

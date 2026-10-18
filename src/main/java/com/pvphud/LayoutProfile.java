@@ -5,9 +5,6 @@ class LayoutProfile
 {
 	final BuffStyle       buffStyle;
 	final int             backgroundOpacity;
-	final boolean         showBoostRow;
-	final boolean         boostXOverX;
-	final boolean         reserveBoostDockWhenHidden;
 	final boolean         chatLocked;
 	final BarDisplayStyle hpBarStyle;
 	final BarDisplayStyle prayerBarStyle;
@@ -15,21 +12,17 @@ class LayoutProfile
 	final BarDisplayStyle specBarStyle;
 
 	LayoutProfile(BuffStyle buffStyle, int backgroundOpacity,
-		boolean showBoostRow, boolean boostXOverX, boolean reserveBoostDockWhenHidden,
 		boolean chatLocked,
 		BarDisplayStyle hpBarStyle, BarDisplayStyle prayerBarStyle,
 		BarDisplayStyle runBarStyle, BarDisplayStyle specBarStyle)
 	{
-		this.buffStyle                  = buffStyle;
-		this.backgroundOpacity          = backgroundOpacity;
-		this.showBoostRow               = showBoostRow;
-		this.boostXOverX                = boostXOverX;
-		this.reserveBoostDockWhenHidden = reserveBoostDockWhenHidden;
-		this.chatLocked                 = chatLocked;
-		this.hpBarStyle                 = hpBarStyle;
-		this.prayerBarStyle             = prayerBarStyle;
-		this.runBarStyle                = runBarStyle;
-		this.specBarStyle               = specBarStyle;
+		this.buffStyle         = buffStyle;
+		this.backgroundOpacity = backgroundOpacity;
+		this.chatLocked        = chatLocked;
+		this.hpBarStyle        = hpBarStyle;
+		this.prayerBarStyle    = prayerBarStyle;
+		this.runBarStyle       = runBarStyle;
+		this.specBarStyle      = specBarStyle;
 	}
 
 	/** Reads the profile for {@code layout} from the given config. */
@@ -38,28 +31,19 @@ class LayoutProfile
 		switch (layout)
 		{
 			case HORIZONTAL_FLOAT:
-			{
-				boolean chatLocked = config.hfChatLocked();
 				return new LayoutProfile(
 					config.hfBuffStyle(),
 					config.hfBackgroundOpacity(),
-					false,
-					config.hfBoostXOverX(),
-					chatLocked ? false : config.hfReserveBoostDockWhenHidden(),
-					chatLocked,
+					config.hfChatLocked(),
 					config.hfHpBarStyle(),
 					config.hfPrayerBarStyle(),
 					config.hfRunBarStyle(),
 					config.hfSpecBarStyle()
 				);
-			}
 			case VERTICAL_FLOAT:
 				return new LayoutProfile(
 					config.vfBuffStyle(),
 					config.vfBackgroundOpacity(),
-					false,
-					config.vfBoostXOverX(),
-					config.vfReserveBoostDockWhenHidden(),
 					false,
 					config.vfHpBarStyle(),
 					config.vfPrayerBarStyle(),
@@ -71,9 +55,6 @@ class LayoutProfile
 				return new LayoutProfile(
 					config.ihBuffStyle(),
 					config.ihBackgroundOpacity(),
-					false,
-					config.ihBoostXOverX(),
-					false,
 					false,
 					config.ihHpBarStyle(),
 					config.ihPrayerBarStyle(),

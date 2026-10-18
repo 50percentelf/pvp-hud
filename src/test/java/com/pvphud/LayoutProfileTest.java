@@ -20,8 +20,6 @@ public class LayoutProfileTest
 		@Override public boolean         hfChatLocked()                   { return false; }
 		@Override public BuffStyle       hfBuffStyle()                    { return BuffStyle.ICON_TRAY; }
 		@Override public int             hfBackgroundOpacity()            { return 50; }
-		@Override public boolean         hfBoostXOverX()                  { return false; }
-		@Override public boolean         hfReserveBoostDockWhenHidden()   { return true; }
 		@Override public BarDisplayStyle hfHpBarStyle()                   { return BarDisplayStyle.NUMBERS_ONLY; }
 		@Override public BarDisplayStyle hfPrayerBarStyle()               { return BarDisplayStyle.BARS_ONLY; }
 		@Override public BarDisplayStyle hfRunBarStyle()                  { return BarDisplayStyle.BARS_AND_NUMBERS; }
@@ -30,8 +28,6 @@ public class LayoutProfileTest
 		// ── Vertical Float ───────────────────────────────────────────────────────
 		@Override public BuffStyle       vfBuffStyle()                    { return BuffStyle.VERTICAL_BAR; }
 		@Override public int             vfBackgroundOpacity()            { return 200; }
-		@Override public boolean         vfBoostXOverX()                  { return false; }
-		@Override public boolean         vfReserveBoostDockWhenHidden()   { return false; }
 		@Override public BarDisplayStyle vfHpBarStyle()                   { return BarDisplayStyle.HIDDEN; }
 		@Override public BarDisplayStyle vfPrayerBarStyle()               { return BarDisplayStyle.BARS_AND_NUMBERS; }
 		@Override public BarDisplayStyle vfRunBarStyle()                  { return BarDisplayStyle.NUMBERS_ONLY; }
@@ -40,7 +36,6 @@ public class LayoutProfileTest
 		// ── Inventory Hug ────────────────────────────────────────────────────────
 		@Override public BuffStyle       ihBuffStyle()       { return BuffStyle.TEXT; }
 		@Override public int             ihBackgroundOpacity(){ return 150; }
-		@Override public boolean         ihBoostXOverX()     { return true; }
 		@Override public BarDisplayStyle ihHpBarStyle()      { return BarDisplayStyle.BARS_AND_NUMBERS; }
 		@Override public BarDisplayStyle ihPrayerBarStyle()  { return BarDisplayStyle.HIDDEN; }
 		@Override public BarDisplayStyle ihRunBarStyle()     { return BarDisplayStyle.BARS_ONLY; }
@@ -48,7 +43,7 @@ public class LayoutProfileTest
 
 		// ── Global ──────────────────────────────────────────────────────────────
 		@Override public HudMode  hudMode()       { return HudMode.MANUAL; }
-		@Override public boolean  hudVisible()    { return false; }
+		@Override public boolean  hudVisible()    { return true; }
 		@Override public HudLayout hudLayout()   { return HudLayout.HORIZONTAL_FLOAT; }
 		@Override public boolean  showHpShake()  { return true; }
 		@Override public boolean  showFreezeTimer()  { return true; }
@@ -66,9 +61,7 @@ public class LayoutProfileTest
 		LayoutProfile p = LayoutProfile.forLayout(HudLayout.HORIZONTAL_FLOAT, CONFIG);
 		assertEquals(BuffStyle.ICON_TRAY, p.buffStyle);
 		assertEquals(50, p.backgroundOpacity);
-		assertFalse(p.showBoostRow);
-		assertFalse(p.boostXOverX);
-		assertTrue(p.reserveBoostDockWhenHidden);
+		assertFalse(p.chatLocked);
 		assertEquals(BarDisplayStyle.NUMBERS_ONLY, p.hpBarStyle);
 		assertEquals(BarDisplayStyle.BARS_ONLY, p.prayerBarStyle);
 		assertEquals(BarDisplayStyle.BARS_AND_NUMBERS, p.runBarStyle);
@@ -81,9 +74,7 @@ public class LayoutProfileTest
 		LayoutProfile p = LayoutProfile.forLayout(HudLayout.VERTICAL_FLOAT, CONFIG);
 		assertEquals(BuffStyle.VERTICAL_BAR, p.buffStyle);
 		assertEquals(200, p.backgroundOpacity);
-		assertFalse(p.showBoostRow);
-		assertFalse(p.boostXOverX);
-		assertFalse(p.reserveBoostDockWhenHidden);
+		assertFalse(p.chatLocked);
 		assertEquals(BarDisplayStyle.HIDDEN, p.hpBarStyle);
 		assertEquals(BarDisplayStyle.BARS_AND_NUMBERS, p.prayerBarStyle);
 		assertEquals(BarDisplayStyle.NUMBERS_ONLY, p.runBarStyle);
@@ -96,9 +87,7 @@ public class LayoutProfileTest
 		LayoutProfile p = LayoutProfile.forLayout(HudLayout.INVENTORY_HUG, CONFIG);
 		assertEquals(BuffStyle.TEXT, p.buffStyle);
 		assertEquals(150, p.backgroundOpacity);
-		assertFalse(p.showBoostRow); // global flag; same value for all layouts
-		assertTrue(p.boostXOverX);
-		assertFalse(p.reserveBoostDockWhenHidden); // not applicable
+		assertFalse(p.chatLocked);
 		assertEquals(BarDisplayStyle.BARS_AND_NUMBERS, p.hpBarStyle);
 		assertEquals(BarDisplayStyle.HIDDEN, p.prayerBarStyle);
 		assertEquals(BarDisplayStyle.BARS_ONLY, p.runBarStyle);
@@ -126,23 +115,13 @@ public class LayoutProfileTest
 	}
 
 	@Test
-	public void reserveBoostDock_falseForInvyHugAndChatLocked()
-	{
-		assertFalse(LayoutProfile.forLayout(HudLayout.INVENTORY_HUG, CONFIG).reserveBoostDockWhenHidden);
-		// HF with chatLocked=false reads the real config value (true in our stub).
-		assertTrue(LayoutProfile.forLayout(HudLayout.HORIZONTAL_FLOAT, CONFIG).reserveBoostDockWhenHidden);
-	}
-
-	@Test
-	public void horizFloat_chatLocked_forcesReserveDockFalse()
+	public void horizFloat_chatLocked_setsFlag()
 	{
 		PvpHudConfig locked = new PvpHudConfig()
 		{
 			@Override public boolean hfChatLocked()                 { return true; }
-			@Override public boolean hfReserveBoostDockWhenHidden() { return true; }
 			@Override public BuffStyle       hfBuffStyle()          { return BuffStyle.VERTICAL_BAR; }
 			@Override public int             hfBackgroundOpacity()  { return 220; }
-			@Override public boolean         hfBoostXOverX()        { return false; }
 			@Override public BarDisplayStyle hfHpBarStyle()         { return BarDisplayStyle.BARS_AND_NUMBERS; }
 			@Override public BarDisplayStyle hfPrayerBarStyle()     { return BarDisplayStyle.BARS_AND_NUMBERS; }
 			@Override public BarDisplayStyle hfRunBarStyle()        { return BarDisplayStyle.BARS_AND_NUMBERS; }
@@ -150,6 +129,5 @@ public class LayoutProfileTest
 		};
 		LayoutProfile p = LayoutProfile.forLayout(HudLayout.HORIZONTAL_FLOAT, locked);
 		assertTrue(p.chatLocked);
-		assertFalse("chatLocked must suppress reserveBoostDockWhenHidden", p.reserveBoostDockWhenHidden);
 	}
 }

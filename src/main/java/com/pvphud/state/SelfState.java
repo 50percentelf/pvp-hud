@@ -50,7 +50,7 @@ public class SelfState
 	/** Counts down from 100 to 0 each game tick; reset when a natural HP regen tick is detected. */
 	@Getter @Setter private int hpRegenTicksRemaining;
 
-	/** Wall-clock ms of the last incoming hitsplat; -1 = none yet. Used for HP bar shake. */
+	/** Wall-clock ms of the last positive incoming damage; -1 = none yet. Used for HP bar shake. */
 	@Getter @Setter private long lastIncomingDamageMs = -1;
 
 	/** Damage amount of the last incoming hit; 0 = none. Used for transient splat display. */

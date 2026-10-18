@@ -1,6 +1,6 @@
 # PvP HUD
 
-A configurable PvP combat HUD for RuneLite. Consolidates fight tracking, buff timers, resource bars, boost monitoring, and combat-protection indicators into a single configurable overlay.
+A configurable PvP combat HUD for RuneLite. Consolidates fight tracking, buff timers, resource bars, and combat-protection indicators into a single configurable overlay.
 
 ---
 
@@ -8,10 +8,9 @@ A configurable PvP combat HUD for RuneLite. Consolidates fight tracking, buff ti
 
 | Layout | Description |
 |---|---|
-| **Chat Locked** | Fills the chatbox region and stays pinned there. Cannot be dragged. |
-| **Horizontal Float** | Same proportions as Chat Locked but freely draggable via Alt+drag. |
+| **Horizontal Float** | Freely draggable chatbox-sized panel. Enable **Pin to Chatbox** (Horizontal Float option) to lock it to the chatbox region. |
 | **Vertical Float** | Narrow stacked panel, freely draggable via Alt+drag. |
-| **Inventory Hug** | Attaches a left rail and top rail flush against the inventory panel without overlapping it. Top rail shows the opponent panel. Left rail shows HP / Prayer / Run / Spec bars; if supported ammo is equipped, a dedicated ammo row appears below Spec showing the actual equipped arrow/bolt icon (18px) and current quantity. Optionally shows boost stats. The action corner shows OUT / IN damage totals (dealt / received) below the attack clock. |
+| **Inventory Hug** | Attaches a left rail and top rail flush against the inventory panel without overlapping it. Top rail shows the opponent panel. Left rail shows HP / Prayer / Run / Spec bars; if supported ammo is equipped, a dedicated ammo row appears below Spec showing the actual equipped arrow/bolt icon (18px) and current quantity. The action corner shows OUT / IN damage totals (dealt / received) below the attack clock. |
 
 Float layouts remember their last dragged position independently per layout and per gameframe (Fixed / Resizable Classic / Resizable Modern).
 
@@ -37,7 +36,7 @@ Float layouts remember their last dragged position independently per layout and 
 | Stack format | Single hit: `34`. Two same-tick hits: `20+8`. Three or more: `42 (3)`. |
 | Smite drain | `-Np` suffix on outgoing hits where you had Smite active. |
 | Session totals | OUT (cyan) dealt total and IN (red) received total, pinned to the bottom. |
-| Rows shown | Horizontal Float / Chat Locked: 3 most recent ticks. Vertical Float: 2 most recent ticks. |
+| Rows shown | Horizontal Float: 3 most recent ticks. Vertical Float: 2 most recent ticks. |
 | Fight Over banner | Shown after opponent death or session timeout. |
 
 ### You (right / bottom)
@@ -84,17 +83,10 @@ Displayed in the YOU panel. Three display styles: **Text**, **Vertical Bar** (ic
 | `E` + 3 dots | Eat cooldown (3 ticks). |
 | `P` + 3 dots | Potion cooldown (3 ticks). |
 | `T1 / T2 M:SS` | Manual countdown timers, each bound to a configurable hotkey. |
-| `PJ Xs` | PJ-safe timer: 20 ticks in Wilderness, 16 ticks on PvP worlds. Refreshed by every attack exchange including 0-damage splashes. |
 | `IMM Xs` | Post-kill immunity timer (LMS only, 33 ticks). |
-| `LOG` | Combat logout lock active (16 ticks after receiving any hit). |
-| `LCK` | Under-attack lock active (20 ticks after receiving any hit — must fight back at current attacker). |
-| `W#` | Current Wilderness level. |
-| `MULTI` | Multi-combat zone indicator. |
+| `W#` | Current Wilderness level (requires Show Zone Info). |
+| `MULTI` | Multi-combat zone indicator (requires Show Zone Info). |
 | `[ammo icon] qty` | Equipped ammo quantity (arrows/bolts from ammo slot). Color: white >25, yellow ≤25, red ≤10. Conventional ammo only — blowpipe darts and thrown-weapon stacks are not tracked. In Inventory Hug this appears as a dedicated rail row (not in the action strip) — see layout table above. |
-
-### Boost row
-
-ATK / STR / DEF / RNG / MAG skill icons with current boost level. Configurable as delta (`+16`) or boosted-over-base (`115/99`). Can be hidden.
 
 ---
 
@@ -102,15 +94,15 @@ ATK / STR / DEF / RNG / MAG skill icons with current boost level. Configurable a
 
 | Setting | Default | Notes |
 |---|---|---|
+| HUD Enabled | On | Master enable/disable. HUD visible on fresh install. |
 | HUD Mode | Manual | Manual (always show when enabled), PvP areas only (Wilderness + PvP worlds), or Auto (show only while a fight session is active). |
-| HUD Layout | Chat Locked | See Layouts above. |
-| Buff Display Style | Vertical Bar | Text, Vertical Bar, Icon Tray. |
-| Background Opacity | 220 | 0–255. |
+| HUD Layout | Horizontal Float | See Layouts above. |
+| Status Display Style | Vertical Bar | Text, Vertical Bar, Icon Tray. Set per layout. |
+| Background Opacity | 220 | 0–255. Set per layout. |
 | HP Bar Shake | On | Shake on incoming hit. |
-| Show Boost Row | On | ATK/STR/DEF/RNG/MAG row. |
-| Show Boosts as Boosted/Base | Off | Displays `115/99` instead of `+16`. |
 | Show Freeze Timer | On | ICE countdown in buff strip. |
-| Show Divine Timers | On | DSC/DRG/DMG/BAS/BTM/MEN in buff strip. |
+| Potion Effect Timers | On | DSC/DRG/DMG/BAS/BTM/MEN in buff strip. |
+| Show Zone Info | Off | W# and MLT indicators in the action strip. |
 | HP / Prayer / Run / Spec Bar | Bars + Numbers | Per-bar: Bars + Numbers, Bars Only, Numbers Only, Hidden. |
 | Toggle HUD Hotkey | Unset | Shows/hides the entire HUD. |
 | Timer 1 / Timer 2 Hotkey | Unset | Start/stop manual countdown timers. |
@@ -142,27 +134,4 @@ These effects have no accessible varbit or game message that reliably encodes th
 - **Special prayer-impact tracking** — Sara Strike, Clear Mind, and Sapphire bolt prayer-drain attribution. Enum values defined; no v0.1 code path sets them.
 - LMS context detection for the IMM timer (currently always inactive).
 - CHANCE! hit detection (requires opponent defence stats and combat formula).
-
----
-
-## Experimental — Pending RuneLite Ruling
-
-These features are **not implemented** and are **not enableable**. They appear in the plugin config panel as an informational heading only. Development will not begin until explicit RuneLite team guidance is received.
-
-### Streamer Output — Pending RuneLite ruling
-
-Renders the PvP HUD into a separate standalone window for OBS/window capture. Shares the exact same `PvpHudState` as the in-game overlay — no duplicate combat logic. The streamer window never queries `Client` directly; it renders immutable snapshots only. No HTTP server, WebSocket endpoint, or browser-source API in the initial design.
-
-**Not implemented. Awaiting RuneLite review.**
-
-### Opponent Attack Cycle — Pending RuneLite ruling
-
-Live countdown to the opponent's next possible attack, derived from an observed combat animation. No attack-style prediction, no prayer recommendation, no target identification, no freeze tracking.
-
-**Not implemented. Awaiting RuneLite review.**
-
----
-
-## Known bugs
-
-*No confirmed bugs at this time. Bug reports will be listed here and removed only after in-game confirmation of the fix.*
+- Combat Lock indicators (PJ / LOG / LCK) — the underlying ProtectionState is tracked but display is deferred pending in-game verification across edge cases.

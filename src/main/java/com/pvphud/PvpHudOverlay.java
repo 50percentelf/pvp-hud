@@ -45,7 +45,6 @@ public class PvpHudOverlay extends Overlay
 {
 	// ── Layout constants ──────────────────────────────────────────────────────
 	private static final int ACTION_STRIP_H = 22;
-	private static final int BOOST_ROW_H    = 34; // icon (18) + gap (2) + text (~9) + padding
 	private static final int PAD            = 6;
 	private static final int BAR_H          = 5;
 	private static final int VERT_W         = 220;
@@ -166,9 +165,6 @@ public class PvpHudOverlay extends Overlay
 	private HudLayout    lastLayout;
 	private LayoutProfile activeProfile = null;
 	private boolean      lastHfChatLocked = false;
-
-	/** True only during renderForDebug — bypasses config visibility guards so injected effects always show. */
-	private boolean debugRendering = false;
 
 	// ── Inventory Hug anchor cache ────────────────────────────────────────────
 	// Recomputed only on: startup, LOGGED_IN/HOPPING, layout switch, canvas
@@ -319,9 +315,8 @@ public class PvpHudOverlay extends Overlay
 	@Override
 	public Dimension render(Graphics2D g)
 	{
-		boolean debugMode = config.debugMode();
-		PvpHudState state = debugMode ? plugin.getDebugHudState() : plugin.getHudState();
-		if (!debugMode && !plugin.shouldShowHud())
+		PvpHudState state = plugin.getHudState();
+		if (!plugin.shouldShowHud())
 		{
 			return null;
 		}
@@ -424,7 +419,7 @@ public class PvpHudOverlay extends Overlay
 				layout.setChatboxBounds(new Rectangle(local));
 				layout.markDirty();
 			}
-			if (layout.isDirty()) computeHorizLayout(layout, local, activeProfile.showBoostRow, false);
+			if (layout.isDirty()) computeHorizLayout(layout, local);
 			drawAll(g, state, layout, local, normal, small, false);
 			return new Dimension(clBounds.width, clBounds.height);
 		}
@@ -439,7 +434,7 @@ public class PvpHudOverlay extends Overlay
 			layout.setChatboxBounds(new Rectangle(bounds));
 			layout.markDirty();
 		}
-		if (layout.isDirty()) computeHorizLayout(layout, bounds, activeProfile.showBoostRow, activeProfile.reserveBoostDockWhenHidden);
+		if (layout.isDirty()) computeHorizLayout(layout, bounds);
 
 		drawAll(g, state, layout, bounds, normal, small, false);
 		return new Dimension(w, h);
@@ -449,7 +444,7 @@ public class PvpHudOverlay extends Overlay
 		HudLayoutState layout, Font normal, Font small)
 	{
 		Rectangle bounds = new Rectangle(0, 0, VERT_W, VERT_H);
-		if (layout.isDirty()) computeVertLayout(layout, bounds, activeProfile.showBoostRow, activeProfile.reserveBoostDockWhenHidden);
+		if (layout.isDirty()) computeVertLayout(layout, bounds);
 
 		drawAll(g, state, layout, bounds, normal, small, true);
 		return new Dimension(VERT_W, VERT_H);
@@ -950,43 +945,6 @@ public class PvpHudOverlay extends Overlay
 		cy = drawInventoryAmmoRow(g, fm, lx, cy, railW,
 			self.getAmmoItemId(), self.getAmmoQuantity());
 
-		// ── Self boost stats (compact: icon + current level, 5 columns) ──
-		if (activeProfile.showBoostRow)
-		{
-			g.setColor(DIVIDER);
-			g.drawLine(lx, cy, INVY_LEFT_W - lx, cy);
-			cy += 3;
-
-			final int ICN  = 9;
-			final int colW = INVY_LEFT_W / 5; // 14 px per column
-			int[] boosted = { boosts.getAttackBoosted(), boosts.getStrengthBoosted(),
-			                  boosts.getDefenceBoosted(), boosts.getRangedBoosted(),
-			                  boosts.getMagicBoosted() };
-			int[] real    = { boosts.getAttackReal(), boosts.getStrengthReal(),
-			                  boosts.getDefenceReal(), boosts.getRangedReal(),
-			                  boosts.getMagicReal() };
-			BufferedImage[] bIcons = { atkSkillIcon, strSkillIcon, defSkillIcon,
-			                           rngSkillIcon, magSkillIcon };
-			for (int i = 0; i < 5; i++)
-			{
-				int delta = boosted[i] - real[i];
-				g.setColor(delta > 0 ? GREEN : delta < 0 ? RED : GRAY);
-				int iconX = i * colW + (colW - ICN) / 2;
-				BufferedImage icon = debugIcon(bIcons[i]);
-				if (icon != null)
-					g.drawImage(icon, iconX, cy, ICN, ICN, null);
-				else
-					g.fillRect(iconX + 2, cy + 2, ICN - 4, ICN - 4); // coloured dot while icon loads
-			}
-			for (int i = 0; i < 5; i++)
-			{
-				int delta = boosted[i] - real[i];
-				g.setColor(delta > 0 ? GREEN : delta < 0 ? RED : GRAY);
-				drawCentered(g, fm, String.valueOf(boosted[i]), i * colW + colW / 2, cy + ICN + fm.getAscent());
-			}
-			cy += ICN + fm.getHeight() + 2;
-		}
-
 		List<ActiveEffectView> selfBuffs = buildActiveEffects(self, fx, poison, boosts);
 		if (!selfBuffs.isEmpty())
 		{
@@ -1000,8 +958,9 @@ public class PvpHudOverlay extends Overlay
 		// ── Action labels (text-only — no standard icon exists for these) ──────
 		if (cy >= railMaxY) return;
 		ProtectionState prot = state.getProtection();
-		boolean showLocks    = debugRendering || config.showCombatLocks();
-		boolean showZoneInfo = debugRendering || config.showZoneInfo();
+		// Combat locks (PJ/LOG/LCK) deferred pending in-game verification.
+		boolean showLocks    = false;
+		boolean showZoneInfo = config.showZoneInfo();
 		boolean hasProt = prot.isLmsImmune()
 			|| (showLocks && (prot.isPjSafe() || prot.isInCombatLogoutLock() || prot.isUnderAttackLocked()));
 		ManualTimerState t1 = state.getTimer1();
@@ -1158,26 +1117,23 @@ public class PvpHudOverlay extends Overlay
 	// ── Layout computation ────────────────────────────────────────────────────
 
 	// Package-private and static so HudLayoutBoundsTest can call them without a RuneLite client.
-	static void computeHorizLayout(HudLayoutState layout, Rectangle b, boolean showBoostRow, boolean reserveDock)
+	static void computeHorizLayout(HudLayoutState layout, Rectangle b)
 	{
-		int boostH = (showBoostRow || reserveDock) ? BOOST_ROW_H : 0;
-		int mainH  = b.height - ACTION_STRIP_H - boostH;
+		int mainH  = b.height - ACTION_STRIP_H;
 		int third  = b.width / 3;
 		int right  = b.width - third;
 
-		layout.setOpponentPanel(new Rectangle(b.x,         b.y,         third,         mainH));
-		layout.setEventPanel   (new Rectangle(b.x + third, b.y,         right - third, mainH));
-		layout.setSelfPanel    (new Rectangle(b.x + right, b.y,         third,         mainH));
-		layout.setBoostRow(boostH > 0
-			? new Rectangle(b.x, b.y + mainH, b.width, BOOST_ROW_H) : null);
-		layout.setActionStrip(new Rectangle(b.x, b.y + mainH + boostH, b.width, ACTION_STRIP_H));
+		layout.setOpponentPanel(new Rectangle(b.x,         b.y, third,         mainH));
+		layout.setEventPanel   (new Rectangle(b.x + third, b.y, right - third, mainH));
+		layout.setSelfPanel    (new Rectangle(b.x + right, b.y, third,         mainH));
+		layout.setBoostRow(null);
+		layout.setActionStrip(new Rectangle(b.x, b.y + mainH, b.width, ACTION_STRIP_H));
 		layout.setDirty(false);
 	}
 
-	static void computeVertLayout(HudLayoutState layout, Rectangle b, boolean showBoostRow, boolean reserveDock)
+	static void computeVertLayout(HudLayoutState layout, Rectangle b)
 	{
-		int boostH = (showBoostRow || reserveDock) ? BOOST_ROW_H : 0;
-		int mainH  = b.height - ACTION_STRIP_H - boostH;
+		int mainH  = b.height - ACTION_STRIP_H;
 		// Opponent and event each take ~22% of mainH (⅓ × ⅔ ≈ 33% reduction vs the old ⅓ each).
 		// Self panel gets the rest — more room for effect timers.
 		int secH   = mainH * 2 / 9;
@@ -1185,9 +1141,8 @@ public class PvpHudOverlay extends Overlay
 		layout.setOpponentPanel(new Rectangle(b.x, b.y,            b.width, secH));
 		layout.setEventPanel   (new Rectangle(b.x, b.y + secH,     b.width, secH));
 		layout.setSelfPanel    (new Rectangle(b.x, b.y + 2 * secH, b.width, mainH - 2 * secH));
-		layout.setBoostRow(boostH > 0
-			? new Rectangle(b.x, b.y + mainH, b.width, BOOST_ROW_H) : null);
-		layout.setActionStrip(new Rectangle(b.x, b.y + mainH + boostH, b.width, ACTION_STRIP_H));
+		layout.setBoostRow(null);
+		layout.setActionStrip(new Rectangle(b.x, b.y + mainH, b.width, ACTION_STRIP_H));
 		layout.setDirty(false);
 	}
 
@@ -1196,34 +1151,17 @@ public class PvpHudOverlay extends Overlay
 	private void drawAll(Graphics2D g, PvpHudState state, HudLayoutState layout,
 		Rectangle bounds, Font normal, Font small, boolean vertical)
 	{
-		Rectangle strip    = layout.getActionStrip();
-		Rectangle boostRow = layout.getBoostRow();
-		Rectangle opp      = layout.getOpponentPanel();
-		Rectangle ev       = layout.getEventPanel();
+		Rectangle strip = layout.getActionStrip();
+		Rectangle opp   = layout.getOpponentPanel();
+		Rectangle ev    = layout.getEventPanel();
 
 		g.setColor(bgColor(activeProfile.backgroundOpacity));
-		boolean showBoost = activeProfile.showBoostRow;
-		if (!showBoost && boostRow != null)
-		{
-			// reserveDock mode: leave the boost row band transparent for other overlays.
-			g.fillRect(bounds.x, bounds.y, bounds.width, boostRow.y - bounds.y);
-			if (strip != null)
-				g.fillRect(strip.x, strip.y, strip.width, strip.height);
-		}
-		else
-		{
-			g.fillRect(bounds.x, bounds.y, bounds.width, bounds.height);
-		}
+		g.fillRect(bounds.x, bounds.y, bounds.width, bounds.height);
 
 		if (strip != null)
 		{
 			g.setColor(STRIP_BG);
 			g.fillRect(strip.x, strip.y, strip.width, strip.height);
-		}
-		if (boostRow != null && showBoost)
-		{
-			g.setColor(DIVIDER);
-			g.drawLine(boostRow.x, boostRow.y, boostRow.x + boostRow.width, boostRow.y);
 		}
 		if (strip != null)
 		{
@@ -1265,7 +1203,6 @@ public class PvpHudOverlay extends Overlay
 		drawOpponentPanel(g, state, layout, normal, small);
 		drawEventPanel(g, state, layout, normal, small, vertical);
 		drawSelfPanel(g, state, layout, normal, small, !vertical);
-		drawBoostRow(g, state, layout, small, !vertical);
 		drawActionStrip(g, state, layout, small, vertical);
 	}
 
@@ -1607,54 +1544,23 @@ public class PvpHudOverlay extends Overlay
 		BoostState  boosts = state.getBoosts();
 		PoisonState poison = state.getPoison();
 
-		// Both modes: when boost row is enabled, draw a left column of 5 boost stats
-		// alongside the bars. Effects move to the dedicated boost row strip.
-		final int BOOST_COL_W = 40;
-		if (activeProfile.showBoostRow)
-		{
-			drawBoostStack(g, state, lx, cy, BOOST_COL_W, p.y + p.height - PAD, small);
-			g.setFont(small);
-			smFm = g.getFontMetrics();
-		}
-
-		// Bar width: leave room for the boost column when present; cap horizontal bars
-		// at 90px so they don't sprawl across a wide chatbox panel.
-		int hpBarPanelW;
-		if (activeProfile.showBoostRow)
-		{
-			int boostEndX = lx + BOOST_COL_W + PAD;   // first px right of the boost column
-			int available = rx - boostEndX;
-			hpBarPanelW = horizontal
-				? Math.min(available, 90) + PAD * 2
-				: available + PAD * 2;                 // full available width in vertical
-		}
-		else if (horizontal)
-		{
-			hpBarPanelW = Math.min(p.width, 90 + PAD * 2);
-		}
-		else
-		{
-			hpBarPanelW = p.width;                     // full width, no boost column
-		}
+		// Bar width: cap horizontal bars at 90px so they don't sprawl across a wide chatbox panel.
+		int hpBarPanelW = horizontal
+			? Math.min(p.width, 90 + PAD * 2)
+			: p.width;
 		cy = drawHpPrayerBars(g, smFm, self, fx, rx, cy, hpBarPanelW);
 
-		// Vertical mode: effects always stay in the self panel (secondary slots like
-		// menaphite_next only render correctly in text/vert-bar styles).
-		// Horizontal+boost: effects move to the boost row strip instead.
-		if (!horizontal || !activeProfile.showBoostRow)
+		List<ActiveEffectView> effects = buildActiveEffects(self, fx, poison, boosts);
+		if (!effects.isEmpty())
 		{
-			List<ActiveEffectView> effects = buildActiveEffects(self, fx, poison, boosts);
-			if (!effects.isEmpty())
-			{
-				int maxY = p.y + p.height - PAD;
-				BuffStyle style = activeProfile.buffStyle;
-				if (style == BuffStyle.VERTICAL_BAR)
-					drawEffectsVertBar(g, effects, lx, cy, maxY, debugRendering);
-				else if (style == BuffStyle.ICON_TRAY)
-					drawEffectsIconTray(g, effects, lx, cy, p.x + p.width - PAD, debugRendering);
-				else
-					drawEffectsText(g, normal, effects, lx, cy, maxY);
-			}
+			int maxY = p.y + p.height - PAD;
+			BuffStyle style = activeProfile.buffStyle;
+			if (style == BuffStyle.VERTICAL_BAR)
+				drawEffectsVertBar(g, effects, lx, cy, maxY, false);
+			else if (style == BuffStyle.ICON_TRAY)
+				drawEffectsIconTray(g, effects, lx, cy, p.x + p.width - PAD, false);
+			else
+				drawEffectsText(g, normal, effects, lx, cy, maxY);
 		}
 	}
 
@@ -1834,7 +1740,7 @@ public class PvpHudOverlay extends Overlay
 		PoisonState poison, BoostState boosts)
 	{
 		return flattenToViews(StatusProjector.project(
-			self, fx, poison, boosts, client.getTickCount(), config, debugRendering));
+			self, fx, poison, boosts, client.getTickCount(), config, false));
 	}
 
 	/**
@@ -1920,14 +1826,10 @@ public class PvpHudOverlay extends Overlay
 		return out;
 	}
 
-	/**
-	 * In debug mode, always returns null so all effects fall back to text labels.
-	 * AsyncBufferedImage from ItemManager.getImage() is non-null but transparent until the
-	 * game cache loads — pixel sampling is unreliable outside a live session.
-	 */
+	/** Identity passthrough — kept for backwards compatibility with the icon-lookup switch. */
 	private BufferedImage debugIcon(BufferedImage img)
 	{
-		return debugRendering ? null : img;
+		return img;
 	}
 
 	private static void drawIconHighlight(Graphics2D g, Color c, int x, int y, int size)
@@ -2312,95 +2214,6 @@ public class PvpHudOverlay extends Overlay
 		}
 	}
 
-	// ── Boost row ─────────────────────────────────────────────────────────────
-
-	private void drawBoostRow(Graphics2D g, PvpHudState state, HudLayoutState layout, Font small, boolean horizontal)
-	{
-		if (!activeProfile.showBoostRow) return;
-		Rectangle p = layout.getBoostRow();
-		if (p == null) return;
-
-		// Horizontal mode: boost stats are in the self panel's left column so this
-		// strip shows active effects as an icon tray instead.
-		// Vertical mode: effects remain in the self panel; nothing to render here.
-		if (!horizontal) return;
-
-		SelfState   self   = state.getSelf();
-		EffectState fx     = state.getEffects();
-		BoostState  boosts = state.getBoosts();
-		PoisonState poison = state.getPoison();
-		List<ActiveEffectView> effects = buildActiveEffects(self, fx, poison, boosts);
-		if (!effects.isEmpty())
-		{
-			g.setFont(small);
-			FontMetrics fm2 = g.getFontMetrics();
-			int cy   = p.y + Math.max(1, (p.height - ICON_SIZE - fm2.getHeight()) / 2);
-			int lx   = p.x + PAD;
-			int maxX = p.x + p.width - PAD;
-			drawEffectsIconTray(g, effects, lx, cy, maxX, debugRendering);
-		}
-	}
-
-	/**
-	 * Draws 5 boost-stat rows (icon + current level) stacked vertically in a narrow left column.
-	 * Used in both horizontal and vertical float layouts; the boost row strip shows effects instead.
-	 */
-	private void drawBoostStack(Graphics2D g, PvpHudState state, int lx, int cy, int colW,
-		int maxY, Font small)
-	{
-		g.setFont(small);
-		FontMetrics fm = g.getFontMetrics();
-		final int ICN = 13;
-		int rowH = Math.max(ICN, fm.getHeight()) + 2;
-		BoostState boosts = state.getBoosts();
-		int[]           boosted = { boosts.getAttackBoosted(), boosts.getStrengthBoosted(),
-		                            boosts.getDefenceBoosted(), boosts.getRangedBoosted(),
-		                            boosts.getMagicBoosted() };
-		int[]           real    = { boosts.getAttackReal(),    boosts.getStrengthReal(),
-		                            boosts.getDefenceReal(),   boosts.getRangedReal(),
-		                            boosts.getMagicReal()    };
-		BufferedImage[] icons   = { atkSkillIcon, strSkillIcon, defSkillIcon,
-		                            rngSkillIcon, magSkillIcon };
-		for (int i = 0; i < 5 && cy + rowH <= maxY; i++)
-		{
-			int delta = boosted[i] - real[i];
-			g.setColor(delta > 0 ? GREEN : delta < 0 ? RED : GRAY);
-			BufferedImage icon = debugIcon(icons[i]);
-			int iconY = cy + (rowH - ICN) / 2;
-			if (icon != null)
-				g.drawImage(icon, lx, iconY, ICN, ICN, null);
-			else
-				g.fillRect(lx + 1, iconY + 1, ICN - 2, ICN - 2);
-			String val = activeProfile.boostXOverX
-				? boosted[i] + "/" + real[i]
-				: String.valueOf(boosted[i]);
-			g.drawString(val, lx + ICN + 2, cy + fm.getAscent());
-			cy += rowH;
-		}
-	}
-
-	private void drawBoostColumns(Graphics2D g, PvpHudState state, Rectangle p, Font small)
-	{
-		g.setFont(small);
-		FontMetrics fm  = g.getFontMetrics();
-		int iconY        = p.y + 1;
-		int textBaseline = p.y + ICON_SIZE + 3 + fm.getAscent();
-
-		int col = p.width / 5;
-		int cx1 = p.x + col / 2;
-		int cx2 = cx1 + col;
-		int cx3 = cx2 + col;
-		int cx4 = cx3 + col;
-		int cx5 = cx4 + col;
-
-		BoostState boosts = state.getBoosts();
-		drawBoostColumn(g, fm, atkSkillIcon, "ATK", boosts.getAttackBoosted(),   boosts.getAttackReal(),   cx1, iconY, textBaseline);
-		drawBoostColumn(g, fm, strSkillIcon, "STR", boosts.getStrengthBoosted(), boosts.getStrengthReal(), cx2, iconY, textBaseline);
-		drawBoostColumn(g, fm, defSkillIcon, "DEF", boosts.getDefenceBoosted(),  boosts.getDefenceReal(),  cx3, iconY, textBaseline);
-		drawBoostColumn(g, fm, rngSkillIcon, "RNG", boosts.getRangedBoosted(),   boosts.getRangedReal(),   cx4, iconY, textBaseline);
-		drawBoostColumn(g, fm, magSkillIcon, "MAG", boosts.getMagicBoosted(),    boosts.getMagicReal(),    cx5, iconY, textBaseline);
-	}
-
 	/** Renders an opponent stat column: skill icon above, plain level number below (white = known, gray = unknown). */
 	private void drawStatColumn(Graphics2D g, FontMetrics fm, BufferedImage icon,
 		String prefix, int level, int cx, int iconY, int textBaseline)
@@ -2414,29 +2227,6 @@ public class PvpHudOverlay extends Overlay
 		}
 		g.setColor(level >= 0 ? WHITE : GRAY);
 		drawCentered(g, fm, level >= 0 ? String.valueOf(level) : "?", cx, textBaseline);
-	}
-
-	private void drawBoostColumn(Graphics2D g, FontMetrics fm, BufferedImage icon,
-		String prefix, int boosted, int real, int cx, int iconY, int textBaseline)
-	{
-		// Icon (or fallback prefix text) above the value
-		if (icon != null)
-		{
-			g.drawImage(icon, cx - ICON_SIZE / 2, iconY, ICON_SIZE, ICON_SIZE, null);
-		}
-		else
-		{
-			g.setColor(GRAY);
-			drawCentered(g, fm, prefix, cx, iconY + fm.getAscent());
-		}
-
-		// Value below
-		int delta = boosted - real;
-		g.setColor(delta > 0 ? GREEN : delta < 0 ? RED : GRAY);
-		String label = activeProfile.boostXOverX
-			? boosted + "/" + real
-			: (delta >= 0 ? "+" : "") + delta;
-		drawCentered(g, fm, label, cx, textBaseline);
 	}
 
 	// ── Action strip ──────────────────────────────────────────────────────────
@@ -2510,7 +2300,8 @@ public class PvpHudOverlay extends Overlay
 				}
 			}
 			ProtectionState prot     = state.getProtection();
-			boolean         showLcks = debugRendering || config.showCombatLocks();
+			// Combat locks (PJ/LOG/LCK) deferred pending in-game verification.
+			boolean         showLcks = false;
 			if (showLcks && prot.isPjSafe())
 			{
 				int s = (int) Math.round(prot.getPjSafeTicksRemaining() * 0.6);
@@ -2639,7 +2430,8 @@ public class PvpHudOverlay extends Overlay
 		}
 
 		ProtectionState prot     = state.getProtection();
-		boolean         showLcks = debugRendering || config.showCombatLocks();
+		// Combat locks (PJ/LOG/LCK) deferred pending in-game verification.
+		boolean         showLcks = false;
 		if (showLcks && prot.isPjSafe())
 		{
 			int s = (int) Math.round(prot.getPjSafeTicksRemaining() * 0.6);
@@ -2663,7 +2455,7 @@ public class PvpHudOverlay extends Overlay
 			colorList.add(LIGHT_BLUE);
 		}
 
-		if (debugRendering || config.showZoneInfo())
+		if (config.showZoneInfo())
 		{
 			int wildLevel = state.getContext().getWildernessLevel();
 			if (wildLevel > 0)
@@ -2851,71 +2643,4 @@ public class PvpHudOverlay extends Overlay
 		return w.getBounds();
 	}
 
-	// ── Debug rendering entry points ──────────────────────────────────────────
-	// Package-private so PvpHudDebugOverlay (same package) can call in without
-	// duplicating the full rendering pipeline.
-
-	/**
-	 * Renders one layout at (0, 0) in g's coordinate space using synthetic state.
-	 * Caller must translate g to the desired screen position before calling and
-	 * restore the transform afterwards.
-	 */
-	void renderForDebug(Graphics2D g, PvpHudState state, HudLayout layout,
-		LayoutProfile profile, int panelW, int panelH)
-	{
-		LayoutProfile savedProfile = activeProfile;
-		activeProfile = profile;
-		debugRendering = true;
-		try
-		{
-			Font normal = FontManager.getRunescapeFont();
-			Font small  = FontManager.getRunescapeSmallFont();
-			HudLayoutState tempLayout = new HudLayoutState();
-			Rectangle bounds = new Rectangle(0, 0, panelW, panelH);
-
-			switch (layout)
-			{
-				case HORIZONTAL_FLOAT:
-					computeHorizLayout(tempLayout, bounds, profile.showBoostRow, false);
-					drawAll(g, state, tempLayout, bounds, normal, small, false);
-					break;
-				case VERTICAL_FLOAT:
-					computeVertLayout(tempLayout, bounds, profile.showBoostRow, false);
-					drawAll(g, state, tempLayout, bounds, normal, small, true);
-					break;
-				case INVENTORY_HUG:
-					renderInventoryHugForDebug(g, state, panelW, panelH);
-					break;
-			}
-		}
-		finally
-		{
-			activeProfile  = savedProfile;
-			debugRendering = false;
-		}
-	}
-
-	/**
-	 * Renders the inventory-hug L-shape with synthetic geometry (no widget anchor).
-	 * activeProfile must be set before calling; renderForDebug always does this.
-	 */
-	private void renderInventoryHugForDebug(Graphics2D g, PvpHudState state,
-		int totalW, int totalH)
-	{
-		int paneH = totalH - INVY_TOP_H;
-		if (paneH < 0) paneH = 0;
-
-		int opacity = activeProfile != null ? activeProfile.backgroundOpacity : 220;
-		g.setColor(bgColor(opacity));
-		g.fillRect(0, 0, totalW, INVY_TOP_H);
-		g.fillRect(0, INVY_TOP_H, INVY_LEFT_W, paneH);
-
-		g.setColor(DIVIDER);
-		g.drawLine(0, INVY_TOP_H - 1, totalW - 1, INVY_TOP_H - 1);
-		g.drawLine(INVY_LEFT_W - 1, INVY_TOP_H, INVY_LEFT_W - 1, totalH - 1);
-
-		Font small = FontManager.getRunescapeSmallFont();
-		drawInventoryTopRail(g, state, small, totalW);
-		drawInventoryLeftRail(g, state, small, STONE_TABLET_TAB_H, Math.max(0, paneH - STONE_TABLET_TAB_H));
-	}
 }

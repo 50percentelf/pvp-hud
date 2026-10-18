@@ -54,49 +54,47 @@ public class HudLayoutBoundsTest
 	// ── HORIZONTAL layout — chatbox-sized (519 × 143) ─────────────────────────
 
 	@Test
-	public void horiz_withBoostRow_allPanelsFitWithinBounds()
+	public void horiz_allPanelsFitWithinBounds()
 	{
 		HudLayoutState layout = new HudLayoutState();
 		Rectangle b = new Rectangle(0, 0, 519, 143);
-		PvpHudOverlay.computeHorizLayout(layout, b, true, false);
+		PvpHudOverlay.computeHorizLayout(layout, b);
 
 		assertWithin(layout.getOpponentPanel(), b, "opponent");
 		assertWithin(layout.getEventPanel(),    b, "event");
 		assertWithin(layout.getSelfPanel(),     b, "self");
-		assertWithin(layout.getBoostRow(),      b, "boostRow");
 		assertWithin(layout.getActionStrip(),   b, "actionStrip");
+		assertNull("boost row removed in this release", layout.getBoostRow());
 	}
 
 	@Test
-	public void horiz_withBoostRow_mainPanelsDoNotOverlapHorizontally()
+	public void horiz_mainPanelsDoNotOverlapHorizontally()
 	{
 		HudLayoutState layout = new HudLayoutState();
 		Rectangle b = new Rectangle(0, 0, 519, 143);
-		PvpHudOverlay.computeHorizLayout(layout, b, true, false);
+		PvpHudOverlay.computeHorizLayout(layout, b);
 
 		assertNoHorizOverlap(layout.getOpponentPanel(), layout.getEventPanel(), "opponent/event");
 		assertNoHorizOverlap(layout.getEventPanel(),    layout.getSelfPanel(),  "event/self");
 	}
 
 	@Test
-	public void horiz_withBoostRow_verticalStackingNoOverlap()
+	public void horiz_verticalStackingNoOverlap()
 	{
 		HudLayoutState layout = new HudLayoutState();
 		Rectangle b = new Rectangle(0, 0, 519, 143);
-		PvpHudOverlay.computeHorizLayout(layout, b, true, false);
+		PvpHudOverlay.computeHorizLayout(layout, b);
 
-		// Boost row sits below main panels
-		assertNoVertOverlap(layout.getOpponentPanel(), layout.getBoostRow(),    "opponent/boost");
-		// Action strip sits below boost row
-		assertNoVertOverlap(layout.getBoostRow(),      layout.getActionStrip(), "boost/strip");
+		// Action strip sits below main panels (no boost row anymore)
+		assertNoVertOverlap(layout.getOpponentPanel(), layout.getActionStrip(), "opponent/strip");
 	}
 
 	@Test
-	public void horiz_withBoostRow_stripBottomEqualsOuterBoundsBottom()
+	public void horiz_stripBottomEqualsOuterBoundsBottom()
 	{
 		HudLayoutState layout = new HudLayoutState();
 		Rectangle b = new Rectangle(0, 0, 519, 143);
-		PvpHudOverlay.computeHorizLayout(layout, b, true, false);
+		PvpHudOverlay.computeHorizLayout(layout, b);
 
 		Rectangle strip = layout.getActionStrip();
 		assertEquals("strip fills to bounds bottom",
@@ -104,11 +102,11 @@ public class HudLayoutBoundsTest
 	}
 
 	@Test
-	public void horiz_withBoostRow_mainPanelHeightsAreEqual()
+	public void horiz_mainPanelHeightsAreEqual()
 	{
 		HudLayoutState layout = new HudLayoutState();
 		Rectangle b = new Rectangle(0, 0, 519, 143);
-		PvpHudOverlay.computeHorizLayout(layout, b, true, false);
+		PvpHudOverlay.computeHorizLayout(layout, b);
 
 		assertEquals("opp.height == event.height",
 			layout.getOpponentPanel().height, layout.getEventPanel().height);
@@ -117,46 +115,15 @@ public class HudLayoutBoundsTest
 	}
 
 	@Test
-	public void horiz_withoutBoostRow_noBoostRectangle_stripAtCorrectPosition()
-	{
-		HudLayoutState layout = new HudLayoutState();
-		Rectangle b = new Rectangle(0, 0, 519, 143);
-		PvpHudOverlay.computeHorizLayout(layout, b, false, false);
-
-		assertNull("boost row must be null when disabled", layout.getBoostRow());
-
-		Rectangle strip = layout.getActionStrip();
-		assertNotNull(strip);
-		assertWithin(strip, b, "actionStrip");
-		assertEquals("strip fills to bounds bottom",
-			b.y + b.height, strip.y + strip.height);
-	}
-
-	@Test
-	public void horiz_withoutBoostRow_mainPanelsTallerThanWithBoostRow()
-	{
-		HudLayoutState with    = new HudLayoutState();
-		HudLayoutState without = new HudLayoutState();
-		Rectangle b = new Rectangle(0, 0, 519, 143);
-		PvpHudOverlay.computeHorizLayout(with,    b, true,  false);
-		PvpHudOverlay.computeHorizLayout(without, b, false, false);
-
-		// Without boost row the main panels are taller (boost row height is reclaimed)
-		assertTrue("main panels taller without boost row",
-			without.getOpponentPanel().height > with.getOpponentPanel().height);
-	}
-
-	@Test
 	public void horiz_smallBounds_noNegativeSizes()
 	{
 		HudLayoutState layout = new HudLayoutState();
 		Rectangle b = new Rectangle(0, 0, 90, 60);
-		PvpHudOverlay.computeHorizLayout(layout, b, true, false);
+		PvpHudOverlay.computeHorizLayout(layout, b);
 
 		assertNonNegativeSize(layout.getOpponentPanel(), "opponent");
 		assertNonNegativeSize(layout.getEventPanel(),    "event");
 		assertNonNegativeSize(layout.getSelfPanel(),     "self");
-		assertNonNegativeSize(layout.getBoostRow(),      "boostRow");
 		assertNonNegativeSize(layout.getActionStrip(),   "actionStrip");
 	}
 
@@ -167,8 +134,8 @@ public class HudLayoutBoundsTest
 		HudLayoutState at100 = new HudLayoutState();
 		Rectangle b0   = new Rectangle(0,   0,   519, 143);
 		Rectangle b100 = new Rectangle(100, 200, 519, 143);
-		PvpHudOverlay.computeHorizLayout(at0,   b0,   true, false);
-		PvpHudOverlay.computeHorizLayout(at100, b100, true, false);
+		PvpHudOverlay.computeHorizLayout(at0,   b0);
+		PvpHudOverlay.computeHorizLayout(at100, b100);
 
 		assertEquals("opponent x offset",
 			at0.getOpponentPanel().x + 100, at100.getOpponentPanel().x);
@@ -179,38 +146,37 @@ public class HudLayoutBoundsTest
 	// ── VERTICAL layout — 220 × 400 ───────────────────────────────────────────
 
 	@Test
-	public void vert_withBoostRow_allPanelsFitWithinBounds()
+	public void vert_allPanelsFitWithinBounds()
 	{
 		HudLayoutState layout = new HudLayoutState();
 		Rectangle b = new Rectangle(0, 0, 220, 400);
-		PvpHudOverlay.computeVertLayout(layout, b, true, false);
+		PvpHudOverlay.computeVertLayout(layout, b);
 
 		assertWithin(layout.getOpponentPanel(), b, "opponent");
 		assertWithin(layout.getEventPanel(),    b, "event");
 		assertWithin(layout.getSelfPanel(),     b, "self");
-		assertWithin(layout.getBoostRow(),      b, "boostRow");
 		assertWithin(layout.getActionStrip(),   b, "actionStrip");
+		assertNull("boost row removed in this release", layout.getBoostRow());
 	}
 
 	@Test
-	public void vert_withBoostRow_verticalStackingNoOverlap()
+	public void vert_verticalStackingNoOverlap()
 	{
 		HudLayoutState layout = new HudLayoutState();
 		Rectangle b = new Rectangle(0, 0, 220, 400);
-		PvpHudOverlay.computeVertLayout(layout, b, true, false);
+		PvpHudOverlay.computeVertLayout(layout, b);
 
 		assertNoVertOverlap(layout.getOpponentPanel(), layout.getEventPanel(),  "opponent/event");
 		assertNoVertOverlap(layout.getEventPanel(),    layout.getSelfPanel(),   "event/self");
-		assertNoVertOverlap(layout.getSelfPanel(),     layout.getBoostRow(),    "self/boost");
-		assertNoVertOverlap(layout.getBoostRow(),      layout.getActionStrip(), "boost/strip");
+		assertNoVertOverlap(layout.getSelfPanel(),     layout.getActionStrip(), "self/strip");
 	}
 
 	@Test
-	public void vert_withBoostRow_stripBottomEqualsOuterBoundsBottom()
+	public void vert_stripBottomEqualsOuterBoundsBottom()
 	{
 		HudLayoutState layout = new HudLayoutState();
 		Rectangle b = new Rectangle(0, 0, 220, 400);
-		PvpHudOverlay.computeVertLayout(layout, b, true, false);
+		PvpHudOverlay.computeVertLayout(layout, b);
 
 		Rectangle strip = layout.getActionStrip();
 		assertEquals("strip fills to bounds bottom",
@@ -222,7 +188,7 @@ public class HudLayoutBoundsTest
 	{
 		HudLayoutState layout = new HudLayoutState();
 		Rectangle b = new Rectangle(0, 0, 220, 400);
-		PvpHudOverlay.computeVertLayout(layout, b, true, false);
+		PvpHudOverlay.computeVertLayout(layout, b);
 
 		assertTrue("self panel taller than opponent (33% reduction applied)",
 			layout.getSelfPanel().height > layout.getOpponentPanel().height);
@@ -231,44 +197,16 @@ public class HudLayoutBoundsTest
 	}
 
 	@Test
-	public void vert_withoutBoostRow_noBoostRectangle()
-	{
-		HudLayoutState layout = new HudLayoutState();
-		Rectangle b = new Rectangle(0, 0, 220, 400);
-		PvpHudOverlay.computeVertLayout(layout, b, false, false);
-
-		assertNull("boost row must be null when disabled", layout.getBoostRow());
-		assertEquals("strip fills to bounds bottom",
-			b.y + b.height, layout.getActionStrip().y + layout.getActionStrip().height);
-	}
-
-	@Test
 	public void vert_smallBounds_noNegativeSizes()
 	{
 		HudLayoutState layout = new HudLayoutState();
 		Rectangle b = new Rectangle(0, 0, 90, 60);
-		PvpHudOverlay.computeVertLayout(layout, b, true, false);
+		PvpHudOverlay.computeVertLayout(layout, b);
 
 		assertNonNegativeSize(layout.getOpponentPanel(), "opponent");
 		assertNonNegativeSize(layout.getEventPanel(),    "event");
 		assertNonNegativeSize(layout.getSelfPanel(),     "self");
-		assertNonNegativeSize(layout.getBoostRow(),      "boostRow");
 		assertNonNegativeSize(layout.getActionStrip(),   "actionStrip");
-	}
-
-	@Test
-	public void vert_reserveDockWithHiddenBoostRow_boostRowRectStillPresent()
-	{
-		HudLayoutState layout = new HudLayoutState();
-		Rectangle b = new Rectangle(0, 0, 220, 400);
-		// reserveDock=true means the boost slot is kept even when showBoostRow=false
-		PvpHudOverlay.computeVertLayout(layout, b, false, true);
-
-		assertNotNull("boost row rect present when reserveDock=true", layout.getBoostRow());
-		assertWithin(layout.getBoostRow(),    b, "boostRow");
-		assertWithin(layout.getActionStrip(), b, "actionStrip");
-		assertEquals("strip fills to bounds bottom",
-			b.y + b.height, layout.getActionStrip().y + layout.getActionStrip().height);
 	}
 
 	// ── allPanelsFullWidth invariant ─────────────────────────────────────────
@@ -278,12 +216,11 @@ public class HudLayoutBoundsTest
 	{
 		HudLayoutState layout = new HudLayoutState();
 		Rectangle b = new Rectangle(0, 0, 220, 400);
-		PvpHudOverlay.computeVertLayout(layout, b, true, false);
+		PvpHudOverlay.computeVertLayout(layout, b);
 
 		assertEquals("opponent spans full width", b.width, layout.getOpponentPanel().width);
 		assertEquals("event spans full width",    b.width, layout.getEventPanel().width);
 		assertEquals("self spans full width",     b.width, layout.getSelfPanel().width);
-		assertEquals("boost spans full width",    b.width, layout.getBoostRow().width);
 		assertEquals("strip spans full width",    b.width, layout.getActionStrip().width);
 	}
 }
