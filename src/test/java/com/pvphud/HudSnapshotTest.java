@@ -11,8 +11,11 @@ import java.io.IOException;
 import java.util.List;
 import javax.imageio.ImageIO;
 import org.junit.AfterClass;
+import org.junit.Ignore;
 import org.junit.Test;
 import static org.junit.Assert.*;
+
+@Ignore("Run manually: ./gradlew test --tests \"com.pvphud.HudSnapshotTest\" — outputs build/hud-snapshots/index.html")
 
 /**
  * Offline HUD snapshot harness.
@@ -316,16 +319,7 @@ public class HudSnapshotTest
 
 	// ── Live viewer ───────────────────────────────────────────────────────
 
-	private static final String[][] VIEWER_PANELS = {
-		{"text_empty",        "TEXT / empty",        "strip"},
-		{"text_allEffects",   "TEXT / all effects",  "strip"},
-		{"vertBar_empty",     "VERT BAR / empty",    "strip"},
-		{"vertBar_allEffects","VERT BAR / all",      "strip"},
-		{"iconTray_empty",    "ICON TRAY / empty",   "tray"},
-		{"iconTray_allEffects","ICON TRAY / all",    "tray"},
-		{"twoCol_empty",      "2-COL / empty",       "twocol"},
-		{"twoCol_allEffects", "2-COL / all effects", "twocol"},
-	};
+	// ── Live viewer ── shows the 3 real BuffStyle options, allEffects only ──
 
 	@AfterClass
 	public static void generateHtmlViewer() throws IOException
@@ -333,30 +327,38 @@ public class HudSnapshotTest
 		File dir = new File("build/hud-snapshots");
 		dir.mkdirs();
 
+		// file, display label, css class
+		String[][] panels = {
+			{"text_allEffects",    "TEXT",         "strip"},
+			{"vertBar_allEffects", "VERTICAL BAR", "strip"},
+			{"iconTray_allEffects","ICON TRAY",    "tray"},
+		};
+
 		StringBuilder sb = new StringBuilder();
 		sb.append("<!DOCTYPE html>\n<html>\n<head>\n")
 		  .append("<meta charset=\"utf-8\">\n")
 		  .append("<title>PvP HUD Debug Viewer</title>\n")
 		  .append("<style>\n")
 		  .append("  body{background:#111;color:#ccc;font-family:monospace;padding:16px;margin:0}\n")
-		  .append("  h1{color:#fff;margin:0 0 4px;font-size:14px}\n")
-		  .append("  #ts{color:#555;font-size:10px;margin-bottom:12px}\n")
-		  .append("  .grid{display:flex;flex-wrap:wrap;gap:12px;align-items:flex-start}\n")
-		  .append("  .panel{background:#1c1c1c;border:1px solid #333;padding:8px}\n")
-		  .append("  .panel h3{margin:0 0 5px;font-size:10px;color:#888;letter-spacing:.05em}\n")
-		  .append("  img.strip {width:240px;height:800px;image-rendering:pixelated;display:block}\n")
-		  .append("  img.tray  {width:519px;height:60px; image-rendering:pixelated;display:block}\n")
-		  .append("  img.twocol{width:144px;height:800px;image-rendering:pixelated;display:block}\n")
+		  .append("  h1{color:#fff;margin:0 0 4px;font-size:16px}\n")
+		  .append("  #ts{color:#555;font-size:11px;margin-bottom:16px}\n")
+		  .append("  .grid{display:flex;flex-wrap:wrap;gap:20px;align-items:flex-start}\n")
+		  .append("  .panel{background:#1c1c1c;border:1px solid #444;padding:10px}\n")
+		  .append("  .panel h3{margin:0 0 8px;font-size:11px;color:#aaa;text-transform:uppercase;letter-spacing:.08em}\n")
+		  // strip: 120px wide × 400px tall source → 2x proportional scale
+		  .append("  img.strip{width:240px;height:auto;image-rendering:pixelated;display:block}\n")
+		  // tray: 519px × 30px source → stretch to 3x height so 9px text becomes ~27px and is readable
+		  .append("  img.tray {width:519px;height:90px;image-rendering:pixelated;display:block}\n")
 		  .append("</style>\n</head>\n<body>\n")
 		  .append("<h1>PvP HUD Debug Viewer</h1>\n")
 		  .append("<div id=\"ts\">waiting for first render...</div>\n")
 		  .append("<div class=\"grid\">\n");
 
-		for (String[] panel : VIEWER_PANELS)
+		for (String[] panel : panels)
 		{
-			String file = panel[0] + ".png";
+			String file  = panel[0] + ".png";
 			String label = panel[1];
-			String cls = panel[2];
+			String cls   = panel[2];
 			sb.append("  <div class=\"panel\">\n")
 			  .append("    <h3>").append(label).append("</h3>\n")
 			  .append("    <img class=\"").append(cls).append("\" src=\"").append(file)
@@ -370,8 +372,7 @@ public class HudSnapshotTest
 		  .append("  document.querySelectorAll('img').forEach(function(img){\n")
 		  .append("    img.src=img.dataset.src+'?t='+t;\n")
 		  .append("  });\n")
-		  .append("  document.getElementById('ts').textContent=")
-		  .append("'Last rendered: '+new Date().toLocaleTimeString();\n")
+		  .append("  document.getElementById('ts').textContent='Last rendered: '+new Date().toLocaleTimeString();\n")
 		  .append("}\n")
 		  .append("setInterval(refresh,800);\n")
 		  .append("</script>\n</body>\n</html>\n");
