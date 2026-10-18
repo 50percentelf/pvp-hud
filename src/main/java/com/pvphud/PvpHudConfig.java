@@ -245,7 +245,7 @@ public interface PvpHudConfig extends Config
 	)
 	default boolean hfChatLocked()
 	{
-		return false;
+		return true;
 	}
 
 	@ConfigItem(

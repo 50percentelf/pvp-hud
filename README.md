@@ -83,7 +83,6 @@ Displayed in the YOU panel. Three display styles: **Text**, **Vertical Bar** (ic
 | `E` + 3 dots | Eat cooldown (3 ticks). |
 | `P` + 3 dots | Potion cooldown (3 ticks). |
 | `T1 / T2 M:SS` | Manual countdown timers, each bound to a configurable hotkey. |
-| `IMM Xs` | Post-kill immunity timer (LMS only, 33 ticks). |
 | `W#` | Current Wilderness level (requires Show Zone Info). |
 | `MULTI` | Multi-combat zone indicator (requires Show Zone Info). |
 | `[ammo icon] qty` | Equipped ammo quantity (arrows/bolts from ammo slot). Color: white >25, yellow ≤25, red ≤10. Conventional ammo only — blowpipe darts and thrown-weapon stacks are not tracked. In Inventory Hug this appears as a dedicated rail row (not in the action strip) — see layout table above. |
@@ -132,6 +131,6 @@ These effects have no accessible varbit or game message that reliably encodes th
 
 - **Vengeance tracking** — `VENG RDY` self-indicator and `VENG!` opponent label. State infrastructure exists but event handlers are gated; feature is not displayed.
 - **Special prayer-impact tracking** — Sara Strike, Clear Mind, and Sapphire bolt prayer-drain attribution. Enum values defined; no v0.1 code path sets them.
-- LMS context detection for the IMM timer (currently always inactive).
+- **LMS context detection / post-kill IMM timer** — `isInLms()` always returns false in v0.1; the IMM timer is not displayed.
 - CHANCE! hit detection (requires opponent defence stats and combat formula).
 - Combat Lock indicators (PJ / LOG / LCK) — the underlying ProtectionState is tracked but display is deferred pending in-game verification across edge cases.

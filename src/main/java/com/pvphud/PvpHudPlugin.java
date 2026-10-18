@@ -109,6 +109,15 @@ public class PvpHudPlugin extends Plugin
 	private static final int HISCORE_RECHECK_TICKS = 10;
 	private static final int HISCORE_TIMEOUT_TICKS = 200;
 
+	/** Per-endpoint resolution state: resolved = lookupAsync returned non-null. */
+	private boolean hiscoreHcResolved  = false;
+	private boolean hiscoreUimResolved = false;
+	private boolean hiscoreImResolved  = false;
+	/** Per-endpoint positive flag: resolved AND reported HP > 0 for the endpoint. */
+	private boolean hiscoreHcPositive  = false;
+	private boolean hiscoreUimPositive = false;
+	private boolean hiscoreImPositive  = false;
+
 	/** Tick at which the tracked opponent was last seen despawned (-1 = present). */
 	private int opponentMissingTick = -1;
 	private static final int OPPONENT_GRACE_TICKS = 10;
@@ -202,6 +211,7 @@ public class PvpHudPlugin extends Plugin
 		modIconRetryCountdown     = 0;
 		pendingHiscoreName        = null;
 		hiscorePollStartTick      = -1;
+		resetHiscoreResolution();
 		opponentMissingTick       = -1;
 		hudState.fullReset();
 		applyOverlayPosition();
@@ -230,9 +240,15 @@ public class PvpHudPlugin extends Plugin
 
 	/**
 	 * One-shot config migration from the Plugin Hub v0 schema to v1.
-	 * - CHAT_LOCKED layout is folded into HORIZONTAL_FLOAT with hf_chatLocked=true.
-	 * - Legacy top-level style keys (buffStyle, backgroundOpacity, hpBarStyle, etc.)
-	 *   are copied into their hf_* equivalents when the hf_* key is not already set.
+	 * - Explicit CHAT_LOCKED layout is folded into HORIZONTAL_FLOAT with
+	 *   hf_chatLocked=true. Users on other explicit layouts are untouched.
+	 * - Users who kept the old CHAT_LOCKED default (no hudLayout key saved)
+	 *   are covered by the hf_chatLocked=true default — this method does not
+	 *   force the key for them.
+	 * - Legacy top-level style keys (buffStyle, backgroundOpacity, hpBarStyle,
+	 *   etc.) are copied into their hf_* equivalents when the hf_* key is not
+	 *   already set. This is unconditional on hudLayout so that both explicit
+	 *   CHAT_LOCKED users and legacy-default users get their customisations.
 	 * The configVersion key is used as an idempotency guard.
 	 */
 	private void migrateOldConfig()
@@ -245,15 +261,18 @@ public class PvpHudPlugin extends Plugin
 		{
 			configManager.setConfiguration(CONFIG_GROUP, "hudLayout", "HORIZONTAL_FLOAT");
 			configManager.setConfiguration(CONFIG_GROUP, "hf_chatLocked", "true");
-
-			copyIfAbsent("buffStyle",         "hf_buffStyle");
-			copyIfAbsent("backgroundOpacity", "hf_backgroundOpacity");
-			copyIfAbsent("hpBarStyle",        "hf_hpBarStyle");
-			copyIfAbsent("prayerBarStyle",    "hf_prayerBarStyle");
-			copyIfAbsent("runBarStyle",       "hf_runBarStyle");
-			copyIfAbsent("specBarStyle",      "hf_specBarStyle");
-			// showBoostRow intentionally not migrated — boost row is removed in this release.
 		}
+
+		// Always copy old top-level style keys into hf_* equivalents when
+		// present but the hf_* key is unset. Covers both explicit CHAT_LOCKED
+		// users and users who kept the old default without saving the layout.
+		// showBoostRow intentionally not migrated — boost row is removed in this release.
+		copyIfAbsent("buffStyle",         "hf_buffStyle");
+		copyIfAbsent("backgroundOpacity", "hf_backgroundOpacity");
+		copyIfAbsent("hpBarStyle",        "hf_hpBarStyle");
+		copyIfAbsent("prayerBarStyle",    "hf_prayerBarStyle");
+		copyIfAbsent("runBarStyle",       "hf_runBarStyle");
+		copyIfAbsent("specBarStyle",      "hf_specBarStyle");
 
 		configManager.setConfiguration(CONFIG_GROUP, "configVersion", "1");
 	}
@@ -431,6 +450,7 @@ public class PvpHudPlugin extends Plugin
 			lastPlayerPos              = null;
 			pendingHiscoreName         = null;
 			hiscorePollStartTick       = -1;
+			resetHiscoreResolution();
 			opponentMissingTick        = -1;
 			hudState.fullReset();
 			overlay.invalidateInventoryHugAnchor();
@@ -1007,7 +1027,10 @@ public class PvpHudPlugin extends Plugin
 		{
 			int   anim        = client.getLocalPlayer().getAnimation();
 			Actor interacting = client.getLocalPlayer().getInteracting();
-			if (!AttackAnimations.isBlocked(anim) && interacting instanceof Player)
+			// Positive attack confirmation: only known combat animations advance
+			// the clock. Unknown animations are ignored — the "interacting with a
+			// Player" guard provides a second check against stray allowlist IDs.
+			if (AttackAnimations.isAttack(anim) && interacting instanceof Player)
 			{
 				int speed = getWeaponSpeed();
 				if (speed > 0)
@@ -1163,9 +1186,7 @@ public class PvpHudPlugin extends Plugin
 			}
 
 			// Only shake on actual damage — 0-splat must not trigger the animation.
-			SelfState self = hudState.getSelf();
-			self.setLastIncomingDamageMs(System.currentTimeMillis());
-			self.setLastIncomingDamage(dmg);
+			recordIncomingDamage(hudState.getSelf(), dmg, System.currentTimeMillis());
 
 			if (session == null) return;
 			session.onIncomingHit(dmg, tick);
@@ -1207,6 +1228,20 @@ public class PvpHudPlugin extends Plugin
 
 			handleOutgoingHit(opp, dmg, tick);
 		}
+	}
+
+	/**
+	 * Records a positive incoming damage event into {@link SelfState} for the
+	 * HP-bar shake animation. No-op for zero or negative damage — 0-splashes
+	 * must not trigger the shake.
+	 *
+	 * Package-visible so unit tests can exercise the exact production path.
+	 */
+	static void recordIncomingDamage(SelfState self, int damage, long nowMs)
+	{
+		if (damage <= 0) return;
+		self.setLastIncomingDamageMs(nowMs);
+		self.setLastIncomingDamage(damage);
 	}
 
 	private void handleOutgoingHit(OpponentState opp, int damage, int tick)
@@ -1571,7 +1606,19 @@ public class PvpHudPlugin extends Plugin
 		log.debug("PvP HUD hiscores lookup queued: {}", playerName);
 		pendingHiscoreName   = playerName;
 		hiscorePollStartTick = client.getTickCount();
+		resetHiscoreResolution();
 		checkHiscores();
+	}
+
+	/** Clears per-endpoint resolution state so a new lookup starts from scratch. */
+	private void resetHiscoreResolution()
+	{
+		hiscoreHcResolved  = false;
+		hiscoreUimResolved = false;
+		hiscoreImResolved  = false;
+		hiscoreHcPositive  = false;
+		hiscoreUimPositive = false;
+		hiscoreImPositive  = false;
 	}
 
 	/**
@@ -1579,6 +1626,11 @@ public class PvpHudPlugin extends Plugin
 	 * every HISCORE_RECHECK_TICKS until a result is populated or the timeout expires.
 	 * HiscoreManager.lookupAsync returns cached data immediately or null; the first call
 	 * also triggers a background refresh.
+	 *
+	 * Account-type precedence (HC > UIM > IM > NORMAL) is enforced by the
+	 * {@link HiscoreAccountResolver} state machine. The polling loop only clears
+	 * {@code pendingHiscoreName} when the resolver returns a non-PENDING verdict
+	 * (so a stray IM-positive result cannot short-circuit an in-flight HC check).
 	 */
 	private void checkHiscores()
 	{
@@ -1589,18 +1641,31 @@ public class PvpHudPlugin extends Plugin
 		if (!opp.isTracked() || !name.equalsIgnoreCase(opp.getName()))
 		{
 			pendingHiscoreName = null;
+			resetHiscoreResolution();
 			return;
 		}
 
 		if (client.getTickCount() - hiscorePollStartTick > HISCORE_TIMEOUT_TICKS)
 		{
 			log.debug("PvP HUD hiscores timeout for {}", name);
+			// Apply the resolver's best verdict with whatever state we have so
+			// far — a timeout should not downgrade a positive endpoint we already
+			// saw. If no endpoint resolved positive, NORMAL is the default.
+			HiscoreAccountResolver.ResolverResult verdict = HiscoreAccountResolver.resolve(
+				hiscoreHcResolved,  hiscoreHcPositive,
+				hiscoreUimResolved, hiscoreUimPositive,
+				hiscoreImResolved,  hiscoreImPositive);
+			if (verdict != HiscoreAccountResolver.ResolverResult.PENDING
+				&& verdict != HiscoreAccountResolver.ResolverResult.COMPLETE_NORMAL)
+			{
+				applyAccountType(name, HiscoreAccountResolver.toAccountType(verdict));
+			}
 			pendingHiscoreName = null;
+			resetHiscoreResolution();
 			return;
 		}
 
-		boolean normalDone  = opp.getStats().getHitpoints() > 0;
-		boolean accountDone = opp.getStats().getAccountType() != OpponentStats.AccountType.NORMAL;
+		boolean normalDone = opp.getStats().getHitpoints() > 0;
 
 		if (!normalDone)
 		{
@@ -1608,25 +1673,54 @@ public class PvpHudPlugin extends Plugin
 			if (r != null)
 			{
 				applyHiscoresResult(name, r);
-				normalDone = true;
+				normalDone = opp.getStats().getHitpoints() > 0;
 			}
 		}
 
-		HiscoreResult hc = hiscoreManager.lookupAsync(name, HiscoreEndpoint.HARDCORE_IRONMAN);
-		HiscoreResult ui = hiscoreManager.lookupAsync(name, HiscoreEndpoint.ULTIMATE_IRONMAN);
-		HiscoreResult im = hiscoreManager.lookupAsync(name, HiscoreEndpoint.IRONMAN);
+		// Refresh per-endpoint resolution state. Each endpoint only resolves once —
+		// subsequent polls short-circuit to avoid redundant cache touches.
+		if (!hiscoreHcResolved)
+		{
+			HiscoreResult hc = hiscoreManager.lookupAsync(name, HiscoreEndpoint.HARDCORE_IRONMAN);
+			if (hc != null)
+			{
+				hiscoreHcResolved = true;
+				hiscoreHcPositive = skillLevel(hc, HiscoreSkill.HITPOINTS) > 0;
+			}
+		}
+		if (!hiscoreUimResolved)
+		{
+			HiscoreResult ui = hiscoreManager.lookupAsync(name, HiscoreEndpoint.ULTIMATE_IRONMAN);
+			if (ui != null)
+			{
+				hiscoreUimResolved = true;
+				hiscoreUimPositive = skillLevel(ui, HiscoreSkill.HITPOINTS) > 0;
+			}
+		}
+		if (!hiscoreImResolved)
+		{
+			HiscoreResult im = hiscoreManager.lookupAsync(name, HiscoreEndpoint.IRONMAN);
+			if (im != null)
+			{
+				hiscoreImResolved = true;
+				hiscoreImPositive = skillLevel(im, HiscoreSkill.HITPOINTS) > 0;
+			}
+		}
 
-		if (hc != null && skillLevel(hc, HiscoreSkill.HITPOINTS) > 0)
-			applyAccountType(name, OpponentStats.AccountType.HARDCORE_IRONMAN);
-		else if (ui != null && skillLevel(ui, HiscoreSkill.HITPOINTS) > 0)
-			applyAccountType(name, OpponentStats.AccountType.ULTIMATE_IRONMAN);
-		else if (im != null && skillLevel(im, HiscoreSkill.HITPOINTS) > 0)
-			applyAccountType(name, OpponentStats.AccountType.IRONMAN);
+		HiscoreAccountResolver.ResolverResult verdict = HiscoreAccountResolver.resolve(
+			hiscoreHcResolved,  hiscoreHcPositive,
+			hiscoreUimResolved, hiscoreUimPositive,
+			hiscoreImResolved,  hiscoreImPositive);
 
-		if (!normalDone || (!accountDone && hc == null && ui == null && im == null))
+		if (!normalDone || verdict == HiscoreAccountResolver.ResolverResult.PENDING)
 			return; // still pending; next poll driven by onGameTick
 
+		if (verdict != HiscoreAccountResolver.ResolverResult.COMPLETE_NORMAL)
+		{
+			applyAccountType(name, HiscoreAccountResolver.toAccountType(verdict));
+		}
 		pendingHiscoreName = null;
+		resetHiscoreResolution();
 	}
 
 	private void applyAccountType(String playerName, OpponentStats.AccountType type)
