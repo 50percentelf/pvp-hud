@@ -69,6 +69,51 @@ public class StatusProjectorTest
 	}
 
 	@Test
+	public void refreezeImm_labelUsesTicks_notSeconds()
+	{
+		SelfState self = new SelfState();
+		self.applyFreeze(TICK - 20, 20, SpriteID.SPELL_ICE_BARRAGE);
+		self.thaw(TICK); // immunity = 5 ticks
+
+		StatusSlot slot = find(
+			project(self, new EffectState(), new PoisonState(), new BoostState()),
+			"freeze_imm");
+		assertNotNull(slot);
+		assertEquals("REFRZ 5t", slot.textLabel);
+	}
+
+	@Test
+	public void freeze_neverMoreThanOneLifecycleSlot()
+	{
+		// frozen: exactly one freeze slot
+		SelfState frozen = new SelfState();
+		frozen.applyFreeze(TICK - 1, 20, SpriteID.SPELL_ICE_BARRAGE);
+		List<String> frozenIds = slotIds(
+			project(frozen, new EffectState(), new PoisonState(), new BoostState()));
+		long frozenCount = frozenIds.stream()
+			.filter(id -> id.startsWith("freeze_")).count();
+		assertEquals("exactly one freeze slot while frozen", 1, frozenCount);
+
+		// immune: exactly one immunity slot
+		SelfState immune = new SelfState();
+		immune.applyFreeze(TICK - 20, 20, SpriteID.SPELL_ICE_BARRAGE);
+		immune.thaw(TICK);
+		List<String> immuneIds = slotIds(
+			project(immune, new EffectState(), new PoisonState(), new BoostState()));
+		long immuneCount = immuneIds.stream()
+			.filter(id -> id.startsWith("freeze_")).count();
+		assertEquals("exactly one freeze slot during immunity", 1, immuneCount);
+
+		// normal: zero freeze slots
+		SelfState normal = new SelfState();
+		List<String> normalIds = slotIds(
+			project(normal, new EffectState(), new PoisonState(), new BoostState()));
+		long normalCount = normalIds.stream()
+			.filter(id -> id.startsWith("freeze_")).count();
+		assertEquals("zero freeze slots when not frozen or immune", 0, normalCount);
+	}
+
+	@Test
 	public void freeze_iceBurst_usesBurstSlotId()
 	{
 		SelfState self = new SelfState();
@@ -212,7 +257,7 @@ public class StatusProjectorTest
 
 		StatusSlot next = find(slots, "menaphite_next");
 		assertNotNull(next);
-		assertFalse("menaphite_next must be a primary slot so all buff styles show it", next.isSecondary);
+		assertTrue("menaphite_next must be secondary (hidden in icon-tray and 2-col)", next.isSecondary);
 	}
 
 	@Test

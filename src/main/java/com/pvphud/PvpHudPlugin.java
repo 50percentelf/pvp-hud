@@ -1318,16 +1318,13 @@ public class PvpHudPlugin extends Plugin
 			graphicId = lastFreezeGraphicId;
 		}
 
-		int baseTicks = graphicId >= 0 ? freezeTicksForGraphic(graphicId) : 32;
-		int duration  = adjustedFreezeTicks(graphicId, baseTicks);
-		int spriteId  = graphicId >= 0 ? freezeSpriteIdForGraphic(graphicId) : SpriteID.SPELL_ICE_BARRAGE;
+		// Ancient sceptre extends ice-spell freeze durations, but we cannot reliably
+		// determine whether the attacker held one — we only see the incoming freeze,
+		// not the opponent's equipment. Base duration is used unconditionally.
+		int duration = graphicId >= 0 ? freezeTicksForGraphic(graphicId) : 32;
+		int spriteId = graphicId >= 0 ? freezeSpriteIdForGraphic(graphicId) : SpriteID.SPELL_ICE_BARRAGE;
 
 		self.applyFreeze(tick, duration, spriteId);
-	}
-
-	private int adjustedFreezeTicks(int graphicId, int baseTicks)
-	{
-		return baseTicks;
 	}
 
 	// ── Protection helpers ────────────────────────────────────────────────────────

@@ -15,9 +15,9 @@ import net.runelite.api.SpriteID;
  * <p>Lifecycle slots: Freeze↔Refreeze Immunity, TB↔TB Immunity, Ward↔Ward CD,
  * Mark↔Mark CD each occupy a single logical slot — only one state is ever visible.
  *
- * <p>Compound statuses: Corruption, Burn, Prayer Regen, and Menaphite emit a
- * primary slot followed by an {@code isSecondary=true} sub-entry for the next
- * proc/drain/hit countdown.
+ * <p>Compound statuses: Corruption, Burn, Prayer Regen, and Menaphite each emit
+ * a primary slot followed by an {@code isSecondary=true} sub-entry for the next
+ * proc/drain/hit countdown. Secondary entries are hidden in ICON_TRAY and 2-col.
  *
  * <p>Icons are not resolved here; callers use the {@code slotId} field to look
  * up icons in {@link PvpHudOverlay#getIconFor}.
@@ -62,7 +62,7 @@ public final class StatusProjector
 			int refreezeImm = self.getRefreezeImmunityTicks(tick);
 			if (refreezeImm > 0 && (showAll || config.showFreezeTimer()))
 			{
-				String t = ticksToSecs(refreezeImm);
+				String t = refreezeImm + "t";
 				out.add(new StatusSlot("freeze_imm", StatusPriority.CRITICAL, t, "REFRZ " + t,
 					LIGHT_BLUE, false));
 			}
@@ -184,7 +184,7 @@ public final class StatusProjector
 					fx.getMenaphite().getTotalTicksRemaining(), false);
 				if (fx.getMenaphite().getNextProcTicks() > 0)
 					addTimed(out, "menaphite_next", StatusPriority.SUSTAIN, "NXT",
-						fx.getMenaphite().getNextProcTicks(), false);
+						fx.getMenaphite().getNextProcTicks(), true);
 			}
 		}
 
