@@ -94,16 +94,27 @@ public class XpDamagePredictionTest
 		assertTrue("large xp delta prediction exceeds sanity guard (> 120)", pred > 120);
 	}
 
-	// ── Helpers ───────────────────────────────────────────────────────────────
+	// ── Regression: modifier must use OPPONENT level, not local level ─────────
+
+	@Test
+	public void predictedDamage_usesOpponentLevel_notLocalLevel()
+	{
+		// local = 126 (mod 1.125), opponent = 70 (mod 1.075)
+		// Using opponent (70): round(33 * 0.75 / 1.075) = round(23.02) = 23
+		// Using local   (126): round(33 * 0.75 / 1.125) = round(22.0)  = 22
+		assertEquals(23, PvpHudPlugin.predictPvpDamageFromHpXp(33, 70));
+		assertNotEquals(22, PvpHudPlugin.predictPvpDamageFromHpXp(33, 70));
+	}
+
+	// ── Helpers — delegate to the canonical static methods ────────────────────
 
 	private static double pvpMod(int combatLevel)
 	{
-		return Math.min(1.125, 1.0 + Math.floor(combatLevel / 20.0) / 40.0);
+		return PvpHudPlugin.pvpXpModifier(combatLevel);
 	}
 
 	private static int predictDamage(int hpXpDelta, int combatLevel)
 	{
-		double mod = pvpMod(combatLevel);
-		return (int) Math.round((hpXpDelta * 0.75) / mod);
+		return PvpHudPlugin.predictPvpDamageFromHpXp(hpXpDelta, combatLevel);
 	}
 }

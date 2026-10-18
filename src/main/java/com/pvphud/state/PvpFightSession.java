@@ -94,6 +94,14 @@ public class PvpFightSession
 		return Collections.unmodifiableList(new ArrayList<>(exchanges));
 	}
 
+	/** Returns the exchange record for {@code tick}, or null if none exists. */
+	public DamageExchange getExchangeForTick(int tick)
+	{
+		for (DamageExchange ex : exchanges)
+			if (ex.getTick() == tick) return ex;
+		return null;
+	}
+
 	/**
 	 * True when no combat has occurred for TIMEOUT_TICKS and the session has
 	 * not been explicitly terminated. Checked each game tick by the plugin.

@@ -56,10 +56,16 @@ public class OpponentState
 		pendingHitTimestampMs = System.currentTimeMillis();
 	}
 
+	/** True when a pending prediction has been set by the plugin. Cleared by clearPendingHit(). */
 	public boolean hasPendingHit()
 	{
-		return pendingHitTimestampMs > 0
-			&& System.currentTimeMillis() - pendingHitTimestampMs < 900;
+		return pendingHitDamage > 0;
+	}
+
+	public void clearPendingHit()
+	{
+		pendingHitDamage      = 0;
+		pendingHitTimestampMs = -1;
 	}
 
 	/** Active overhead prayer (null = none). Updated each game tick. */
