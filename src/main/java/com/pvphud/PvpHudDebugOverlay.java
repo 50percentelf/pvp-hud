@@ -16,12 +16,12 @@ import net.runelite.client.ui.overlay.OverlayLayer;
 import net.runelite.client.ui.overlay.OverlayPosition;
 
 /**
- * Debug overlay that renders all 4 HUD layouts simultaneously with injected state.
+ * Debug overlay that renders all 3 HUD layouts simultaneously with injected state.
  * Only active when config.debugMode() is true. Lets you inspect rendering across
  * every layout and buff style without entering combat.
  *
  * Layout (two-column grid):
- *   Left  — CHAT_LOCKED (top) / HORIZONTAL_FLOAT (middle) / INVENTORY_HUG (bottom)
+ *   Left  — HORIZONTAL_FLOAT (top) / INVENTORY_HUG (bottom)
  *   Right — VERTICAL_FLOAT
  *
  * State lifecycle: state is applied once when debug config changes; between changes
@@ -126,6 +126,7 @@ public class PvpHudDebugOverlay extends Overlay
 			true,       // showBoostRow
 			false,      // boostXOverX
 			false,      // reserveBoostDockWhenHidden
+			false,      // chatLocked
 			BarDisplayStyle.BARS_AND_NUMBERS,
 			BarDisplayStyle.BARS_AND_NUMBERS,
 			BarDisplayStyle.BARS_AND_NUMBERS,
@@ -137,11 +138,10 @@ public class PvpHudDebugOverlay extends Overlay
 		FontMetrics fm = g.getFontMetrics();
 
 		// ── Pre-compute panel positions ───────────────────────────────────────
-		// Left column (stacked): CHAT_LOCKED → H_FLOAT → INVENTORY_HUG
+		// Left column (stacked): H_FLOAT → INVENTORY_HUG
 		int leftRow1Y = PANEL_ROW1_Y;
 		int leftRow2Y = leftRow1Y + HORIZ_H + GAP + LABEL_H;
-		int leftRow3Y = leftRow2Y + HORIZ_H + GAP + LABEL_H;
-		int usedH     = leftRow3Y + INVY_H;
+		int usedH     = leftRow2Y + INVY_H;
 
 		// ── Header + outer border ─────────────────────────────────────────────
 		g.setColor(HEADER_BG);
@@ -155,17 +155,13 @@ public class PvpHudDebugOverlay extends Overlay
 		g.drawString(header, PAD, HEADER_H - (HEADER_H - fm.getAscent()) / 2 - 1);
 
 		// ── Left column ───────────────────────────────────────────────────────
-		drawPanelLabel(g, fm, small, "CHAT_LOCKED", LEFT_X, leftRow1Y - LABEL_H, HORIZ_W);
-		renderPanel(g, debugState, HudLayout.CHAT_LOCKED, profile,
+		drawPanelLabel(g, fm, small, "HORIZONTAL_FLOAT", LEFT_X, leftRow1Y - LABEL_H, HORIZ_W);
+		renderPanel(g, debugState, HudLayout.HORIZONTAL_FLOAT, profile,
 			LEFT_X, leftRow1Y, HORIZ_W, HORIZ_H);
 
-		drawPanelLabel(g, fm, small, "HORIZONTAL_FLOAT", LEFT_X, leftRow2Y - LABEL_H, HORIZ_W);
-		renderPanel(g, debugState, HudLayout.HORIZONTAL_FLOAT, profile,
-			LEFT_X, leftRow2Y, HORIZ_W, HORIZ_H);
-
-		drawPanelLabel(g, fm, small, "INVENTORY_HUG", LEFT_X, leftRow3Y - LABEL_H, HORIZ_W);
+		drawPanelLabel(g, fm, small, "INVENTORY_HUG", LEFT_X, leftRow2Y - LABEL_H, HORIZ_W);
 		renderPanel(g, debugState, HudLayout.INVENTORY_HUG, profile,
-			LEFT_X, leftRow3Y, HORIZ_W, INVY_H);
+			LEFT_X, leftRow2Y, HORIZ_W, INVY_H);
 
 		// ── Right column ──────────────────────────────────────────────────────
 		drawPanelLabel(g, fm, small, "VERTICAL_FLOAT", RIGHT_X, PANEL_ROW1_Y - LABEL_H, VERT_W);

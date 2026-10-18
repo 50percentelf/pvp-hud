@@ -16,17 +16,8 @@ public class LayoutProfileTest
 	 */
 	private static final PvpHudConfig CONFIG = new PvpHudConfig()
 	{
-		// ── Chat Locked (old key names, backward-compat) ─────────────────────────
-		@Override public BuffStyle       buffStyle()       { return BuffStyle.TEXT; }
-		@Override public int             backgroundOpacity(){ return 100; }
-		@Override public boolean         showBoostRow()    { return false; }
-		@Override public boolean         boostXOverX()     { return true; }
-		@Override public BarDisplayStyle hpBarStyle()      { return BarDisplayStyle.BARS_ONLY; }
-		@Override public BarDisplayStyle prayerBarStyle()  { return BarDisplayStyle.NUMBERS_ONLY; }
-		@Override public BarDisplayStyle runBarStyle()     { return BarDisplayStyle.HIDDEN; }
-		@Override public BarDisplayStyle specBarStyle()    { return BarDisplayStyle.BARS_AND_NUMBERS; }
-
 		// ── Horizontal Float ─────────────────────────────────────────────────────
+		@Override public boolean         hfChatLocked()                   { return false; }
 		@Override public BuffStyle       hfBuffStyle()                    { return BuffStyle.ICON_TRAY; }
 		@Override public int             hfBackgroundOpacity()            { return 50; }
 		@Override public boolean         hfShowBoostRow()                 { return true; }
@@ -61,7 +52,7 @@ public class LayoutProfileTest
 		// ── Global (unused by LayoutProfile, defaults are fine) ──────────────────
 		@Override public HudMode  hudMode()       { return HudMode.MANUAL; }
 		@Override public boolean  hudVisible()    { return false; }
-		@Override public HudLayout hudLayout()   { return HudLayout.CHAT_LOCKED; }
+		@Override public HudLayout hudLayout()   { return HudLayout.HORIZONTAL_FLOAT; }
 		@Override public boolean  showHpShake()  { return true; }
 		@Override public boolean  showFreezeTimer()  { return true; }
 		@Override public boolean  showDivineTimers() { return true; }
@@ -71,21 +62,6 @@ public class LayoutProfileTest
 		@Override public Keybind  timer2Key()    { return Keybind.NOT_SET; }
 		@Override public int      timer2Duration(){ return 300; }
 	};
-
-	@Test
-	public void chatLocked_readsFromChatLockedKeys()
-	{
-		LayoutProfile p = LayoutProfile.forLayout(HudLayout.CHAT_LOCKED, CONFIG);
-		assertEquals(BuffStyle.TEXT, p.buffStyle);
-		assertEquals(100, p.backgroundOpacity);
-		assertFalse(p.showBoostRow);
-		assertTrue(p.boostXOverX);
-		assertFalse(p.reserveBoostDockWhenHidden); // not applicable
-		assertEquals(BarDisplayStyle.BARS_ONLY, p.hpBarStyle);
-		assertEquals(BarDisplayStyle.NUMBERS_ONLY, p.prayerBarStyle);
-		assertEquals(BarDisplayStyle.HIDDEN, p.runBarStyle);
-		assertEquals(BarDisplayStyle.BARS_AND_NUMBERS, p.specBarStyle);
-	}
 
 	@Test
 	public void horizFloat_readsFromHfKeys()
@@ -135,35 +111,49 @@ public class LayoutProfileTest
 	@Test
 	public void layoutsAreIndependent_buffStyle()
 	{
-		LayoutProfile cl = LayoutProfile.forLayout(HudLayout.CHAT_LOCKED, CONFIG);
 		LayoutProfile hf = LayoutProfile.forLayout(HudLayout.HORIZONTAL_FLOAT, CONFIG);
 		LayoutProfile vf = LayoutProfile.forLayout(HudLayout.VERTICAL_FLOAT, CONFIG);
 
-		// All three have distinct buff styles confirming no cross-contamination.
-		assertNotEquals(cl.buffStyle, hf.buffStyle);
 		assertNotEquals(hf.buffStyle, vf.buffStyle);
 	}
 
 	@Test
 	public void layoutsAreIndependent_opacity()
 	{
-		LayoutProfile cl = LayoutProfile.forLayout(HudLayout.CHAT_LOCKED, CONFIG);
 		LayoutProfile hf = LayoutProfile.forLayout(HudLayout.HORIZONTAL_FLOAT, CONFIG);
 		LayoutProfile vf = LayoutProfile.forLayout(HudLayout.VERTICAL_FLOAT, CONFIG);
 		LayoutProfile ih = LayoutProfile.forLayout(HudLayout.INVENTORY_HUG, CONFIG);
 
-		// Every layout has a unique opacity in our test config.
-		assertNotEquals(cl.backgroundOpacity, hf.backgroundOpacity);
 		assertNotEquals(hf.backgroundOpacity, vf.backgroundOpacity);
 		assertNotEquals(vf.backgroundOpacity, ih.backgroundOpacity);
 	}
 
 	@Test
-	public void reserveBoostDock_falseForChatLockedAndInvyHug()
+	public void reserveBoostDock_falseForInvyHugAndChatLocked()
 	{
-		assertFalse(LayoutProfile.forLayout(HudLayout.CHAT_LOCKED,    CONFIG).reserveBoostDockWhenHidden);
-		assertFalse(LayoutProfile.forLayout(HudLayout.INVENTORY_HUG,  CONFIG).reserveBoostDockWhenHidden);
-		// Float layouts read the real config value (which is true for HF in our stub).
+		assertFalse(LayoutProfile.forLayout(HudLayout.INVENTORY_HUG, CONFIG).reserveBoostDockWhenHidden);
+		// HF with chatLocked=false reads the real config value (true in our stub).
 		assertTrue(LayoutProfile.forLayout(HudLayout.HORIZONTAL_FLOAT, CONFIG).reserveBoostDockWhenHidden);
+	}
+
+	@Test
+	public void horizFloat_chatLocked_forcesReserveDockFalse()
+	{
+		PvpHudConfig locked = new PvpHudConfig()
+		{
+			@Override public boolean hfChatLocked()                 { return true; }
+			@Override public boolean hfReserveBoostDockWhenHidden() { return true; }
+			@Override public BuffStyle       hfBuffStyle()          { return BuffStyle.VERTICAL_BAR; }
+			@Override public int             hfBackgroundOpacity()  { return 220; }
+			@Override public boolean         hfShowBoostRow()       { return true; }
+			@Override public boolean         hfBoostXOverX()        { return false; }
+			@Override public BarDisplayStyle hfHpBarStyle()         { return BarDisplayStyle.BARS_AND_NUMBERS; }
+			@Override public BarDisplayStyle hfPrayerBarStyle()     { return BarDisplayStyle.BARS_AND_NUMBERS; }
+			@Override public BarDisplayStyle hfRunBarStyle()        { return BarDisplayStyle.BARS_AND_NUMBERS; }
+			@Override public BarDisplayStyle hfSpecBarStyle()       { return BarDisplayStyle.BARS_AND_NUMBERS; }
+		};
+		LayoutProfile p = LayoutProfile.forLayout(HudLayout.HORIZONTAL_FLOAT, locked);
+		assertTrue(p.chatLocked);
+		assertFalse("chatLocked must suppress reserveBoostDockWhenHidden", p.reserveBoostDockWhenHidden);
 	}
 }

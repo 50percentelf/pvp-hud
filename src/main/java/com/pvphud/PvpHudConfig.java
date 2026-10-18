@@ -54,13 +54,13 @@ public interface PvpHudConfig extends Config
 	@ConfigItem(
 		keyName = "hudLayout",
 		name = "HUD Layout",
-		description = "Chat Locked: fills the chatbox area. Horizontal Float: draggable same size. Vertical Float: narrow side panel. Inventory Hug: anchors to inventory.",
+		description = "Horizontal Float: draggable chatbox-sized panel (enable Chat Locked in its section to pin it). Vertical Float: narrow side panel. Inventory Hug: anchors to inventory.",
 		section = generalSection,
 		position = 2
 	)
 	default HudLayout hudLayout()
 	{
-		return HudLayout.CHAT_LOCKED;
+		return HudLayout.HORIZONTAL_FLOAT;
 	}
 
 	@ConfigItem(
@@ -208,115 +208,6 @@ public interface PvpHudConfig extends Config
 		return new Color(20, 20, 20);
 	}
 
-	// ── Chat Locked section ──────────────────────────────────────────────────
-	// Key names intentionally match the previous (unsectioned) release so that
-	// existing user settings survive the refactor without a migration step.
-
-	@ConfigSection(
-		name = "Chat Locked",
-		description = "Presentation settings for the Chat Locked layout",
-		position = 10,
-		closedByDefault = true
-	)
-	String chatLockedSection = "chatLocked";
-
-	@ConfigItem(
-		keyName = "buffStyle",
-		name = "Buff Display Style",
-		description = "Text: labels only. Vertical Bar: icon + timer per row. Icon Tray: horizontal icon strip.",
-		section = chatLockedSection,
-		position = 0
-	)
-	default BuffStyle buffStyle()
-	{
-		return BuffStyle.VERTICAL_BAR;
-	}
-
-	@Range(min = 0, max = 255)
-	@ConfigItem(
-		keyName = "backgroundOpacity",
-		name = "Background Opacity",
-		description = "HUD background opacity: 0 = fully transparent, 255 = fully opaque.",
-		section = chatLockedSection,
-		position = 1
-	)
-	default int backgroundOpacity()
-	{
-		return 220;
-	}
-
-	@ConfigItem(
-		keyName = "showBoostRow",
-		name = "Show Boost Row",
-		description = "Show the ATK/STR/DEF/RNG/MAG boost row at the bottom of the HUD.",
-		section = chatLockedSection,
-		position = 2
-	)
-	default boolean showBoostRow()
-	{
-		return true;
-	}
-
-	@ConfigItem(
-		keyName = "boostXOverX",
-		name = "Show Boosts as Boosted/Base",
-		description = "Boost row shows the actual boosted level vs base level (e.g. 115/99) instead of the delta (+16).",
-		section = chatLockedSection,
-		position = 3
-	)
-	default boolean boostXOverX()
-	{
-		return false;
-	}
-
-	@ConfigItem(
-		keyName = "hpBarStyle",
-		name = "HP Bar",
-		description = "How HP is displayed in the YOU panel.",
-		section = chatLockedSection,
-		position = 4
-	)
-	default BarDisplayStyle hpBarStyle()
-	{
-		return BarDisplayStyle.BARS_AND_NUMBERS;
-	}
-
-	@ConfigItem(
-		keyName = "prayerBarStyle",
-		name = "Prayer Bar",
-		description = "How Prayer is displayed in the YOU panel.",
-		section = chatLockedSection,
-		position = 5
-	)
-	default BarDisplayStyle prayerBarStyle()
-	{
-		return BarDisplayStyle.BARS_AND_NUMBERS;
-	}
-
-	@ConfigItem(
-		keyName = "runBarStyle",
-		name = "Run Energy Bar",
-		description = "How run energy is displayed in the YOU panel.",
-		section = chatLockedSection,
-		position = 6
-	)
-	default BarDisplayStyle runBarStyle()
-	{
-		return BarDisplayStyle.BARS_AND_NUMBERS;
-	}
-
-	@ConfigItem(
-		keyName = "specBarStyle",
-		name = "Spec Bar",
-		description = "How special attack energy is displayed in the YOU panel.",
-		section = chatLockedSection,
-		position = 7
-	)
-	default BarDisplayStyle specBarStyle()
-	{
-		return BarDisplayStyle.BARS_AND_NUMBERS;
-	}
-
 	// ── Horizontal Float section ─────────────────────────────────────────────
 
 	@ConfigSection(
@@ -326,6 +217,18 @@ public interface PvpHudConfig extends Config
 		closedByDefault = true
 	)
 	String horizFloatSection = "horizFloat";
+
+	@ConfigItem(
+		keyName = "hf_chatLocked",
+		name = "Chat Locked",
+		description = "Pin the HUD to the chatbox — it cannot be dragged and always matches the chatbox size and position. When off, the HUD floats freely.",
+		section = horizFloatSection,
+		position = 0
+	)
+	default boolean hfChatLocked()
+	{
+		return false;
+	}
 
 	@ConfigItem(
 		keyName = "hf_buffStyle",

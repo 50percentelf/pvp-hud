@@ -142,6 +142,7 @@ public class PvpHudOverlay extends Overlay
 
 	private HudLayout    lastLayout;
 	private LayoutProfile activeProfile = null;
+	private boolean      lastHfChatLocked = false;
 
 	/** True only during renderForDebug — bypasses config visibility guards so injected effects always show. */
 	private boolean debugRendering = false;
@@ -297,8 +298,6 @@ public class PvpHudOverlay extends Overlay
 
 		switch (currentLayout)
 		{
-			case CHAT_LOCKED:
-				return renderChatLocked(g, state, layout, normal, small);
 			case HORIZONTAL_FLOAT:
 				return renderHorizontalFloat(g, state, layout, normal, small);
 			case VERTICAL_FLOAT:
@@ -312,30 +311,32 @@ public class PvpHudOverlay extends Overlay
 
 	// ── Per-layout render paths ───────────────────────────────────────────────
 
-	private Dimension renderChatLocked(Graphics2D g, PvpHudState state,
-		HudLayoutState layout, Font normal, Font small)
-	{
-		Rectangle bounds = getChatboxBounds();
-		if (bounds == null) return null;
-
-		// Pin overlay to the chatbox position each frame so it can't be dragged away.
-		setPreferredLocation(new Point(bounds.x, bounds.y));
-
-		Rectangle local = new Rectangle(0, 0, bounds.width, bounds.height);
-		if (!local.equals(layout.getChatboxBounds()))
-		{
-			layout.setChatboxBounds(new Rectangle(local));
-			layout.markDirty();
-		}
-		if (layout.isDirty()) computeHorizLayout(layout, local, activeProfile.showBoostRow, false);  // Chat Locked always collapses
-
-		drawAll(g, state, layout, local, normal, small, false);
-		return new Dimension(bounds.width, bounds.height);
-	}
-
 	private Dimension renderHorizontalFloat(Graphics2D g, PvpHudState state,
 		HudLayoutState layout, Font normal, Font small)
 	{
+		boolean chatLocked = activeProfile.chatLocked;
+		if (chatLocked != lastHfChatLocked)
+		{
+			lastHfChatLocked = chatLocked;
+			layout.markDirty();
+		}
+
+		if (chatLocked)
+		{
+			Rectangle clBounds = getChatboxBounds();
+			if (clBounds == null) return null;
+			setPreferredLocation(new Point(clBounds.x, clBounds.y));
+			Rectangle local = new Rectangle(0, 0, clBounds.width, clBounds.height);
+			if (!local.equals(layout.getChatboxBounds()))
+			{
+				layout.setChatboxBounds(new Rectangle(local));
+				layout.markDirty();
+			}
+			if (layout.isDirty()) computeHorizLayout(layout, local, activeProfile.showBoostRow, false);
+			drawAll(g, state, layout, local, normal, small, false);
+			return new Dimension(clBounds.width, clBounds.height);
+		}
+
 		Rectangle currentChat = getChatboxBounds();
 		int w = currentChat != null ? currentChat.width  : 519;
 		int h = currentChat != null ? currentChat.height : 200;
@@ -2468,7 +2469,6 @@ public class PvpHudOverlay extends Overlay
 
 			switch (layout)
 			{
-				case CHAT_LOCKED:
 				case HORIZONTAL_FLOAT:
 					computeHorizLayout(tempLayout, bounds, profile.showBoostRow, false);
 					drawAll(g, state, tempLayout, bounds, normal, small, false);
