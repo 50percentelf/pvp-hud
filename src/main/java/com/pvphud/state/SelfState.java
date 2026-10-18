@@ -21,9 +21,12 @@ public class SelfState
 	/** SpriteID of the spell that froze the player (0 = unknown / not frozen). */
 	@Getter @Setter private int freezeSpriteId;
 
+	/** Post-thaw ticks during which the player cannot be refrozen (OSRS mechanic). */
+	public static final int REFREEZE_IMMUNITY_TICKS = 5;
+
 	/**
 	 * Game tick when post-thaw refreeze immunity expires (-1 = not immune).
-	 * Set to (thawTick + freezeDuration/2) by {@link #thaw(int)}.
+	 * Set to (thawTick + REFREEZE_IMMUNITY_TICKS) by {@link #thaw(int)}.
 	 */
 	private int refreezeImmunityEndTick = -1;
 
@@ -86,16 +89,12 @@ public class SelfState
 
 	/**
 	 * Thaws the freeze naturally (timer expiry) or by movement detection.
-	 * Grants refreeze immunity = half the original freeze duration, starting now.
+	 * Grants a fixed post-thaw refreeze immunity window (OSRS: ~5 ticks).
 	 */
 	public void thaw(int currentTick)
 	{
 		if (freezeEndTick > 0 && freezeStartTick >= 0)
-		{
-			int duration = freezeEndTick - freezeStartTick;
-			if (duration > 0)
-				refreezeImmunityEndTick = currentTick + duration / 2;
-		}
+			refreezeImmunityEndTick = currentTick + REFREEZE_IMMUNITY_TICKS;
 		freezeStartTick = -1;
 		freezeEndTick   = -1;
 		freezeSpriteId  = 0;

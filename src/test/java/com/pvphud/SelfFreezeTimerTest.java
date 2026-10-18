@@ -227,4 +227,86 @@ public class SelfFreezeTimerTest
 		s.clearFreeze();
 		assertEquals(-1, s.getFreezeStartTick());
 	}
+
+	// ── thaw — post-freeze refreeze immunity ─────────────────────────────────
+
+	@Test
+	public void thaw_grantsFixedImmunityWindow()
+	{
+		SelfState s = new SelfState();
+		s.applyFreeze(0, 32, SpriteID.SPELL_ICE_BARRAGE);
+		s.thaw(32); // freeze expired naturally at tick 32
+		assertEquals(SelfState.REFREEZE_IMMUNITY_TICKS, s.getRefreezeImmunityTicks(32));
+	}
+
+	@Test
+	public void thaw_immunityExpires_afterFiveTicks()
+	{
+		SelfState s = new SelfState();
+		s.applyFreeze(0, 16, SpriteID.SPELL_ICE_BURST);
+		s.thaw(16);
+		assertTrue(s.isRefreezeImmune(16));
+		assertTrue(s.isRefreezeImmune(20));  // tick 16 + 4 = 20 < 21
+		assertFalse(s.isRefreezeImmune(21)); // tick 16 + 5 = 21, immunity ended
+	}
+
+	@Test
+	public void thaw_clearsFreezeState()
+	{
+		SelfState s = new SelfState();
+		s.applyFreeze(0, 24, SpriteID.SPELL_ICE_BLITZ);
+		s.thaw(10); // early thaw (movement detected)
+		assertFalse(s.isFrozen(10));
+		assertEquals(0, s.getFreezeTicksRemaining(10));
+		assertEquals(-1, s.getFreezeStartTick());
+		assertEquals(0, s.getFreezeSpriteId());
+	}
+
+	@Test
+	public void thaw_immunityIsSameDurationRegardlessOfSpell()
+	{
+		// Immunity must be the same fixed value for every freeze type
+		SelfState rush = new SelfState();
+		rush.applyFreeze(0, 8, SpriteID.SPELL_ICE_RUSH);
+		rush.thaw(8);
+
+		SelfState barrage = new SelfState();
+		barrage.applyFreeze(0, 32, SpriteID.SPELL_ICE_BARRAGE);
+		barrage.thaw(32);
+
+		assertEquals(SelfState.REFREEZE_IMMUNITY_TICKS, rush.getRefreezeImmunityTicks(8));
+		assertEquals(SelfState.REFREEZE_IMMUNITY_TICKS, barrage.getRefreezeImmunityTicks(32));
+	}
+
+	// ── clearFreeze — no immunity granted ────────────────────────────────────
+
+	@Test
+	public void clearFreeze_doesNotGrantImmunity()
+	{
+		SelfState s = new SelfState();
+		s.applyFreeze(0, 32, SpriteID.SPELL_ICE_BARRAGE);
+		s.clearFreeze(); // logout/world-hop — must NOT create immunity
+		assertFalse(s.isRefreezeImmune(0));
+		assertEquals(0, s.getRefreezeImmunityTicks(0));
+	}
+
+	@Test
+	public void reset_doesNotGrantImmunity()
+	{
+		SelfState s = new SelfState();
+		s.applyFreeze(0, 32, SpriteID.SPELL_ICE_BARRAGE);
+		s.reset();
+		assertFalse(s.isRefreezeImmune(1));
+		assertEquals(0, s.getRefreezeImmunityTicks(1));
+	}
+
+	// ── No refreeze immunity by default ─────────────────────────────────────
+
+	@Test
+	public void noRefreezeImmunityByDefault()
+	{
+		SelfState s = new SelfState();
+		assertFalse(s.isRefreezeImmune(0));
+		assertEquals(0, s.getRefreezeImmunityTicks(0));
+	}
 }
