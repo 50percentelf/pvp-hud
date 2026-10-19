@@ -64,7 +64,6 @@ public class HudLayoutBoundsTest
 		assertWithin(layout.getEventPanel(),    b, "event");
 		assertWithin(layout.getSelfPanel(),     b, "self");
 		assertWithin(layout.getActionStrip(),   b, "actionStrip");
-		assertNull("boost row removed in this release", layout.getBoostRow());
 	}
 
 	@Test
@@ -156,7 +155,6 @@ public class HudLayoutBoundsTest
 		assertWithin(layout.getEventPanel(),    b, "event");
 		assertWithin(layout.getSelfPanel(),     b, "self");
 		assertWithin(layout.getActionStrip(),   b, "actionStrip");
-		assertNull("boost row removed in this release", layout.getBoostRow());
 	}
 
 	@Test

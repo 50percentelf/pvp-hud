@@ -23,7 +23,6 @@ public class HudLayoutState
 	@Getter @Setter private Rectangle opponentPanel;
 	@Getter @Setter private Rectangle eventPanel;
 	@Getter @Setter private Rectangle selfPanel;
-	@Getter @Setter private Rectangle boostRow;
 	@Getter @Setter private Rectangle actionStrip;
 
 	public void markDirty()
@@ -35,10 +34,9 @@ public class HudLayoutState
 	{
 		chatboxBounds = null;
 		opponentPanel = null;
-		eventPanel = null;
-		selfPanel = null;
-		boostRow = null;
-		actionStrip = null;
-		dirty = true;
+		eventPanel    = null;
+		selfPanel     = null;
+		actionStrip   = null;
+		dirty         = true;
 	}
 }

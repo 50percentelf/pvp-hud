@@ -3,12 +3,9 @@ package com.pvphud.state;
 import lombok.Getter;
 import lombok.Setter;
 
-/** Local-player self state: veng, freeze, teleblock, HP/Prayer, stat-cycle clocks. */
+/** Local-player self state: freeze, teleblock, prayer-lock, HP/Prayer, ammo. */
 public class SelfState
 {
-	/** Vengeance has been cast and is ready to trigger on next incoming hit. */
-	@Getter @Setter private boolean vengActive;
-
 	/**
 	 * Game tick on which the freeze started (-1 = not frozen).
 	 * Stored as a start/end tick pair so repeated ice impacts cannot extend it.
@@ -26,7 +23,7 @@ public class SelfState
 
 	/**
 	 * Game tick when post-thaw refreeze immunity expires (-1 = not immune).
-	 * Set to (thawTick + REFREEZE_IMMUNITY_TICKS) by {@link #thaw(int)}.
+	 * Set to (currentTick + REFREEZE_IMMUNITY_TICKS) by {@link #expireFreeze(int)}.
 	 */
 	private int refreezeImmunityEndTick = -1;
 
@@ -47,9 +44,6 @@ public class SelfState
 	@Getter @Setter private int currentPrayer;
 	@Getter @Setter private int maxPrayer;
 
-	/** Counts down from 100 to 0 each game tick; reset when a natural HP regen tick is detected. */
-	@Getter @Setter private int hpRegenTicksRemaining;
-
 	/** Wall-clock ms of the last positive incoming damage; -1 = none yet. Used for HP bar shake. */
 	@Getter @Setter private long lastIncomingDamageMs = -1;
 
@@ -64,12 +58,6 @@ public class SelfState
 
 	/** Quantity of equipped ammo (0 when ammoItemId == -1). */
 	@Getter @Setter private int ammoQuantity = 0;
-
-	/** Clock calibrated from observed natural -1 stat ticks above base (boost decay). */
-	@Getter private final BoostDecayClock boostDecay   = new BoostDecayClock();
-
-	/** Clock calibrated from observed natural +1 stat ticks below base (debuff restoration). */
-	@Getter private final StatCycleClock debuffRestore = new StatCycleClock();
 
 	// ── Freeze helpers ────────────────────────────────────────────────────────
 
@@ -163,7 +151,6 @@ public class SelfState
 
 	public void reset()
 	{
-		vengActive = false;
 		clearFreeze();
 		tbImmunityActive        = false;
 		prayerLockEndTick       = -1;
@@ -172,9 +159,6 @@ public class SelfState
 		maxHp                   = 0;
 		currentPrayer           = 0;
 		maxPrayer               = 0;
-		hpRegenTicksRemaining   = 0;
-		boostDecay.reset();
-		debuffRestore.reset();
 		lastIncomingDamageMs    = -1;
 		lastIncomingDamage      = 0;
 		runEnergy               = 0;

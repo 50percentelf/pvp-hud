@@ -3,23 +3,11 @@ package com.pvphud.state;
 import lombok.Getter;
 import lombok.Setter;
 
-/** Miscellaneous self-effects: spec energy, weapon speed, Lightbearer, and timed potion effects. */
+/** Miscellaneous self-effects: spec energy and timed potion effects. */
 public class EffectState
 {
 	/** Special attack energy 0–100. */
 	@Getter @Setter private int specEnergy;
-
-	/** Ticks until the next special attack energy tick (+10%). */
-	@Getter @Setter private int specRegenTicksRemaining;
-
-	/** Whether the player has Lightbearer equipped (halves spec regen time). */
-	@Getter @Setter private boolean lightbearer;
-
-	/** Current weapon's attack speed in ticks (0 = unknown). */
-	@Getter @Setter private int weaponSpeedTicks;
-
-	/** Wall-clock timestamp of the last spec regen tick (+10%); -1 = not yet observed. */
-	@Getter @Setter private long lastSpecRegenMs = -1;
 
 	/** Stamina potion effect ticks remaining (self-tracked; server flag is binary). */
 	@Getter @Setter private int staminaEffectTicks;
@@ -93,8 +81,8 @@ public class EffectState
 	}
 
 	// ── Burn damage counters ──────────────────────────────────────────────────
-	// VarbitID.PLAYER_OWN_BURN_DAMAGE_TOTAL        = accumulated prayer drained so far.
-	// VarbitID.PLAYER_OWN_BURN_DAMAGE_HITSPLAT_SIZE = next individual burn hit.
+	// VarbitID.PLAYER_OWN_BURN_DAMAGE_TOTAL         = accumulated burn damage so far.
+	// VarbitID.PLAYER_OWN_BURN_DAMAGE_HITSPLAT_SIZE = next burn hit size.
 	@Getter @Setter private int burnDamageTotal;
 	@Getter @Setter private int burnDamageNextHit;
 
@@ -224,7 +212,7 @@ public class EffectState
 
 	// ── Menaphite Remedy — periodic effect ───────────────────────────────────
 	// totalTicksRemaining is updated from the server varbit each tick.
-	// nextProcTicks will be wired in Task 5.
+	// nextProcTicks is reset to 25 each time the varbit decrements (see onVarbitChanged).
 	@Getter private final PeriodicEffect menaphite = new PeriodicEffect();
 
 	// ── Antifire protection — phase-based duration tracking ──────────────────
@@ -278,10 +266,6 @@ public class EffectState
 	public void reset()
 	{
 		specEnergy               = 0;
-		specRegenTicksRemaining  = 0;
-		lastSpecRegenMs          = -1;
-		lightbearer              = false;
-		weaponSpeedTicks         = 0;
 		staminaEffectTicks       = 0;
 		divineSupercombatTicks   = 0;
 		divineRangingTicks       = 0;

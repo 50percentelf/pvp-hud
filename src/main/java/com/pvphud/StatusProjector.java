@@ -1,6 +1,5 @@
 package com.pvphud;
 
-import com.pvphud.state.BoostState;
 import com.pvphud.state.EffectState;
 import com.pvphud.state.PoisonState;
 import com.pvphud.state.SelfState;
@@ -41,7 +40,7 @@ public final class StatusProjector
 	 * @param showAll  true in debug mode — bypasses all config visibility guards
 	 */
 	public static List<StatusSlot> project(
-		SelfState self, EffectState fx, PoisonState poison, BoostState boosts,
+		SelfState self, EffectState fx, PoisonState poison,
 		int tick, PvpHudConfig config, boolean showAll)
 	{
 		List<StatusSlot> out = new ArrayList<>(24);

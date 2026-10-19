@@ -19,11 +19,6 @@ public class OpponentStats
 
 	@Getter @Setter private AccountType accountType = AccountType.NORMAL;
 
-	public boolean isKnown()
-	{
-		return attack >= 0;
-	}
-
 	public void reset()
 	{
 		attack = strength = defence = ranged = magic = hitpoints = -1;

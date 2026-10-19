@@ -2,14 +2,12 @@ package com.pvphud;
 
 import com.google.inject.Provides;
 import com.pvphud.state.ActionClockState;
-import com.pvphud.state.BoostState;
 import com.pvphud.state.EffectState;
 import com.pvphud.state.ManualTimerState;
 import com.pvphud.state.OpponentState;
 import com.pvphud.state.OpponentStats;
 import com.pvphud.state.PeriodicEffect;
 import com.pvphud.state.PoisonState;
-import com.pvphud.state.ProtectionState;
 import com.pvphud.state.PvpFightSession;
 import com.pvphud.state.SelfState;
 import java.util.ArrayList;
@@ -33,7 +31,6 @@ import net.runelite.api.InventoryID;
 import net.runelite.api.Item;
 import net.runelite.api.ItemContainer;
 import net.runelite.api.Player;
-import net.runelite.api.Prayer;
 import net.runelite.api.Skill;
 import net.runelite.api.SpriteID;
 import net.runelite.api.VarPlayer;
@@ -80,7 +77,7 @@ import net.runelite.client.game.ItemStats;
 @Slf4j
 @PluginDescriptor(
 	name = "PvP HUD",
-	description = "A coherent PvP combat dashboard in the chatbox region",
+	description = "A configurable PvP combat HUD with fight tracking, resource bars, status effects, and combat timers.",
 	tags = {"pvp", "hud", "combat", "wilderness"}
 )
 public class PvpHudPlugin extends Plugin
@@ -154,8 +151,6 @@ public class PvpHudPlugin extends Plugin
 
 	/** Player position from the previous game tick; used to detect movement while frozen. */
 	private WorldPoint lastPlayerPos = null;
-
-	// SPOTANIM_VENGEANCE and ANIM_VENGEANCE_IDS removed — Vengeance tracking deferred post-v0.1.
 
 	private static final String SOTD_SPEC_ON_MSG  = "Spirits of deceased evildoers offer you their protection";
 	private static final String SOTD_SPEC_OFF_MSG = "Your protection fades away";
@@ -280,7 +275,6 @@ public class PvpHudPlugin extends Plugin
 		// Always copy old top-level style keys into hf_* equivalents when
 		// present but the hf_* key is unset. Covers both explicit CHAT_LOCKED
 		// users and users who kept the old default without saving the layout.
-		// showBoostRow intentionally not migrated — boost row is removed in this release.
 		copyIfAbsent("buffStyle",         "hf_buffStyle");
 		copyIfAbsent("backgroundOpacity", "hf_backgroundOpacity");
 		copyIfAbsent("hpBarStyle",        "hf_hpBarStyle");
@@ -321,24 +315,11 @@ public class PvpHudPlugin extends Plugin
 	{
 		if (client.getGameState() != GameState.LOGGED_IN) return;
 
-		BoostState boosts = hudState.getBoosts();
-		boosts.setAttackReal(client.getRealSkillLevel(Skill.ATTACK));
-		boosts.setAttackBoosted(client.getBoostedSkillLevel(Skill.ATTACK));
-		boosts.setStrengthReal(client.getRealSkillLevel(Skill.STRENGTH));
-		boosts.setStrengthBoosted(client.getBoostedSkillLevel(Skill.STRENGTH));
-		boosts.setDefenceReal(client.getRealSkillLevel(Skill.DEFENCE));
-		boosts.setDefenceBoosted(client.getBoostedSkillLevel(Skill.DEFENCE));
-		boosts.setRangedReal(client.getRealSkillLevel(Skill.RANGED));
-		boosts.setRangedBoosted(client.getBoostedSkillLevel(Skill.RANGED));
-		boosts.setMagicReal(client.getRealSkillLevel(Skill.MAGIC));
-		boosts.setMagicBoosted(client.getBoostedSkillLevel(Skill.MAGIC));
-
 		hudState.getEffects().setSpecEnergy(
 			client.getVarpValue(VarPlayer.SPECIAL_ATTACK_PERCENT) / 10);
 
 		int poisonVal = client.getVarpValue(VarPlayer.POISON);
 		SelfState   self  = hudState.getSelf();
-		EffectState efxI  = hudState.getEffects();
 		applyPoisonVarp(poisonVal);
 		self.setCurrentHp(client.getBoostedSkillLevel(Skill.HITPOINTS));
 		self.setMaxHp(client.getRealSkillLevel(Skill.HITPOINTS));
@@ -346,7 +327,6 @@ public class PvpHudPlugin extends Plugin
 		self.setMaxPrayer(client.getRealSkillLevel(Skill.PRAYER));
 		// client.getEnergy() returns 0-10000; divide by 100 for 0-100%
 		self.setRunEnergy(client.getEnergy() / 100);
-		// Vengeance tracking deferred post-v0.1 — do not initialise vengActive.
 		int tbRaw = client.getVarbitValue(Varbits.TELEBLOCK);
 		self.setTeleBlockTicksRemaining(decodeTeleblockTicks(tbRaw));
 		self.setTbImmunityActive(tbRaw > 0 && tbRaw <= 100);
@@ -480,60 +460,9 @@ public class PvpHudPlugin extends Plugin
 	@Subscribe
 	public void onStatChanged(StatChanged event)
 	{
-		BoostState boosts = hudState.getBoosts();
-		SelfState  self   = hudState.getSelf();
+		SelfState self = hudState.getSelf();
 		switch (event.getSkill())
 		{
-			case ATTACK:
-			{
-				int prev    = boosts.getAttackBoosted();
-				int current = event.getBoostedLevel();
-				int base    = event.getLevel();
-				boosts.setAttackReal(base);
-				boosts.setAttackBoosted(current);
-				handleStatCycle(self, prev, current, base);
-				break;
-			}
-			case STRENGTH:
-			{
-				int prev    = boosts.getStrengthBoosted();
-				int current = event.getBoostedLevel();
-				int base    = event.getLevel();
-				boosts.setStrengthReal(base);
-				boosts.setStrengthBoosted(current);
-				handleStatCycle(self, prev, current, base);
-				break;
-			}
-			case DEFENCE:
-			{
-				int prev    = boosts.getDefenceBoosted();
-				int current = event.getBoostedLevel();
-				int base    = event.getLevel();
-				boosts.setDefenceReal(base);
-				boosts.setDefenceBoosted(current);
-				handleStatCycle(self, prev, current, base);
-				break;
-			}
-			case RANGED:
-			{
-				int prev    = boosts.getRangedBoosted();
-				int current = event.getBoostedLevel();
-				int base    = event.getLevel();
-				boosts.setRangedReal(base);
-				boosts.setRangedBoosted(current);
-				handleStatCycle(self, prev, current, base);
-				break;
-			}
-			case MAGIC:
-			{
-				int prev    = boosts.getMagicBoosted();
-				int current = event.getBoostedLevel();
-				int base    = event.getLevel();
-				boosts.setMagicReal(base);
-				boosts.setMagicBoosted(current);
-				handleStatCycle(self, prev, current, base);
-				break;
-			}
 			case HITPOINTS:
 			{
 				int prevHp = self.getCurrentHp();
@@ -547,11 +476,6 @@ public class PvpHudPlugin extends Plugin
 					pendingOpponentName  = null;
 					pendingOpponentActor = null;
 				}
-				else if (event.getBoostedLevel() == prevHp + 1
-					&& event.getBoostedLevel() <= event.getLevel())
-				{
-					self.setHpRegenTicksRemaining(100);
-				}
 				break;
 			}
 			case PRAYER:
@@ -561,26 +485,6 @@ public class PvpHudPlugin extends Plugin
 			default:
 				break;
 		}
-	}
-
-	private void handleStatCycle(SelfState self, int prev, int current, int base)
-	{
-		if (isNaturalBoostDecay(prev, current, base))
-			self.getBoostDecay().sync(client.getTickCount());
-		else if (isNaturalDebuffRestore(prev, current, base))
-			self.getDebuffRestore().sync();
-	}
-
-	/** Natural boost decay: exactly -1 step, landing at or above base. */
-	static boolean isNaturalBoostDecay(int prev, int current, int base)
-	{
-		return current == prev - 1 && current >= base;
-	}
-
-	/** Natural debuff restoration: exactly +1 step, landing at or below base. */
-	static boolean isNaturalDebuffRestore(int prev, int current, int base)
-	{
-		return current == prev + 1 && current <= base;
 	}
 
 	/**
@@ -750,12 +654,7 @@ public class PvpHudPlugin extends Plugin
 		}
 		else if (varpId == VarPlayer.SPECIAL_ATTACK_PERCENT)
 		{
-			int newSpec = value / 10;
-			int oldSpec = hudState.getEffects().getSpecEnergy();
-			hudState.getEffects().setSpecEnergy(newSpec);
-			// Record regen timestamp when spec increases below full (passive regen, not at cap)
-			if (newSpec > oldSpec && newSpec < 100)
-				hudState.getEffects().setLastSpecRegenMs(System.currentTimeMillis());
+			hudState.getEffects().setSpecEnergy(value / 10);
 		}
 		else if (varpId == VarPlayer.POISON)
 		{
@@ -794,9 +693,7 @@ public class PvpHudPlugin extends Plugin
 					break;
 				}
 			}
-			return;
 		}
-		// Opponent Vengeance detection removed — deferred post-v0.1.
 	}
 
 	// ── Game tick ─────────────────────────────────────────────────────────────
@@ -865,11 +762,6 @@ public class PvpHudPlugin extends Plugin
 		if (!self.isFrozen(tick) && self.getFreezeStartTick() >= 0)
 			self.expireFreeze(tick);
 
-		if (self.getHpRegenTicksRemaining() > 0)
-			self.setHpRegenTicksRemaining(self.getHpRegenTicksRemaining() - 1);
-		self.getBoostDecay().update(tick, client.isPrayerActive(Prayer.PRESERVE));
-		self.getDebuffRestore().tick();
-
 		EffectState fxTick = hudState.getEffects();
 		if (fxTick.getStaminaEffectTicks() > 0)
 			fxTick.setStaminaEffectTicks(fxTick.getStaminaEffectTicks() - 1);
@@ -883,8 +775,6 @@ public class PvpHudPlugin extends Plugin
 
 		// Run energy: polled each tick (no reliable varbit event fires for it)
 		hudState.getSelf().setRunEnergy(client.getEnergy() / 100);
-
-		hudState.getProtection().tick();
 
 		// Expire stale fight session (no combat for ~30 s)
 		PvpFightSession session = hudState.getCurrentSession();
@@ -1051,7 +941,6 @@ public class PvpHudPlugin extends Plugin
 					hudState.getActionClock().setAttack(client.getTickCount(), speed);
 			}
 		}
-		// Opponent Vengeance animation detection removed — deferred post-v0.1.
 	}
 
 	// ── Interacting changed — combat candidate tracking ──────────────────────
@@ -1177,11 +1066,6 @@ public class PvpHudPlugin extends Plugin
 				confirmCombatCandidate(pendingOpponentName, pendingOpponentActor);
 			}
 
-			// PJ safe, logout lock, and under-attack timers refresh on ANY incoming
-			// attack — including 0-damage splashes (OSRS uses attacks, not damage).
-			hudState.getProtection().onAttackExchanged(getPjTimerTicks());
-			hudState.getProtection().onIncomingHit();
-
 			int tick = client.getTickCount();
 			PvpFightSession session = hudState.getCurrentSession();
 			if (dmg <= 0)
@@ -1227,9 +1111,6 @@ public class PvpHudPlugin extends Plugin
 			{
 				return;
 			}
-
-			// PJ safe timer refreshes on our attacks, including 0-damage.
-			hudState.getProtection().onAttackExchanged(getPjTimerTicks());
 
 			int tick = client.getTickCount();
 			int dmg  = event.getHitsplat().getAmount();
@@ -1372,8 +1253,6 @@ public class PvpHudPlugin extends Plugin
 		// Terminate fight session when opponent HP reaches 0
 		if (ratio == 0)
 		{
-			hudState.getProtection().onAttackExchanged(getPjTimerTicks());
-			if (isInLms()) hudState.getProtection().onKillInLms();
 			// In single-combat, opponent death ends the freeze on us (they can't re-freeze).
 			if (!hudState.getContext().isMultiCombat())
 				hudState.getSelf().breakFreezeEarly();
@@ -1552,21 +1431,6 @@ public class PvpHudPlugin extends Plugin
 		int spriteId = graphicId >= 0 ? freezeSpriteIdForGraphic(graphicId) : SpriteID.SPELL_ICE_BARRAGE;
 
 		self.applyFreeze(tick, duration, spriteId);
-	}
-
-	// ── Protection helpers ────────────────────────────────────────────────────────
-
-	/** PvP worlds use 16-tick PJ protection (since 25 Mar 2026); Wilderness uses 20. */
-	private int getPjTimerTicks()
-	{
-		return client.getWorldType().contains(WorldType.PVP) ? 16 : 20;
-	}
-
-	/** Returns true when the player is inside Last Man Standing. */
-	private boolean isInLms()
-	{
-		// LMS detection not yet implemented; LMS immunity timer not active.
-		return false;
 	}
 
 	// ── Poison / venom / immunity ─────────────────────────────────────────────────

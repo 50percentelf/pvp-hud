@@ -29,15 +29,6 @@ public class OpponentState
 	@Getter @Setter
 	private int maxHp = -1;
 
-	/**
-	 * True while the opponent has active Vengeance (observed via animation 4071).
-	 * Cleared when any non-zero hitsplat lands on the opponent, consuming the veng.
-	 * There is no countdown — Vengeance has no duration; it waits for the next
-	 * qualifying hit to trigger.
-	 */
-	@Getter @Setter
-	private boolean vengActive;
-
 	/** Most recent outgoing hit dealt to the opponent. -1 = none. */
 	@Getter @Setter
 	private int lastOutgoingHit = -1;
@@ -58,11 +49,6 @@ public class OpponentState
 	@Getter @Setter
 	private Player cachedActor;
 
-	public boolean isSmiteActive()
-	{
-		return overheadPrayer == HeadIcon.SMITE;
-	}
-
 	public boolean isTracked()
 	{
 		return name != null;
@@ -73,7 +59,6 @@ public class OpponentState
 		name                  = null;
 		estimatedHp           = -1;
 		maxHp                 = -1;
-		vengActive            = false;
 		lastOutgoingHit       = -1;
 		lastOutgoingHitMs     = -1;
 		overheadPrayer        = null;

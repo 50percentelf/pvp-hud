@@ -1,7 +1,6 @@
 package com.pvphud;
 
 import com.pvphud.state.ActionClockState;
-import com.pvphud.state.BoostState;
 import com.pvphud.state.DamageExchange;
 import com.pvphud.state.EffectState;
 import com.pvphud.state.HudLayoutState;
@@ -9,7 +8,6 @@ import com.pvphud.state.ManualTimerState;
 import com.pvphud.state.OpponentState;
 import com.pvphud.state.OpponentStats;
 import com.pvphud.state.PoisonState;
-import com.pvphud.state.ProtectionState;
 import com.pvphud.state.PvpFightSession;
 import com.pvphud.state.SelfState;
 import java.awt.Color;
@@ -136,7 +134,6 @@ public class PvpHudOverlay extends Overlay
 	private volatile BufferedImage specIcon;
 
 	// ── Cached icons (spell sprites — loaded async, volatile for EDT visibility)
-	// vengIcon removed — Vengeance display deferred post-v0.1.
 	private volatile BufferedImage tbIcon;
 	private volatile BufferedImage iceRushIcon;
 	private volatile BufferedImage iceBurstIcon;
@@ -151,7 +148,7 @@ public class PvpHudOverlay extends Overlay
 	private volatile BufferedImage prayMagicIcon;
 	private volatile BufferedImage smiteIcon;
 
-	// ── Skill icons for boost row (volatile — written on client thread) ───────
+	// ── Skill icons for opponent stat columns (volatile — written on client thread) ───
 	private volatile BufferedImage atkSkillIcon;
 	private volatile BufferedImage strSkillIcon;
 	private volatile BufferedImage defSkillIcon;
@@ -220,7 +217,6 @@ public class PvpHudOverlay extends Overlay
 		spriteManager.getSpriteAsync(1359, 0, img -> redHitsplatIcon = img);
 		// corruptIcon, wardIcon, markIcon: SpriteID.MagicNecroOn not in API jar — text-only display.
 
-		// SpriteID.SPELL_VENGEANCE not loaded — Vengeance display deferred post-v0.1.
 		spriteManager.getSpriteAsync(SpriteID.SPELL_TELE_BLOCK,              0, img -> tbIcon         = img);
 		spriteManager.getSpriteAsync(SpriteID.SPELL_ICE_RUSH,                0, img -> iceRushIcon    = img);
 		spriteManager.getSpriteAsync(SpriteID.SPELL_ICE_BURST,               0, img -> iceBurstIcon   = img);
@@ -892,7 +888,6 @@ public class PvpHudOverlay extends Overlay
 
 		SelfState     self   = state.getSelf();
 		EffectState   fx     = state.getEffects();
-		BoostState    boosts = state.getBoosts();
 		PoisonState   poison = state.getPoison();
 		OpponentState opp    = state.getOpponent();
 
@@ -945,7 +940,7 @@ public class PvpHudOverlay extends Overlay
 		cy = drawInventoryAmmoRow(g, fm, lx, cy, railW,
 			self.getAmmoItemId(), self.getAmmoQuantity());
 
-		List<ActiveEffectView> selfBuffs = buildActiveEffects(self, fx, poison, boosts);
+		List<ActiveEffectView> selfBuffs = buildActiveEffects(self, fx, poison);
 		if (!selfBuffs.isEmpty())
 		{
 			g.setColor(DIVIDER);
@@ -957,15 +952,10 @@ public class PvpHudOverlay extends Overlay
 
 		// ── Action labels (text-only — no standard icon exists for these) ──────
 		if (cy >= railMaxY) return;
-		ProtectionState prot = state.getProtection();
-		// Combat locks (PJ/LOG/LCK) deferred pending in-game verification.
-		boolean showLocks    = false;
 		boolean showZoneInfo = config.showZoneInfo();
-		boolean hasProt = prot.isLmsImmune()
-			|| (showLocks && (prot.isPjSafe() || prot.isInCombatLogoutLock() || prot.isUnderAttackLocked()));
 		ManualTimerState t1 = state.getTimer1();
 		ManualTimerState t2 = state.getTimer2();
-		boolean hasAction = hasProt || t1.isRunning() || t2.isRunning()
+		boolean hasAction = t1.isRunning() || t2.isRunning()
 			|| (showZoneInfo && (state.getContext().getWildernessLevel() > 0 || state.getContext().isMultiCombat()));
 
 		if (hasAction && cy < railMaxY)
@@ -974,32 +964,6 @@ public class PvpHudOverlay extends Overlay
 			g.drawLine(lx, cy, INVY_LEFT_W - lx, cy);
 			cy += 3;
 
-			if (showLocks && prot.isPjSafe() && cy < railMaxY)
-			{
-				int s = (int) Math.round(prot.getPjSafeTicksRemaining() * 0.6);
-				g.setColor(s > 20 ? GREEN : s > 10 ? YELLOW : RED);
-				drawCentered(g, fm, "PJ " + s + "s", cx, cy + fm.getAscent());
-				cy += fm.getHeight() + 1;
-			}
-			if (prot.isLmsImmune() && cy < railMaxY)
-			{
-				int s = (int) Math.round(prot.getLmsImmuneTicksRemaining() * 0.6);
-				g.setColor(PRAYER_FG);
-				drawCentered(g, fm, "IMM " + s + "s", cx, cy + fm.getAscent());
-				cy += fm.getHeight() + 1;
-			}
-			if (showLocks && prot.isInCombatLogoutLock() && cy < railMaxY)
-			{
-				g.setColor(ORANGE);
-				drawCentered(g, fm, "LOG", cx, cy + fm.getAscent());
-				cy += fm.getHeight() + 1;
-			}
-			if (showLocks && prot.isUnderAttackLocked() && cy < railMaxY)
-			{
-				g.setColor(LIGHT_BLUE);
-				drawCentered(g, fm, "LCK", cx, cy + fm.getAscent());
-				cy += fm.getHeight() + 1;
-			}
 			if (t1.isRunning() && cy < railMaxY)
 			{
 				int s = (int)(t1.getRemainingMs() / 1000);
@@ -1126,7 +1090,6 @@ public class PvpHudOverlay extends Overlay
 		layout.setOpponentPanel(new Rectangle(b.x,         b.y, third,         mainH));
 		layout.setEventPanel   (new Rectangle(b.x + third, b.y, right - third, mainH));
 		layout.setSelfPanel    (new Rectangle(b.x + right, b.y, third,         mainH));
-		layout.setBoostRow(null);
 		layout.setActionStrip(new Rectangle(b.x, b.y + mainH, b.width, ACTION_STRIP_H));
 		layout.setDirty(false);
 	}
@@ -1141,7 +1104,6 @@ public class PvpHudOverlay extends Overlay
 		layout.setOpponentPanel(new Rectangle(b.x, b.y,            b.width, secH));
 		layout.setEventPanel   (new Rectangle(b.x, b.y + secH,     b.width, secH));
 		layout.setSelfPanel    (new Rectangle(b.x, b.y + 2 * secH, b.width, mainH - 2 * secH));
-		layout.setBoostRow(null);
 		layout.setActionStrip(new Rectangle(b.x, b.y + mainH, b.width, ACTION_STRIP_H));
 		layout.setDirty(false);
 	}
@@ -1541,7 +1503,6 @@ public class PvpHudOverlay extends Overlay
 
 		SelfState   self   = state.getSelf();
 		EffectState fx     = state.getEffects();
-		BoostState  boosts = state.getBoosts();
 		PoisonState poison = state.getPoison();
 
 		// Bar width: cap horizontal bars at 90px so they don't sprawl across a wide chatbox panel.
@@ -1550,7 +1511,7 @@ public class PvpHudOverlay extends Overlay
 			: p.width;
 		cy = drawHpPrayerBars(g, smFm, self, fx, rx, cy, hpBarPanelW);
 
-		List<ActiveEffectView> effects = buildActiveEffects(self, fx, poison, boosts);
+		List<ActiveEffectView> effects = buildActiveEffects(self, fx, poison);
 		if (!effects.isEmpty())
 		{
 			int maxY = p.y + p.height - PAD;
@@ -1737,10 +1698,10 @@ public class PvpHudOverlay extends Overlay
 	 * Replaces the old buildActiveEffects() inline logic.
 	 */
 	private List<ActiveEffectView> buildActiveEffects(SelfState self, EffectState fx,
-		PoisonState poison, BoostState boosts)
+		PoisonState poison)
 	{
 		return flattenToViews(StatusProjector.project(
-			self, fx, poison, boosts, client.getTickCount(), config, false));
+			self, fx, poison, client.getTickCount(), config, false));
 	}
 
 	/**
@@ -1766,70 +1727,43 @@ public class PvpHudOverlay extends Overlay
 	{
 		switch (slotId)
 		{
-			case "freeze_rush":        return debugIcon(iceRushIcon);
-			case "freeze_burst":       return debugIcon(iceBurstIcon);
-			case "freeze_blitz":       return debugIcon(iceBlitzIcon);
-			case "freeze_barrage":     return debugIcon(iceBarrageIcon);
-			case "freeze_imm":         return debugIcon(iceBarrageIcon);
-			case "tb":                 return debugIcon(tbIcon);
-			case "tb_imm":             return debugIcon(tbIcon);
-			case "venom":              return debugIcon(venomIcon);
-			case "poison":             return debugIcon(poisonIcon);
-			case "corrupt":            return debugIcon(corruptIcon);
-			case "corrupt_next":       return debugIcon(corruptIcon);
-			case "sotd":               return debugIcon(sotdIcon);
-			case "ward":               return debugIcon(wardIcon);
-			case "ward_cd":            return debugIcon(wardIcon);
-			case "mark":               return debugIcon(markIcon);
-			case "mark_cd":            return debugIcon(markIcon);
-			case "anti_venom":         return debugIcon(antiVenomItemIcon);
-			case "anti_poison":        return debugIcon(antiPoisonItemIcon);
-			case "dsc":                return debugIcon(dscIcon);
-			case "drg":                return debugIcon(drgIcon);
-			case "dmg":                return debugIcon(dmgIcon);
-			case "bas":                return debugIcon(basIcon);
-			case "btm":                return debugIcon(btmIcon);
-			case "dsa":                return debugIcon(dsaIcon);
-			case "dss":                return debugIcon(dssIcon);
-			case "dsd":                return debugIcon(dsdIcon);
-			case "menaphite":          return debugIcon(menIcon);
-			case "menaphite_next":     return debugIcon(menIcon);
-			case "prayer_regen":       return debugIcon(prayerRegenIcon);
-			case "prayer_regen_next":  return debugIcon(prayerRegenIcon);
-			case "stamina":            return debugIcon(staminaIcon);
-			case "af":                 return debugIcon(antifireIcon);
-			case "saf":                return debugIcon(superAntifireIcon);
-			case "ih_cd":              return debugIcon(imbuedHeartIcon);
-			case "surge":              return debugIcon(surgeIcon);
-			default:                   return null; // plock, burn, burn_next, drain, restore, venom, poison
+			case "freeze_rush":        return iceRushIcon;
+			case "freeze_burst":       return iceBurstIcon;
+			case "freeze_blitz":       return iceBlitzIcon;
+			case "freeze_barrage":     return iceBarrageIcon;
+			case "freeze_imm":         return iceBarrageIcon;
+			case "tb":                 return tbIcon;
+			case "tb_imm":             return tbIcon;
+			case "venom":              return venomIcon;
+			case "poison":             return poisonIcon;
+			case "corrupt":            return corruptIcon;
+			case "corrupt_next":       return corruptIcon;
+			case "sotd":               return sotdIcon;
+			case "ward":               return wardIcon;
+			case "ward_cd":            return wardIcon;
+			case "mark":               return markIcon;
+			case "mark_cd":            return markIcon;
+			case "anti_venom":         return antiVenomItemIcon;
+			case "anti_poison":        return antiPoisonItemIcon;
+			case "dsc":                return dscIcon;
+			case "drg":                return drgIcon;
+			case "dmg":                return dmgIcon;
+			case "bas":                return basIcon;
+			case "btm":                return btmIcon;
+			case "dsa":                return dsaIcon;
+			case "dss":                return dssIcon;
+			case "dsd":                return dsdIcon;
+			case "menaphite":          return menIcon;
+			case "menaphite_next":     return menIcon;
+			case "prayer_regen":       return prayerRegenIcon;
+			case "prayer_regen_next":  return prayerRegenIcon;
+			case "stamina":            return staminaIcon;
+			case "af":                 return antifireIcon;
+			case "saf":                return superAntifireIcon;
+			case "ih_cd":              return imbuedHeartIcon;
+			case "surge":              return surgeIcon;
+			default:                   return null; // plock, burn, burn_next, venom, poison
 		}
-	}
-
-	/**
-	 * Headless effect builder for offline snapshots and tests.
-	 * Shows every tracked effect regardless of config; uses null icons (text-only rendering).
-	 */
-	static List<ActiveEffectView> buildEffectsHeadless(PvpHudState state, int tick)
-	{
-		List<StatusSlot> slots = StatusProjector.project(
-			state.getSelf(), state.getEffects(), state.getPoison(), state.getBoosts(),
-			tick, null, true);
-		return flattenHeadless(slots);
-	}
-
-	private static List<ActiveEffectView> flattenHeadless(List<StatusSlot> slots)
-	{
-		List<ActiveEffectView> out = new ArrayList<>(slots.size());
-		for (StatusSlot s : slots)
-			out.add(new ActiveEffectView(s.slotId, null, s.label, s.textLabel, s.color,
-				s.highlightColor, s.priority, s.isSecondary));
-		return out;
-	}
-
-	/** Identity passthrough — kept for backwards compatibility with the icon-lookup switch. */
-	private BufferedImage debugIcon(BufferedImage img)
-	{
-		return img;
 	}
 
 	private static void drawIconHighlight(Graphics2D g, Color c, int x, int y, int size)
@@ -2299,48 +2233,6 @@ public class PvpHudOverlay extends Overlay
 					textX += fm.stringWidth(lbl) + 6;
 				}
 			}
-			ProtectionState prot     = state.getProtection();
-			// Combat locks (PJ/LOG/LCK) deferred pending in-game verification.
-			boolean         showLcks = false;
-			if (showLcks && prot.isPjSafe())
-			{
-				int s = (int) Math.round(prot.getPjSafeTicksRemaining() * 0.6);
-				String lbl = "PJ " + s;
-				if (textX + fm.stringWidth(lbl) <= textRx)
-				{
-					g.setColor(s > 20 ? GREEN : s > 10 ? YELLOW : RED);
-					g.drawString(lbl, textX, baseline);
-					textX += fm.stringWidth(lbl) + 6;
-				}
-			}
-			if (prot.isLmsImmune())
-			{
-				int s = (int) Math.round(prot.getLmsImmuneTicksRemaining() * 0.6);
-				String lbl = "IMM " + s;
-				if (textX + fm.stringWidth(lbl) <= textRx)
-				{
-					g.setColor(PRAYER_FG);
-					g.drawString(lbl, textX, baseline);
-					textX += fm.stringWidth(lbl) + 6;
-				}
-			}
-			if (showLcks && prot.isInCombatLogoutLock())
-			{
-				if (textX + fm.stringWidth("LOG") <= textRx)
-				{
-					g.setColor(ORANGE);
-					g.drawString("LOG", textX, baseline);
-					textX += fm.stringWidth("LOG") + 6;
-				}
-			}
-			if (showLcks && prot.isUnderAttackLocked())
-			{
-				if (textX + fm.stringWidth("LCK") <= textRx)
-				{
-					g.setColor(LIGHT_BLUE);
-					g.drawString("LCK", textX, baseline);
-				}
-			}
 			return;
 		}
 
@@ -2427,32 +2319,6 @@ public class PvpHudOverlay extends Overlay
 			int s = (int) (t2.getRemainingMs() / 1000);
 			labelList.add("T2 " + (s / 60) + ":" + String.format("%02d", s % 60));
 			colorList.add(s > 30 ? WHITE : RED);
-		}
-
-		ProtectionState prot     = state.getProtection();
-		// Combat locks (PJ/LOG/LCK) deferred pending in-game verification.
-		boolean         showLcks = false;
-		if (showLcks && prot.isPjSafe())
-		{
-			int s = (int) Math.round(prot.getPjSafeTicksRemaining() * 0.6);
-			labelList.add("PJ " + s + "s");
-			colorList.add(s > 20 ? GREEN : s > 10 ? YELLOW : RED);
-		}
-		if (prot.isLmsImmune())
-		{
-			int s = (int) Math.round(prot.getLmsImmuneTicksRemaining() * 0.6);
-			labelList.add("IMM " + s + "s");
-			colorList.add(PRAYER_FG);
-		}
-		if (showLcks && prot.isInCombatLogoutLock())
-		{
-			labelList.add("LOG");
-			colorList.add(ORANGE);
-		}
-		if (showLcks && prot.isUnderAttackLocked())
-		{
-			labelList.add("LCK");
-			colorList.add(LIGHT_BLUE);
 		}
 
 		if (config.showZoneInfo())

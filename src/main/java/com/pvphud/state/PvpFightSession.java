@@ -9,12 +9,25 @@ import lombok.Getter;
 /**
  * Lifecycle-managed snapshot of a single PvP encounter.
  *
- * A session begins when the local player first interacts with a named player.
- * It survives brief null interacting (movement, targeting flickers) and only
- * terminates on:
+ * A session is confirmed and begun when one of the following happens while a
+ * candidate opponent is being tracked:
+ *   - the local player uses the Attack menu option on a valid attackable player, or
+ *   - a confirmed outgoing hitsplat (hitsplat.isMine()) lands on the candidate, or
+ *   - an incoming hitsplat lands on the local player while the candidate is
+ *     currently interacting with the local player.
+ *
+ * Simply following/targeting a player does not populate the opponent panel —
+ * the session is only materialised once combat is confirmed by one of the
+ * triggers above.
+ *
+ * Once active, the session survives brief InteractingChanged nulls (movement,
+ * targeting flickers) and short opponent despawn/reappear windows (grace of
+ * {@code OPPONENT_GRACE_TICKS} game ticks). It terminates on:
  *   - Opponent death (HP ratio → 0 via pollOpponentHealth)
- *   - Meaningful replacement by a different opponent after TIMEOUT_TICKS idle
- *   - Logout or world hop
+ *   - Local player death (HP → 0)
+ *   - No combat in either direction for {@code TIMEOUT_TICKS} game ticks
+ *   - Opponent remaining despawned beyond the grace window
+ *   - Logout or world hop (fullReset)
  *   - Explicit eviction (plugin shutdown)
  *
  * Fight totals and the exchange buffer live here so they are not wiped by
