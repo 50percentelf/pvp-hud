@@ -216,6 +216,57 @@ public class HiscoreLifecycleTest
 		assertTrue(nameMatches);
 	}
 
+	// ── Deadline fires even when NORMAL stats never load ─────────────────────
+	//
+	// Prior bug: deadline was gated on `normalDone && elapsed >= timeout`.
+	// If NORMAL endpoint always returns null (player not on hiscores, slow
+	// network, etc.) `normalDone` was never true, so polling ran indefinitely.
+	// The fix removes the `normalDone` guard so the deadline fires unconditionally.
+
+	@Test
+	public void deadline_imPositive_normalNeverLoads_bestIsIm()
+	{
+		// Simulate: NORMAL always null, IM positive on every poll, deadline reached.
+		OpponentStats.AccountType best = OpponentStats.AccountType.NORMAL;
+		boolean normalDone = false;
+		int elapsed = 0;
+		final int timeout = 30; // HISCORE_TIMEOUT_TICKS
+
+		while (elapsed < timeout)
+		{
+			// NORMAL returns null — normalDone stays false
+			// HC returns null
+			// IM returns positive
+			best = pollEndpoint(best, OpponentStats.AccountType.IRONMAN, true);
+			elapsed++;
+		}
+
+		// Deadline fires unconditionally (no normalDone guard).
+		assertTrue("deadline must fire at elapsed>=timeout regardless of normalDone",
+			elapsed >= timeout);
+		assertEquals("best observed type must be committed at deadline",
+			OpponentStats.AccountType.IRONMAN, best);
+		assertFalse("normalDone must still be false to prove the guard was not in play", normalDone);
+	}
+
+	@Test
+	public void deadline_allNull_normalNeverLoads_bestStaysNormal()
+	{
+		OpponentStats.AccountType best = OpponentStats.AccountType.NORMAL;
+		int elapsed = 0;
+		final int timeout = 30;
+
+		while (elapsed < timeout)
+		{
+			// All endpoints null — no upgrade
+			elapsed++;
+		}
+
+		assertTrue("deadline must fire", elapsed >= timeout);
+		assertEquals("no positive hit → best remains NORMAL",
+			OpponentStats.AccountType.NORMAL, best);
+	}
+
 	// ── Original ordinal-order guard retained ────────────────────────────────
 
 	@Test

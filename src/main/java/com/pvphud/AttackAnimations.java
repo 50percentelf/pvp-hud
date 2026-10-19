@@ -194,12 +194,43 @@ public final class AttackAnimations
 			AnimationID.BALLISTA_ATTACK,             // 7218 (ballista normal shot)
 			AnimationID.BALLISTA_SPECIAL_ATTACK,     // 7222
 
-			// ── Ranged: modern crossbow fire+reload (used by armadyl/zcb/etc) ─
-			AnimationID.XBOWS_HUMAN_FIRE_AND_RELOAD, // 4230
+			// ── Ranged: modern crossbow fire+reload (used by armadyl/zcb/dcb) ─
+			AnimationID.XBOWS_HUMAN_FIRE_AND_RELOAD,          // 4230
+			AnimationID.XBOWS_HUMAN_FIRE_AND_RELOAD_NO_STALL, // 11465 (no-animation-stall variant)
+
+			// ── Ranged: Zaryte crossbow (distinct animation from generic xbow) ─
+			AnimationID.ZCB_ATTACK,                  // 9166
+			AnimationID.ZCB_ATTACK_PVN,              // 9168
+
+			// ── Ranged: dragon knife / dragon knife (p) ────────────────────
+			AnimationID.HUMAN_DRAGON_KNIFE,          // 8194
+			AnimationID.HUMAN_DRAGON_KNIFE_P,        // 8195
+
+			// ── Ranged: heavy ballista (light ballista normal+spec already above) ─
+			AnimationID.BALLISTA02_ATTACK,           // 9465
+			AnimationID.BALLISTA02_SPECIAL_ATTACK,   // 9467
+
+			// ── Ranged: Venator bow ────────────────────────────────────────
+			AnimationID.HUMAN_WEAPON_BOW_VENATOR01_SHOOT, // 9858
+
+			// ── Ranged: Morrigan's javelin / throwing axe specials ─────────
+			AnimationID.WEAPON_MORRIGANS_JAVELIN_SPECIAL01,    // 11467
+			AnimationID.WEAPON_MORRIGANS_THROWINGAXE_SPECIAL01, // 11468
+
+			// ── Ranged: Eclipse atlatl normal + spec ───────────────────────
+			AnimationID.HUMAN_ATLATL_ATTACK_RANGED_01, // 11057
+			AnimationID.HUMAN_SPECIAL_ATLATL_01,       // 11060
 
 			// ── Ranged: dart / thrownaxe / throwing knife ──────────────────
 			AnimationID.HUMAN_THROW,                 // 385
 			AnimationID.II_HUMAN_DART_THROW,         // 6600
+
+			// ── Specials: AGS — old (1714) + modern player animations ──────
+			// ARMADYL_SPECIAL_ATTACK (1714) is the original AGS spec animation.
+			// Current OSRS fires AGS_SPECIAL_PLAYER (7644) for the updated visuals.
+			AnimationID.AGS_SPECIAL_PLAYER,          // 7644
+			AnimationID.AGS_SPECIAL_ORNATE_PLAYER,   // 7645
+			AnimationID.AGS_SPECIAL_BLIGHTED_PLAYER, // 10427
 
 			// ── The Godsword special (newer graphics) ──────────────────────
 			AnimationID.THE_GODSWORD_SPECIAL_ATTACK, // 11893

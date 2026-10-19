@@ -160,6 +160,62 @@ public class AttackClockUnknownWeaponTest
 		assertTrue(AttackAnimations.isAttack(AnimationID.HUMAN_SPECIAL01_WEBWEAVER));
 	}
 
+	@Test
+	public void ranged_zaryteCrossbow_isAttack()
+	{
+		assertTrue("ZCB normal attack", AttackAnimations.isAttack(AnimationID.ZCB_ATTACK));
+		assertTrue("ZCB PvN variant", AttackAnimations.isAttack(AnimationID.ZCB_ATTACK_PVN));
+	}
+
+	@Test
+	public void ranged_dragonKnife_isAttack()
+	{
+		assertTrue("dragon knife", AttackAnimations.isAttack(AnimationID.HUMAN_DRAGON_KNIFE));
+		assertTrue("dragon knife (p)", AttackAnimations.isAttack(AnimationID.HUMAN_DRAGON_KNIFE_P));
+	}
+
+	@Test
+	public void ranged_modernCrossbowNoStall_isAttack()
+	{
+		assertTrue("xbow fire+reload no-stall variant",
+			AttackAnimations.isAttack(AnimationID.XBOWS_HUMAN_FIRE_AND_RELOAD_NO_STALL));
+	}
+
+	@Test
+	public void ranged_heavyBallista_isAttack()
+	{
+		assertTrue("heavy ballista normal", AttackAnimations.isAttack(AnimationID.BALLISTA02_ATTACK));
+		assertTrue("heavy ballista spec", AttackAnimations.isAttack(AnimationID.BALLISTA02_SPECIAL_ATTACK));
+	}
+
+	@Test
+	public void ranged_venatorBow_isAttack()
+	{
+		assertTrue("venator bow shot", AttackAnimations.isAttack(AnimationID.HUMAN_WEAPON_BOW_VENATOR01_SHOOT));
+	}
+
+	@Test
+	public void ranged_morrigans_isAttack()
+	{
+		assertTrue("Morrigan's javelin spec", AttackAnimations.isAttack(AnimationID.WEAPON_MORRIGANS_JAVELIN_SPECIAL01));
+		assertTrue("Morrigan's throwing axe spec", AttackAnimations.isAttack(AnimationID.WEAPON_MORRIGANS_THROWINGAXE_SPECIAL01));
+	}
+
+	@Test
+	public void ranged_eclipseAtlatl_isAttack()
+	{
+		assertTrue("eclipse atlatl normal", AttackAnimations.isAttack(AnimationID.HUMAN_ATLATL_ATTACK_RANGED_01));
+		assertTrue("eclipse atlatl spec", AttackAnimations.isAttack(AnimationID.HUMAN_SPECIAL_ATLATL_01));
+	}
+
+	@Test
+	public void specials_ags_modern_isAttack()
+	{
+		assertTrue("AGS spec (modern)", AttackAnimations.isAttack(AnimationID.AGS_SPECIAL_PLAYER));
+		assertTrue("AGS spec (ornate)", AttackAnimations.isAttack(AnimationID.AGS_SPECIAL_ORNATE_PLAYER));
+		assertTrue("AGS spec (blighted)", AttackAnimations.isAttack(AnimationID.AGS_SPECIAL_BLIGHTED_PLAYER));
+	}
+
 	// ── Crumble Undead removal: undead-only spell must NOT count ─────────────
 
 	@Test

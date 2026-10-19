@@ -1698,8 +1698,7 @@ public class PvpHudPlugin extends Plugin
 		}
 
 		// Deadline — commit the best observed verdict (if any).
-		if (normalDone
-			&& (client.getTickCount() - hiscorePollStartTick) >= HISCORE_TIMEOUT_TICKS)
+		if ((client.getTickCount() - hiscorePollStartTick) >= HISCORE_TIMEOUT_TICKS)
 		{
 			log.debug("PvP HUD hiscores deadline for {} — best={}", name, hiscoreBestAccountType);
 			if (hiscoreBestAccountType != OpponentStats.AccountType.NORMAL)
