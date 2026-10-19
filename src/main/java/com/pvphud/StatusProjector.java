@@ -37,7 +37,7 @@ public final class StatusProjector
 	 * Builds the semantic slot list for one HUD frame.
 	 *
 	 * @param config   presentation config; may be {@code null} when {@code showAll=true}
-	 * @param showAll  true in debug mode — bypasses all config visibility guards
+	 * @param showAll  true to bypass config visibility guards, primarily for tests
 	 */
 	public static List<StatusSlot> project(
 		SelfState self, EffectState fx, PoisonState poison,

@@ -124,7 +124,7 @@ public class PvpHudOverlay extends Overlay
 	private volatile BufferedImage ultimateIronmanIcon;
 	private volatile BufferedImage hardcoreIronmanIcon;
 
-	// ── OSRS red hitsplat for prediction/confirmation indicator ──────────────
+	// ── OSRS red hitsplat for confirmed hitsplat indicator ───────────────────
 	private volatile BufferedImage redHitsplatIcon; // archive 1359, index 0
 
 	// ── Cached skill icons for inventory-hug bars (HP / Prayer / Run / Spec) ──
@@ -213,7 +213,7 @@ public class PvpHudOverlay extends Overlay
 		sotdIcon        = itemManager.getImage(ItemID.SOTD);
 		surgeIcon       = itemManager.getImage(ItemID._4DOSESURGE);
 		// Ironman badges: loaded from client.getModIcons() in loadModIcons() (must be client thread).
-		// OSRS red hitsplat: archive 1359, used for prediction/confirmation indicator.
+		// OSRS red hitsplat: archive 1359, used for confirmed hitsplat indicator.
 		spriteManager.getSpriteAsync(1359, 0, img -> redHitsplatIcon = img);
 		// corruptIcon, wardIcon, markIcon: SpriteID.MagicNecroOn not in API jar — text-only display.
 

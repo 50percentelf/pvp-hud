@@ -18,8 +18,9 @@ import lombok.Getter;
  * All sub-states are pre-allocated at startup so combat initiation is cheap.
  *
  * Fight-specific data (event log, totals) live in the nullable currentSession.
- * The session persists across brief InteractingChanged nulls and only ends on
- * deliberate termination (death, disengagement timeout, logout).
+ * A session is confirmed by an Attack menu click or a confirmed PvP hitsplat.
+ * It ends on opponent death, local death, inactivity timeout, opponent despawn
+ * past the grace window, logout/world hop, or plugin shutdown.
  */
 @Getter
 public class PvpHudState

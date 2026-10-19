@@ -1,6 +1,6 @@
 # PvP HUD
 
-A configurable PvP combat HUD for RuneLite. Consolidates fight tracking, status effect timers, resource bars, and combat-protection indicators into a single configurable overlay.
+A configurable PvP combat HUD for RuneLite. Consolidates fight tracking, status-effect timers, resource bars, and combat/action timers into a single configurable overlay.
 
 ---
 
@@ -37,7 +37,7 @@ Float layouts remember their last dragged position independently per layout and 
 | Smite drain | `-Np` suffix on outgoing hits where you had Smite active, computed as `floor(damage / 4)`. |
 | Session totals | OUT (cyan) dealt total and IN (red) received total, pinned to the bottom. |
 | Rows shown | Horizontal Float: 3 most recent ticks. Vertical Float: 2 most recent ticks. |
-| Fight Over banner | Shown after opponent death or session timeout. |
+| Fight Over banner | Shown after a locally observed fight-session end. |
 
 ### Fight / session lifecycle
 
@@ -107,7 +107,7 @@ The ATK clock is driven by a **conservative positive allowlist** of known RuneLi
 
 ## Hiscores
 
-When a session begins the opponent name is submitted to RuneLite's shared `HiscoreManager`. The manager performs its own async fetches and the plugin polls the cache every three game ticks until either an endpoint returns a positive result or a 30-tick (~18 s) deadline elapses.
+When a session begins the opponent name is submitted to RuneLite's shared `HiscoreManager`. The manager performs its own async fetches and the plugin polls the cache every three game ticks for up to 30 ticks (~18 s). A positive Hardcore Ironman result can complete the lookup early; otherwise the best observed account type is committed at the deadline.
 
 Because `lookupAsync` returns `null` both for "still loading" and "player not on this endpoint", there is no reliable negative signal. The plugin instead records the **best observed account type** across all endpoints (Normal → Ironman → Ultimate Ironman → Hardcore Ironman) and commits that verdict at the deadline. A positive Hardcore Ironman observation is committed immediately because nothing outranks it. The resolved account type drives the ironman badge drawn next to the opponent's name.
 
