@@ -40,6 +40,15 @@ public class ConfigMigrationTest
 				set("hudLayout", "HORIZONTAL_FLOAT");
 				set("hf_chatLocked", "true");
 			}
+			else if ("HORIZONTAL_FLOAT".equals(layoutRaw))
+			{
+				// User explicitly chose free-floating. hfChatLocked now defaults
+				// true, so write false here to preserve their intent — but only
+				// when the key has not already been set.
+				String existingPin = get("hf_chatLocked");
+				if (existingPin == null)
+					set("hf_chatLocked", "false");
+			}
 
 			// Unconditionally copy old style keys so users who kept the old
 			// CHAT_LOCKED default (no saved hudLayout) still get their
@@ -126,14 +135,39 @@ public class ConfigMigrationTest
 	// ── Non-overwriting layouts ───────────────────────────────────────────────
 
 	@Test
-	public void explicitHorizontalFloat_noLayoutChange()
+	public void explicitHorizontalFloat_pinSetFalse()
 	{
+		// User explicitly chose free-floating before the hfChatLocked default
+		// flipped to true. The migration must write "false" so they do not
+		// end up pinned on upgrade.
 		FakeConfig cfg = new FakeConfig();
 		cfg.set("hudLayout", "HORIZONTAL_FLOAT");
 		cfg.migrate();
 		assertEquals("HORIZONTAL_FLOAT", cfg.get("hudLayout"));
-		assertNull("hf_chatLocked not forced for non-CHAT_LOCKED layouts",
-			cfg.get("hf_chatLocked"));
+		assertEquals("false", cfg.get("hf_chatLocked"));
+	}
+
+	@Test
+	public void explicitHorizontalFloat_existingPinTrue_preserved()
+	{
+		// If the user has already saved hf_chatLocked, we must not overwrite
+		// it — their stored intent wins.
+		FakeConfig cfg = new FakeConfig();
+		cfg.set("hudLayout", "HORIZONTAL_FLOAT");
+		cfg.set("hf_chatLocked", "true");
+		cfg.migrate();
+		assertEquals("true", cfg.get("hf_chatLocked"));
+	}
+
+	@Test
+	public void explicitHorizontalFloat_existingPinFalse_preserved()
+	{
+		// Idempotency: an explicit false must remain false after migration.
+		FakeConfig cfg = new FakeConfig();
+		cfg.set("hudLayout", "HORIZONTAL_FLOAT");
+		cfg.set("hf_chatLocked", "false");
+		cfg.migrate();
+		assertEquals("false", cfg.get("hf_chatLocked"));
 	}
 
 	@Test

@@ -1,157 +1,222 @@
 package com.pvphud;
 
-import com.pvphud.HiscoreAccountResolver.ResolverResult;
 import com.pvphud.state.OpponentState;
 import com.pvphud.state.OpponentStats;
 import org.junit.Test;
 import static org.junit.Assert.*;
 
 /**
- * Exercises the per-endpoint resolver state machine and the opponent-name
- * guard used by the hiscore polling loop in {@link PvpHudPlugin}.
+ * Exercises the account-type polling helpers and the opponent-name guard used
+ * by the hiscore polling loop in {@link PvpHudPlugin}.
  *
- * The resolver is the production logic: given which of the three ironman
- * endpoints have resolved (returned non-null from {@code lookupAsync}) and
- * which came back positive (HP > 0), it decides whether to keep polling or
- * commit to a verdict.
+ * <p>{@code HiscoreManager.lookupAsync} returns null both for "still loading"
+ * and for "player not on this endpoint" — there is no way to distinguish the
+ * two via the public API. Rather than try to track resolved-negative state,
+ * the production loop records the best-observed positive account type across
+ * polls and commits at a bounded deadline. {@link HiscoreAccountResolver}
+ * provides {@code best()} (precedence upgrade) and {@code isTerminal()}
+ * (HC can short-circuit the loop) to drive that process.
  */
 public class HiscoreLifecycleTest
 {
-	// ── Still pending: higher-precedence endpoints not yet resolved ───────────
+	// ── best(): precedence upgrades ───────────────────────────────────────────
 
 	@Test
-	public void allEndpointsUnresolved_isPending()
+	public void best_normalToIronman_upgrades()
 	{
-		assertEquals(ResolverResult.PENDING, HiscoreAccountResolver.resolve(
-			false, false,   // HC not resolved
-			false, false,   // UIM not resolved
-			false, false)); // IM  not resolved
+		assertEquals(OpponentStats.AccountType.IRONMAN,
+			HiscoreAccountResolver.best(
+				OpponentStats.AccountType.NORMAL,
+				OpponentStats.AccountType.IRONMAN));
 	}
 
 	@Test
-	public void imPositive_butHcAndUimUnresolved_isPending()
+	public void best_ironmanToUim_upgrades()
 	{
-		// This is the regression case: IM returning positive first must not
-		// short-circuit the lookup and lock in an IM verdict before HC/UIM
-		// have had a chance to report.
-		assertEquals("IM positive alone must not complete",
-			ResolverResult.PENDING,
-			HiscoreAccountResolver.resolve(
-				false, false,   // HC unresolved
-				false, false,   // UIM unresolved
-				true,  true));  // IM positive
+		assertEquals(OpponentStats.AccountType.ULTIMATE_IRONMAN,
+			HiscoreAccountResolver.best(
+				OpponentStats.AccountType.IRONMAN,
+				OpponentStats.AccountType.ULTIMATE_IRONMAN));
 	}
 
 	@Test
-	public void uimPositive_butHcUnresolved_isPending()
-	{
-		assertEquals(ResolverResult.PENDING, HiscoreAccountResolver.resolve(
-			false, false,   // HC unresolved
-			true,  true,    // UIM positive
-			false, false));
-	}
-
-	// ── Completion: HC takes immediate precedence ─────────────────────────────
-
-	@Test
-	public void hcPositive_completesAsHc()
-	{
-		assertEquals(ResolverResult.COMPLETE_HC, HiscoreAccountResolver.resolve(
-			true,  true,
-			false, false,
-			false, false));
-	}
-
-	@Test
-	public void hcPositive_overridesLowerPositives()
-	{
-		assertEquals(ResolverResult.COMPLETE_HC, HiscoreAccountResolver.resolve(
-			true, true,
-			true, true,
-			true, true));
-	}
-
-	// ── Completion: UIM when HC is resolved negative ──────────────────────────
-
-	@Test
-	public void uimPositive_hcResolvedNegative_completesAsUim()
-	{
-		assertEquals(ResolverResult.COMPLETE_UIM, HiscoreAccountResolver.resolve(
-			true,  false,   // HC resolved, no HP
-			true,  true,    // UIM positive
-			false, false));
-	}
-
-	@Test
-	public void uimPositive_hcResolvedNegative_imPositive_completesAsUim()
-	{
-		assertEquals(ResolverResult.COMPLETE_UIM, HiscoreAccountResolver.resolve(
-			true, false,
-			true, true,
-			true, true));
-	}
-
-	// ── Completion: IM when HC and UIM both resolved negative ─────────────────
-
-	@Test
-	public void imPositive_hcAndUimBothResolvedNegative_completesAsIm()
-	{
-		assertEquals(ResolverResult.COMPLETE_IM, HiscoreAccountResolver.resolve(
-			true, false,
-			true, false,
-			true, true));
-	}
-
-	@Test
-	public void allResolvedNegative_completesAsNormal()
-	{
-		assertEquals(ResolverResult.COMPLETE_NORMAL, HiscoreAccountResolver.resolve(
-			true, false,
-			true, false,
-			true, false));
-	}
-
-	// ── Mid-flight states ─────────────────────────────────────────────────────
-
-	@Test
-	public void hcResolvedNegative_uimUnresolved_imPositive_stillPending()
-	{
-		assertEquals("UIM is still unresolved — must not commit to IM yet",
-			ResolverResult.PENDING,
-			HiscoreAccountResolver.resolve(
-				true,  false,  // HC resolved negative
-				false, false,  // UIM unresolved
-				true,  true)); // IM positive
-	}
-
-	@Test
-	public void hcAndUimResolvedNegative_imUnresolved_stillPending()
-	{
-		assertEquals(ResolverResult.PENDING, HiscoreAccountResolver.resolve(
-			true,  false,
-			true,  false,
-			false, false));
-	}
-
-	// ── toAccountType mapping ─────────────────────────────────────────────────
-
-	@Test
-	public void toAccountType_mapsVerdictsCorrectly()
+	public void best_uimToHc_upgrades()
 	{
 		assertEquals(OpponentStats.AccountType.HARDCORE_IRONMAN,
-			HiscoreAccountResolver.toAccountType(ResolverResult.COMPLETE_HC));
-		assertEquals(OpponentStats.AccountType.ULTIMATE_IRONMAN,
-			HiscoreAccountResolver.toAccountType(ResolverResult.COMPLETE_UIM));
-		assertEquals(OpponentStats.AccountType.IRONMAN,
-			HiscoreAccountResolver.toAccountType(ResolverResult.COMPLETE_IM));
-		assertEquals(OpponentStats.AccountType.NORMAL,
-			HiscoreAccountResolver.toAccountType(ResolverResult.COMPLETE_NORMAL));
-		assertEquals("PENDING must fall through to NORMAL as a safe default",
-			OpponentStats.AccountType.NORMAL,
-			HiscoreAccountResolver.toAccountType(ResolverResult.PENDING));
+			HiscoreAccountResolver.best(
+				OpponentStats.AccountType.ULTIMATE_IRONMAN,
+				OpponentStats.AccountType.HARDCORE_IRONMAN));
 	}
 
-	// ── Original guards still hold ────────────────────────────────────────────
+	// ── best(): no downgrade ──────────────────────────────────────────────────
+
+	@Test
+	public void best_hcToIronman_stays()
+	{
+		assertEquals("HC must not downgrade",
+			OpponentStats.AccountType.HARDCORE_IRONMAN,
+			HiscoreAccountResolver.best(
+				OpponentStats.AccountType.HARDCORE_IRONMAN,
+				OpponentStats.AccountType.IRONMAN));
+	}
+
+	@Test
+	public void best_ironmanToNormal_stays()
+	{
+		assertEquals("IM must not downgrade to NORMAL",
+			OpponentStats.AccountType.IRONMAN,
+			HiscoreAccountResolver.best(
+				OpponentStats.AccountType.IRONMAN,
+				OpponentStats.AccountType.NORMAL));
+	}
+
+	@Test
+	public void best_normalToNormal_stays()
+	{
+		assertEquals(OpponentStats.AccountType.NORMAL,
+			HiscoreAccountResolver.best(
+				OpponentStats.AccountType.NORMAL,
+				OpponentStats.AccountType.NORMAL));
+	}
+
+	// ── isTerminal() ──────────────────────────────────────────────────────────
+
+	@Test
+	public void isTerminal_hc_true()
+	{
+		assertTrue(HiscoreAccountResolver.isTerminal(OpponentStats.AccountType.HARDCORE_IRONMAN));
+	}
+
+	@Test
+	public void isTerminal_uim_false()
+	{
+		assertFalse(HiscoreAccountResolver.isTerminal(OpponentStats.AccountType.ULTIMATE_IRONMAN));
+	}
+
+	@Test
+	public void isTerminal_im_false()
+	{
+		assertFalse(HiscoreAccountResolver.isTerminal(OpponentStats.AccountType.IRONMAN));
+	}
+
+	@Test
+	public void isTerminal_normal_false()
+	{
+		assertFalse(HiscoreAccountResolver.isTerminal(OpponentStats.AccountType.NORMAL));
+	}
+
+	// ── Lifecycle simulations ─────────────────────────────────────────────────
+	//
+	// The following tests simulate the real polling loop semantics. Each
+	// "poll" interprets a per-endpoint response of null (loading or absent)
+	// vs HP>0 (positive hit) and applies the production logic: HC positive
+	// terminates immediately; UIM/IM positive upgrade `best`; at the deadline
+	// the final `best` is applied.
+
+	/** Null-safe stand-in for an endpoint check that returns positive or absent. */
+	private static OpponentStats.AccountType pollEndpoint(
+		OpponentStats.AccountType current,
+		OpponentStats.AccountType candidateIfPositive,
+		boolean positive)
+	{
+		return positive ? HiscoreAccountResolver.best(current, candidateIfPositive) : current;
+	}
+
+	@Test
+	public void lifecycle_poll1_hcNull_uimNull_imPositive_pending()
+	{
+		OpponentStats.AccountType best = OpponentStats.AccountType.NORMAL;
+		best = pollEndpoint(best, OpponentStats.AccountType.HARDCORE_IRONMAN, false);
+		best = pollEndpoint(best, OpponentStats.AccountType.ULTIMATE_IRONMAN, false);
+		best = pollEndpoint(best, OpponentStats.AccountType.IRONMAN, true);
+		assertEquals(OpponentStats.AccountType.IRONMAN, best);
+		assertFalse("IM alone is not terminal — HC may still resolve",
+			HiscoreAccountResolver.isTerminal(best));
+	}
+
+	@Test
+	public void lifecycle_poll2_hcPositive_terminalCompletesAsHc()
+	{
+		OpponentStats.AccountType best = OpponentStats.AccountType.IRONMAN; // from poll 1
+		best = pollEndpoint(best, OpponentStats.AccountType.HARDCORE_IRONMAN, true);
+		assertEquals(OpponentStats.AccountType.HARDCORE_IRONMAN, best);
+		assertTrue(HiscoreAccountResolver.isTerminal(best));
+	}
+
+	@Test
+	public void lifecycle_fullWindow_hcUimAlwaysNull_imPositive_bestIsIm()
+	{
+		OpponentStats.AccountType best = OpponentStats.AccountType.NORMAL;
+		for (int poll = 0; poll < 10; poll++)
+		{
+			best = pollEndpoint(best, OpponentStats.AccountType.HARDCORE_IRONMAN, false);
+			best = pollEndpoint(best, OpponentStats.AccountType.ULTIMATE_IRONMAN, false);
+			best = pollEndpoint(best, OpponentStats.AccountType.IRONMAN, true);
+		}
+		assertEquals(OpponentStats.AccountType.IRONMAN, best);
+	}
+
+	@Test
+	public void lifecycle_fullWindow_allNull_bestStaysNormal()
+	{
+		OpponentStats.AccountType best = OpponentStats.AccountType.NORMAL;
+		for (int poll = 0; poll < 10; poll++)
+		{
+			best = pollEndpoint(best, OpponentStats.AccountType.HARDCORE_IRONMAN, false);
+			best = pollEndpoint(best, OpponentStats.AccountType.ULTIMATE_IRONMAN, false);
+			best = pollEndpoint(best, OpponentStats.AccountType.IRONMAN, false);
+		}
+		assertEquals(OpponentStats.AccountType.NORMAL, best);
+	}
+
+	@Test
+	public void lifecycle_uimPositive_hcAlwaysNull_bestIsUim()
+	{
+		OpponentStats.AccountType best = OpponentStats.AccountType.NORMAL;
+		for (int poll = 0; poll < 10; poll++)
+		{
+			best = pollEndpoint(best, OpponentStats.AccountType.HARDCORE_IRONMAN, false);
+			best = pollEndpoint(best, OpponentStats.AccountType.ULTIMATE_IRONMAN, true);
+			best = pollEndpoint(best, OpponentStats.AccountType.IRONMAN, false);
+			assertFalse("UIM is not terminal while HC could still resolve",
+				HiscoreAccountResolver.isTerminal(best));
+		}
+		assertEquals(OpponentStats.AccountType.ULTIMATE_IRONMAN, best);
+	}
+
+	@Test
+	public void lifecycle_hcPositiveImmediately_terminalBeforeDeadline()
+	{
+		// Poll 1: HC comes back positive straight away. Loop can terminate.
+		OpponentStats.AccountType best = OpponentStats.AccountType.NORMAL;
+		best = pollEndpoint(best, OpponentStats.AccountType.HARDCORE_IRONMAN, true);
+		assertEquals(OpponentStats.AccountType.HARDCORE_IRONMAN, best);
+		assertTrue("HC on poll 1 must be terminal — no need to wait",
+			HiscoreAccountResolver.isTerminal(best));
+	}
+
+	// ── Opponent-change guard ────────────────────────────────────────────────
+
+	@Test
+	public void opponentChange_invalidatesOldResult()
+	{
+		OpponentState opp = new OpponentState();
+		opp.setName("Bob");
+		String pendingPlayer = "Alice";
+		boolean wouldApply = pendingPlayer.equalsIgnoreCase(opp.getName());
+		assertFalse("Result for Alice must not apply when opponent is Bob", wouldApply);
+	}
+
+	@Test
+	public void result_appliesWhenOpponentMatches()
+	{
+		OpponentState opp = new OpponentState();
+		opp.setName("Alice");
+		boolean nameMatches = "Alice".equalsIgnoreCase(opp.getName());
+		assertTrue(nameMatches);
+	}
+
+	// ── Original ordinal-order guard retained ────────────────────────────────
 
 	@Test
 	public void accountType_ordinalPreventsDowngrade()
@@ -173,24 +238,5 @@ public class HiscoreLifecycleTest
 			> OpponentStats.AccountType.IRONMAN.ordinal());
 		assertTrue(OpponentStats.AccountType.HARDCORE_IRONMAN.ordinal()
 			> OpponentStats.AccountType.ULTIMATE_IRONMAN.ordinal());
-	}
-
-	@Test
-	public void opponentChange_invalidatesOldResult()
-	{
-		OpponentState opp = new OpponentState();
-		opp.setName("Bob");
-		String pendingPlayer = "Alice";
-		boolean wouldApply = pendingPlayer.equalsIgnoreCase(opp.getName());
-		assertFalse("Result for Alice must not apply when opponent is Bob", wouldApply);
-	}
-
-	@Test
-	public void result_appliesWhenOpponentMatches()
-	{
-		OpponentState opp = new OpponentState();
-		opp.setName("Alice");
-		boolean nameMatches = "Alice".equalsIgnoreCase(opp.getName());
-		assertTrue(nameMatches);
 	}
 }

@@ -88,6 +88,89 @@ public class AttackClockUnknownWeaponTest
 		assertTrue(AttackAnimations.isAttack(AnimationID.ARMADYL_SPECIAL_ATTACK));
 	}
 
+	// ── Newly added PvP weapons ───────────────────────────────────────────────
+
+	@Test
+	public void specials_voidwaker_isAttack()
+	{
+		assertTrue("voidwaker spec",
+			AttackAnimations.isAttack(AnimationID.HUMAN_SPECIAL_VOIDWAKER));
+		assertTrue("voidwaker alt spec",
+			AttackAnimations.isAttack(AnimationID.HUMAN_SPECIAL02_VOIDWAKER));
+	}
+
+	@Test
+	public void ranged_ballistaNormal_isAttack()
+	{
+		assertTrue("ballista normal shot must count — spec was already covered",
+			AttackAnimations.isAttack(AnimationID.BALLISTA_ATTACK));
+	}
+
+	@Test
+	public void ranged_modernCrossbow_isAttack()
+	{
+		assertTrue("modern crossbow fire+reload (acb/zcb/dcb)",
+			AttackAnimations.isAttack(AnimationID.XBOWS_HUMAN_FIRE_AND_RELOAD));
+	}
+
+	@Test
+	public void magic_volatileNightmareStaff_isAttack()
+	{
+		assertTrue("volatile nightmare staff cast",
+			AttackAnimations.isAttack(AnimationID.NIGHTMARE_STAFF_VOLATILE_CAST));
+	}
+
+	@Test
+	public void magic_eldritchNightmareStaff_isAttack()
+	{
+		assertTrue("eldritch nightmare staff cast",
+			AttackAnimations.isAttack(AnimationID.NIGHTMARE_STAFF_ELDRITCH_PLAYER_CAST));
+	}
+
+	@Test
+	public void specials_nightmareStaff_isAttack()
+	{
+		assertTrue(AttackAnimations.isAttack(AnimationID.NIGHTMARE_STAFF_SPECIAL));
+	}
+
+	@Test
+	public void melee_osmumtensFang_isAttack()
+	{
+		assertTrue(AttackAnimations.isAttack(AnimationID.HUMAN_OSMUMTENS_FANG));
+	}
+
+	@Test
+	public void melee_elderMaul_isAttack()
+	{
+		assertTrue("elder maul normal",
+			AttackAnimations.isAttack(AnimationID.HUMAN_ELDER_MAUL_ATTACK));
+		assertTrue("elder maul spec",
+			AttackAnimations.isAttack(AnimationID.HUMAN_ELDER_MAUL_SPEC));
+	}
+
+	@Test
+	public void specials_accursed_isAttack()
+	{
+		assertTrue(AttackAnimations.isAttack(AnimationID.HUMAN_SPECIAL_ACCURSED));
+	}
+
+	@Test
+	public void specials_webweaver_isAttack()
+	{
+		assertTrue(AttackAnimations.isAttack(AnimationID.HUMAN_SPECIAL01_WEBWEAVER));
+	}
+
+	// ── Crumble Undead removal: undead-only spell must NOT count ─────────────
+
+	@Test
+	public void magic_crumbleUndead_isNotAttack()
+	{
+		assertFalse("Crumble Undead cannot hit players; must not advance attack clock",
+			AttackAnimations.isAttack(AnimationID.HUMAN_CASTCRUMBLEUNDEAD));
+		assertFalse("Crumble Undead staff variant likewise",
+			AttackAnimations.isAttack(AnimationID.HUMAN_CASTCRUMBLEUNDEAD_STAFF));
+	}
+
 	// ── isAttack: negative — non-attack animations must return false ──────────
 
 	@Test

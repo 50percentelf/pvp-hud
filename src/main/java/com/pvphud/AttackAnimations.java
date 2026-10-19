@@ -34,10 +34,13 @@ public final class AttackAnimations
 	 * their staff variants, ancient Zaros casting, teleblock cast, etc.).
 	 *
 	 * Also includes well-known weapon specials (dragon claws, godsword, dragon
-	 * scimitar spec, dragon halberd spec, abyssal bludgeon/dagger specs) and
-	 * weapon-specific attacks that use their own distinct animations (abyssal
-	 * whip, granite maul, inquisitor's mace, nightmare staff, dinh's bulwark,
-	 * dragon hunter lance, soulreaper axe, blowpipe variants, ballista).
+	 * scimitar spec, dragon halberd spec, abyssal bludgeon/dagger specs,
+	 * voidwaker, accursed sceptre, webweaver, elder maul, nightmare staff
+	 * volatile/eldritch/spec) and weapon-specific attacks that use their own
+	 * distinct animations (abyssal whip, granite maul, inquisitor's mace,
+	 * nightmare staff crush, dinh's bulwark, dragon hunter lance, soulreaper
+	 * axe, blowpipe variants, ballista normal + spec, modern crossbow fire-
+	 * and-reload, Osmumten's fang).
 	 */
 	private static final Set<Integer> ATTACK_IDS = Collections.unmodifiableSet(
 		new HashSet<>(Arrays.asList(
@@ -105,6 +108,10 @@ public final class AttackAnimations
 			AnimationID.HUMAN_SCYTHE_SWEEP,          // 440
 
 			// ── Magic: standard-spellbook casts ────────────────────────────
+			// Crumble Undead is intentionally NOT included — it is an undead-only
+			// spell and cannot hit players, so including it in the attack
+			// allowlist would let a cast at a training dummy spoof the attack
+			// clock while a player is interacted.
 			AnimationID.HUMAN_CASTZAP,               // 707  (fire bolt family / wind / water / earth)
 			AnimationID.HUMAN_CASTIBANBLAST,         // 708
 			AnimationID.HUMAN_CASTENTANGLE,          // 710  (bind / snare / entangle)
@@ -112,7 +119,6 @@ public final class AttackAnimations
 			AnimationID.HUMAN_CASTCONFUSE,           // 716
 			AnimationID.HUMAN_CASTWEAKEN,            // 717
 			AnimationID.HUMAN_CASTCURSE,             // 718
-			AnimationID.HUMAN_CASTCRUMBLEUNDEAD,     // 724
 			AnimationID.HUMAN_CASTWAVE,              // 727
 			AnimationID.HUMAN_CASTENFEEBLE,          // 728
 			AnimationID.HUMAN_CASTSTUN,              // 729
@@ -123,7 +129,6 @@ public final class AttackAnimations
 			AnimationID.HUMAN_CASTCONFUSE_STAFF,     // 1163
 			AnimationID.HUMAN_CASTWEAKEN_STAFF,      // 1164
 			AnimationID.HUMAN_CASTCURSE_STAFF,       // 1165
-			AnimationID.HUMAN_CASTCRUMBLEUNDEAD_STAFF, // 1166
 			AnimationID.HUMAN_CASTWAVE_STAFF,        // 1167
 			AnimationID.HUMAN_CASTENFEEBLE_STAFF,    // 1168
 			AnimationID.HUMAN_CASTSTUN_STAFF,        // 1169
@@ -186,14 +191,42 @@ public final class AttackAnimations
 			AnimationID.SNAKEBOSS_BLOWPIPE_ATTACK_ORNAMENT, // 10656
 
 			// ── Ranged: ballista ───────────────────────────────────────────
+			AnimationID.BALLISTA_ATTACK,             // 7218 (ballista normal shot)
 			AnimationID.BALLISTA_SPECIAL_ATTACK,     // 7222
+
+			// ── Ranged: modern crossbow fire+reload (used by armadyl/zcb/etc) ─
+			AnimationID.XBOWS_HUMAN_FIRE_AND_RELOAD, // 4230
 
 			// ── Ranged: dart / thrownaxe / throwing knife ──────────────────
 			AnimationID.HUMAN_THROW,                 // 385
 			AnimationID.II_HUMAN_DART_THROW,         // 6600
 
 			// ── The Godsword special (newer graphics) ──────────────────────
-			AnimationID.THE_GODSWORD_SPECIAL_ATTACK  // 11893
+			AnimationID.THE_GODSWORD_SPECIAL_ATTACK, // 11893
+
+			// ── Melee: Osmumten's fang ─────────────────────────────────────
+			AnimationID.HUMAN_OSMUMTENS_FANG,        // 9471
+
+			// ── Melee: elder maul ──────────────────────────────────────────
+			AnimationID.HUMAN_ELDER_MAUL_ATTACK,     // 7516
+			AnimationID.HUMAN_ELDER_MAUL_SPEC,       // 11124
+
+			// ── Specials: voidwaker ────────────────────────────────────────
+			AnimationID.HUMAN_SPECIAL_VOIDWAKER,     // 11240
+			AnimationID.HUMAN_SPECIAL02_VOIDWAKER,   // 11275
+
+			// ── Specials: accursed sceptre ─────────────────────────────────
+			AnimationID.HUMAN_SPECIAL_ACCURSED,      // 9961
+
+			// ── Specials: webweaver bow ────────────────────────────────────
+			// Craw's bow uses the generic HUMAN_BOW animation; no distinct
+			// constant exists for Craw's. Dark bow likewise uses HUMAN_BOW.
+			AnimationID.HUMAN_SPECIAL01_WEBWEAVER,   // 9964
+
+			// ── Magic: Volatile / Eldritch nightmare staff casts & spec ────
+			AnimationID.NIGHTMARE_STAFF_SPECIAL,              // 8532
+			AnimationID.NIGHTMARE_STAFF_VOLATILE_CAST,        // 8546
+			AnimationID.NIGHTMARE_STAFF_ELDRITCH_PLAYER_CAST  // 8548
 		))
 	);
 

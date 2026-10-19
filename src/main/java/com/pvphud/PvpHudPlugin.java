@@ -106,17 +106,17 @@ public class PvpHudPlugin extends Plugin
 	/** Hiscore polling state — the HiscoreManager cache is populated asynchronously. */
 	private String pendingHiscoreName   = null;
 	private int    hiscorePollStartTick = -1;
-	private static final int HISCORE_RECHECK_TICKS = 10;
-	private static final int HISCORE_TIMEOUT_TICKS = 200;
+	private static final int HISCORE_RECHECK_TICKS = 3;
+	private static final int HISCORE_TIMEOUT_TICKS = 30;
 
-	/** Per-endpoint resolution state: resolved = lookupAsync returned non-null. */
-	private boolean hiscoreHcResolved  = false;
-	private boolean hiscoreUimResolved = false;
-	private boolean hiscoreImResolved  = false;
-	/** Per-endpoint positive flag: resolved AND reported HP > 0 for the endpoint. */
-	private boolean hiscoreHcPositive  = false;
-	private boolean hiscoreUimPositive = false;
-	private boolean hiscoreImPositive  = false;
+	/**
+	 * Best positive account type observed across all polls in the current
+	 * lookup. {@code HiscoreManager.lookupAsync} returns null both while
+	 * loading and when the player is not on an endpoint, so we cannot track
+	 * resolved-negative state. We instead record the highest-precedence
+	 * positive hit and commit at the deadline (or immediately on HC).
+	 */
+	private OpponentStats.AccountType hiscoreBestAccountType = OpponentStats.AccountType.NORMAL;
 
 	/** Tick at which the tracked opponent was last seen despawned (-1 = present). */
 	private int opponentMissingTick = -1;
@@ -241,7 +241,10 @@ public class PvpHudPlugin extends Plugin
 	/**
 	 * One-shot config migration from the Plugin Hub v0 schema to v1.
 	 * - Explicit CHAT_LOCKED layout is folded into HORIZONTAL_FLOAT with
-	 *   hf_chatLocked=true. Users on other explicit layouts are untouched.
+	 *   hf_chatLocked=true.
+	 * - Explicit HORIZONTAL_FLOAT users had no hf_chatLocked key before the
+	 *   default flipped to true; we write "false" to preserve their intent
+	 *   (unless the key is already set).
 	 * - Users who kept the old CHAT_LOCKED default (no hudLayout key saved)
 	 *   are covered by the hf_chatLocked=true default — this method does not
 	 *   force the key for them.
@@ -262,6 +265,17 @@ public class PvpHudPlugin extends Plugin
 			configManager.setConfiguration(CONFIG_GROUP, "hudLayout", "HORIZONTAL_FLOAT");
 			configManager.setConfiguration(CONFIG_GROUP, "hf_chatLocked", "true");
 		}
+		else if ("HORIZONTAL_FLOAT".equals(layoutRaw))
+		{
+			// User explicitly chose free-floating. hfChatLocked now defaults
+			// true, so write false here to preserve their intent — but only
+			// when the key has not already been set.
+			String existingPin = configManager.getConfiguration(CONFIG_GROUP, "hf_chatLocked");
+			if (existingPin == null)
+				configManager.setConfiguration(CONFIG_GROUP, "hf_chatLocked", "false");
+		}
+		// VERTICAL_FLOAT, INVENTORY_HUG: no hf_chatLocked action needed.
+		// No hudLayout key (unsaved old default): hfChatLocked() default=true handles it.
 
 		// Always copy old top-level style keys into hf_* equivalents when
 		// present but the hf_* key is unset. Covers both explicit CHAT_LOCKED
@@ -1610,27 +1624,24 @@ public class PvpHudPlugin extends Plugin
 		checkHiscores();
 	}
 
-	/** Clears per-endpoint resolution state so a new lookup starts from scratch. */
+	/** Clears per-lookup resolution state so a new lookup starts from scratch. */
 	private void resetHiscoreResolution()
 	{
-		hiscoreHcResolved  = false;
-		hiscoreUimResolved = false;
-		hiscoreImResolved  = false;
-		hiscoreHcPositive  = false;
-		hiscoreUimPositive = false;
-		hiscoreImPositive  = false;
+		hiscoreBestAccountType = OpponentStats.AccountType.NORMAL;
 	}
 
 	/**
 	 * Polls the HiscoreManager cache for the pending opponent. Called from onGameTick
-	 * every HISCORE_RECHECK_TICKS until a result is populated or the timeout expires.
+	 * every HISCORE_RECHECK_TICKS until a verdict is reached or the timeout expires.
 	 * HiscoreManager.lookupAsync returns cached data immediately or null; the first call
 	 * also triggers a background refresh.
 	 *
-	 * Account-type precedence (HC > UIM > IM > NORMAL) is enforced by the
-	 * {@link HiscoreAccountResolver} state machine. The polling loop only clears
-	 * {@code pendingHiscoreName} when the resolver returns a non-PENDING verdict
-	 * (so a stray IM-positive result cannot short-circuit an in-flight HC check).
+	 * <p>Semantics: {@code lookupAsync} returns null both for "still loading" and
+	 * "player not on this endpoint", so there is no reliable "resolved negative"
+	 * signal. Each poll checks every endpoint, upgrades
+	 * {@link #hiscoreBestAccountType} to the highest-precedence positive hit
+	 * observed, and commits at the deadline. A HC-positive observation
+	 * terminates the loop immediately because nothing outranks HC.
 	 */
 	private void checkHiscores()
 	{
@@ -1640,26 +1651,6 @@ public class PvpHudPlugin extends Plugin
 		OpponentState opp = hudState.getOpponent();
 		if (!opp.isTracked() || !name.equalsIgnoreCase(opp.getName()))
 		{
-			pendingHiscoreName = null;
-			resetHiscoreResolution();
-			return;
-		}
-
-		if (client.getTickCount() - hiscorePollStartTick > HISCORE_TIMEOUT_TICKS)
-		{
-			log.debug("PvP HUD hiscores timeout for {}", name);
-			// Apply the resolver's best verdict with whatever state we have so
-			// far — a timeout should not downgrade a positive endpoint we already
-			// saw. If no endpoint resolved positive, NORMAL is the default.
-			HiscoreAccountResolver.ResolverResult verdict = HiscoreAccountResolver.resolve(
-				hiscoreHcResolved,  hiscoreHcPositive,
-				hiscoreUimResolved, hiscoreUimPositive,
-				hiscoreImResolved,  hiscoreImPositive);
-			if (verdict != HiscoreAccountResolver.ResolverResult.PENDING
-				&& verdict != HiscoreAccountResolver.ResolverResult.COMPLETE_NORMAL)
-			{
-				applyAccountType(name, HiscoreAccountResolver.toAccountType(verdict));
-			}
 			pendingHiscoreName = null;
 			resetHiscoreResolution();
 			return;
@@ -1677,50 +1668,47 @@ public class PvpHudPlugin extends Plugin
 			}
 		}
 
-		// Refresh per-endpoint resolution state. Each endpoint only resolves once —
-		// subsequent polls short-circuit to avoid redundant cache touches.
-		if (!hiscoreHcResolved)
+		// HC takes immediate precedence — nothing outranks it, so a positive HC
+		// observation lets us finish without waiting for the deadline.
+		HiscoreResult hc = hiscoreManager.lookupAsync(name, HiscoreEndpoint.HARDCORE_IRONMAN);
+		if (hc != null && skillLevel(hc, HiscoreSkill.HITPOINTS) > 0)
 		{
-			HiscoreResult hc = hiscoreManager.lookupAsync(name, HiscoreEndpoint.HARDCORE_IRONMAN);
-			if (hc != null)
-			{
-				hiscoreHcResolved = true;
-				hiscoreHcPositive = skillLevel(hc, HiscoreSkill.HITPOINTS) > 0;
-			}
-		}
-		if (!hiscoreUimResolved)
-		{
-			HiscoreResult ui = hiscoreManager.lookupAsync(name, HiscoreEndpoint.ULTIMATE_IRONMAN);
-			if (ui != null)
-			{
-				hiscoreUimResolved = true;
-				hiscoreUimPositive = skillLevel(ui, HiscoreSkill.HITPOINTS) > 0;
-			}
-		}
-		if (!hiscoreImResolved)
-		{
-			HiscoreResult im = hiscoreManager.lookupAsync(name, HiscoreEndpoint.IRONMAN);
-			if (im != null)
-			{
-				hiscoreImResolved = true;
-				hiscoreImPositive = skillLevel(im, HiscoreSkill.HITPOINTS) > 0;
-			}
+			hiscoreBestAccountType = HiscoreAccountResolver.best(
+				hiscoreBestAccountType, OpponentStats.AccountType.HARDCORE_IRONMAN);
+			applyAccountType(name, hiscoreBestAccountType);
+			pendingHiscoreName = null;
+			resetHiscoreResolution();
+			return;
 		}
 
-		HiscoreAccountResolver.ResolverResult verdict = HiscoreAccountResolver.resolve(
-			hiscoreHcResolved,  hiscoreHcPositive,
-			hiscoreUimResolved, hiscoreUimPositive,
-			hiscoreImResolved,  hiscoreImPositive);
-
-		if (!normalDone || verdict == HiscoreAccountResolver.ResolverResult.PENDING)
-			return; // still pending; next poll driven by onGameTick
-
-		if (verdict != HiscoreAccountResolver.ResolverResult.COMPLETE_NORMAL)
+		// UIM / IM: record positive hits but keep polling until the deadline —
+		// a HC lookup may still resolve on a later tick.
+		HiscoreResult uim = hiscoreManager.lookupAsync(name, HiscoreEndpoint.ULTIMATE_IRONMAN);
+		if (uim != null && skillLevel(uim, HiscoreSkill.HITPOINTS) > 0)
 		{
-			applyAccountType(name, HiscoreAccountResolver.toAccountType(verdict));
+			hiscoreBestAccountType = HiscoreAccountResolver.best(
+				hiscoreBestAccountType, OpponentStats.AccountType.ULTIMATE_IRONMAN);
 		}
-		pendingHiscoreName = null;
-		resetHiscoreResolution();
+
+		HiscoreResult im = hiscoreManager.lookupAsync(name, HiscoreEndpoint.IRONMAN);
+		if (im != null && skillLevel(im, HiscoreSkill.HITPOINTS) > 0)
+		{
+			hiscoreBestAccountType = HiscoreAccountResolver.best(
+				hiscoreBestAccountType, OpponentStats.AccountType.IRONMAN);
+		}
+
+		// Deadline — commit the best observed verdict (if any).
+		if (normalDone
+			&& (client.getTickCount() - hiscorePollStartTick) >= HISCORE_TIMEOUT_TICKS)
+		{
+			log.debug("PvP HUD hiscores deadline for {} — best={}", name, hiscoreBestAccountType);
+			if (hiscoreBestAccountType != OpponentStats.AccountType.NORMAL)
+			{
+				applyAccountType(name, hiscoreBestAccountType);
+			}
+			pendingHiscoreName = null;
+			resetHiscoreResolution();
+		}
 	}
 
 	private void applyAccountType(String playerName, OpponentStats.AccountType type)
